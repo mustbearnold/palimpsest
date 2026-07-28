@@ -18,6 +18,10 @@ no dependency on the HTTP, application, domain, PostgreSQL, or server crates.
 | Recorded-time reconstruction | March at revision-1 cutoff returns revision 1; at revision-2 cutoff returns revision 2 | Pass |
 | Tenant isolation | Principal A receives a redacted RFC 9457 `404` for a real tenant-B fact that principal B can read | Pass |
 | Subject isolation | Principal A receives a redacted `404` for a real second-subject fact in tenant A that its principal can read | Pass |
+| Cross-subject idempotency | One principal reuses a key against another authorized subject and receives stable `422 idempotency-key-reused` | Pass |
+| Contract validation | Non-UTC and over-precision timestamps return `400`; an empty valid-time interval returns stable `422 invalid-valid-time` | Pass |
+| Governed writes | Each append, create, and supersede has exactly one audit/outbox pair; exact replays create none | Pass |
+| Outbox publication | A scoped transaction can perform the sole permitted one-way `published_at` transition | Pass |
 
 The isolation fixtures contain unique private marker values and resource IDs.
 Neither marker nor hidden ID appears in the unauthorized response.

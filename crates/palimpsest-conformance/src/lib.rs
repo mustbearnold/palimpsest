@@ -17,6 +17,7 @@ pub struct Target {
     pub bearer_token: String,
     pub tenant_id: Uuid,
     pub subject_id: Uuid,
+    pub principal_a_secondary_subject_id: Uuid,
     pub principal_b_bearer_token: String,
     pub principal_b_tenant_id: Uuid,
     pub principal_b_subject_id: Uuid,
@@ -267,6 +268,142 @@ pub async fn records_and_reads_an_immutable_episode(target: &Target) -> Result<(
     let null_payload: Episode = null_payload_response.json().await?;
     ensure!(null_payload.payload.is_null(), "JSON null payload changed");
 
+    Ok(())
+}
+
+pub async fn rejects_cross_subject_idempotency_reuse(target: &Target) -> Result<()> {
+    let client = Client::new();
+    let response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/episodes",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.principal_a_secondary_subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "episode-a-create")
+        .json(&json!({
+            "case_id": "019be000-0000-7000-8000-000000000001",
+            "kind": "message",
+            "observed_at": "2026-01-10T09:00:00Z",
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": "episode-a"
+            },
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+            "payload": {"message": "Customer supplied the first shipping address."}
+        }))
+        .send()
+        .await?;
+    assert_problem(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "idempotency-key-reused",
+    )
+    .await
+}
+
+pub async fn rejects_invalid_domain_and_timestamp_inputs(target: &Target) -> Result<()> {
+    let client = Client::new();
+    let episodes_url = format!(
+        "{}/v1/tenants/{}/subjects/{}/episodes",
+        target.base_url.trim_end_matches('/'),
+        target.tenant_id,
+        target.subject_id
+    );
+    for (key, observed_at) in [
+        ("invalid-offset-timestamp", "2026-01-10T22:00:00+13:00"),
+        (
+            "invalid-nanosecond-timestamp",
+            "2026-01-10T09:00:00.1234567Z",
+        ),
+    ] {
+        let response = client
+            .post(&episodes_url)
+            .bearer_auth(&target.bearer_token)
+            .header("Idempotency-Key", key)
+            .json(&json!({
+                "case_id": "019be000-0000-7000-8000-000000000001",
+                "kind": "message",
+                "observed_at": observed_at,
+                "provenance": {"source_type": "conformance"},
+                "sensitivity": "internal",
+                "retention_policy_id": "standard",
+                "payload": {"message": "This request must not be persisted."}
+            }))
+            .send()
+            .await?;
+        assert_problem(response, StatusCode::BAD_REQUEST, "invalid-request").await?;
+    }
+
+    let response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/facts",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "invalid-valid-time")
+        .json(&json!({
+            "case_id": "019be000-0000-7000-8000-000000000001",
+            "namespace": "case.profile",
+            "key": "invalid_interval",
+            "value": {"invalid": true},
+            "observed_at": "2026-01-10T09:00:00Z",
+            "valid_time": {
+                "from": "2026-01-10T00:00:00Z",
+                "until": "2026-01-10T00:00:00Z"
+            },
+            "evidence_episode_ids": ["019be000-0000-7000-8000-000000000099"],
+            "write_policy": {"id": "direct-evidence", "version": "1"},
+            "confidence": 1.0,
+            "sensitivity": "internal",
+            "retention_policy_id": "standard"
+        }))
+        .send()
+        .await?;
+    assert_problem(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "invalid-valid-time",
+    )
+    .await
+}
+
+async fn assert_problem(response: reqwest::Response, status: StatusCode, kind: &str) -> Result<()> {
+    ensure!(
+        response.status() == status,
+        "{kind} returned {}, expected {status}",
+        response.status()
+    );
+    ensure!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .is_some_and(|value| value == "application/problem+json"),
+        "{kind} did not return RFC 9457 problem JSON"
+    );
+    ensure!(
+        response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .is_some_and(|value| value == "private, no-store"),
+        "{kind} response can be cached"
+    );
+    let problem: Value = response.json().await?;
+    ensure!(
+        problem["type"] == format!("https://palimpsest.dev/problems/{kind}"),
+        "{kind} did not use its stable problem type"
+    );
+    ensure!(
+        problem["trace_id"]
+            .as_str()
+            .is_some_and(|value| Uuid::parse_str(value).is_ok()),
+        "{kind} has no valid trace_id"
+    );
     Ok(())
 }
 

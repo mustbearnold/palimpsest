@@ -4,6 +4,7 @@ use std::{str::FromStr, sync::Arc};
 use palimpsest_conformance::{
     Target, creates_an_attributable_fact_revision, cross_scope_reads_fail_closed,
     reconstructs_both_temporal_axes, records_and_reads_an_immutable_episode,
+    rejects_cross_subject_idempotency_reuse, rejects_invalid_domain_and_timestamp_inputs,
     supersedes_the_fact_head,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
@@ -49,6 +50,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         bearer_token: "principal-a-test-token".to_owned(),
         tenant_id,
         subject_id,
+        principal_a_secondary_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000021")?,
         principal_b_bearer_token: "principal-b-test-token".to_owned(),
         principal_b_tenant_id: Uuid::parse_str("019be000-0000-7000-8000-000000000110")?,
         principal_b_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000120")?,
@@ -63,7 +65,10 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                 PrincipalScope {
                     principal_id: PrincipalId("principal-a".to_owned()),
                     tenant_id: TenantId(tenant_id),
-                    subject_ids: vec![SubjectId(subject_id)],
+                    subject_ids: vec![
+                        SubjectId(subject_id),
+                        SubjectId(target.principal_a_secondary_subject_id),
+                    ],
                 },
             ),
             (
@@ -98,7 +103,10 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             creates_an_attributable_fact_revision(&scenario_target).await?;
             supersedes_the_fact_head(&scenario_target).await?;
             reconstructs_both_temporal_axes(&scenario_target).await?;
-            cross_scope_reads_fail_closed(&scenario_target).await
+            cross_scope_reads_fail_closed(&scenario_target).await?;
+            rejects_cross_subject_idempotency_reuse(&scenario_target).await?;
+            rejects_invalid_domain_and_timestamp_inputs(&scenario_target).await?;
+            verify_governed_write_records(&pool, &scenario_target).await
         }
         .await;
         server.abort();
@@ -113,4 +121,125 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     .execute(&admin_pool)
     .await?;
     result
+}
+
+async fn verify_governed_write_records(pool: &PgPool, target: &Target) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.principal_id', 'principal-a', true)")
+        .execute(&mut *transaction)
+        .await?;
+
+    let audit = sqlx::query(
+        r#"
+        SELECT
+            count(*) FILTER (WHERE operation_id = 'appendEpisode') AS episode_count,
+            count(*) FILTER (WHERE operation_id = 'createFact') AS create_fact_count,
+            count(*) FILTER (WHERE operation_id = 'supersedeFact') AS supersede_fact_count,
+            count(*) AS total_count
+        FROM memory.write_audit_receipts
+        WHERE tenant_id = $1 AND subject_id = $2
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(audit.try_get::<i64, _>("episode_count")? == 3);
+    ensure!(audit.try_get::<i64, _>("create_fact_count")? == 1);
+    ensure!(audit.try_get::<i64, _>("supersede_fact_count")? == 1);
+    ensure!(audit.try_get::<i64, _>("total_count")? == 5);
+
+    let outbox = sqlx::query(
+        r#"
+        SELECT
+            count(*) FILTER (WHERE event_type = 'memory.episode.appended.v1') AS episode_count,
+            count(*) FILTER (WHERE event_type = 'memory.fact.created.v1') AS create_fact_count,
+            count(*) FILTER (WHERE event_type = 'memory.fact.superseded.v1') AS supersede_fact_count,
+            count(*) AS total_count
+        FROM memory.outbox_intents
+        WHERE tenant_id = $1 AND subject_id = $2
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(outbox.try_get::<i64, _>("episode_count")? == 3);
+    ensure!(outbox.try_get::<i64, _>("create_fact_count")? == 1);
+    ensure!(outbox.try_get::<i64, _>("supersede_fact_count")? == 1);
+    ensure!(outbox.try_get::<i64, _>("total_count")? == 5);
+
+    let paired_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM memory.write_audit_receipts AS audit
+        JOIN memory.outbox_intents AS outbox
+          ON outbox.tenant_id = audit.tenant_id
+         AND outbox.subject_id = audit.subject_id
+         AND outbox.case_id = audit.case_id
+         AND outbox.resource_episode_id IS NOT DISTINCT FROM audit.resource_episode_id
+         AND outbox.resource_fact_id IS NOT DISTINCT FROM audit.resource_fact_id
+         AND outbox.resource_revision_id IS NOT DISTINCT FROM audit.resource_revision_id
+        WHERE audit.tenant_id = $1 AND audit.subject_id = $2
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(
+        paired_count == 5,
+        "every durable mutation needs one audit/outbox pair"
+    );
+
+    let receipt_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM memory.idempotency_receipts
+        WHERE tenant_id = $1 AND principal_id = 'principal-a' AND state = 'completed'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(
+        receipt_count == 5,
+        "idempotent replays must not create durable write records"
+    );
+
+    let published = sqlx::query(
+        r#"
+        UPDATE memory.outbox_intents
+        SET published_at = clock_timestamp()
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND intent_id = (
+            SELECT intent_id
+            FROM memory.outbox_intents
+            WHERE tenant_id = $1
+              AND subject_id = $2
+              AND published_at IS NULL
+            ORDER BY created_at, intent_id
+            LIMIT 1
+        )
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(
+        published.rows_affected() == 1,
+        "scoped outbox publisher could not mark one intent published"
+    );
+    transaction.commit().await?;
+    Ok(())
 }

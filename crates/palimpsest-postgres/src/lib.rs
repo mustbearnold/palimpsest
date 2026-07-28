@@ -792,6 +792,11 @@ async fn reserve_idempotency(
     scope: IdempotencyScope<'_>,
     idempotency: &IdempotencyRequest,
 ) -> Result<Option<serde_json::Value>, RepositoryError> {
+    sqlx::query("SELECT set_config('palimpsest.principal_id', $1, true)")
+        .bind(scope.principal_id)
+        .execute(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
     let reserved = sqlx::query(
         r#"
         INSERT INTO memory.idempotency_receipts (
@@ -823,15 +828,13 @@ async fn reserve_idempotency(
         SELECT request_fingerprint, state, response_body
         FROM memory.idempotency_receipts
         WHERE tenant_id = $1
-          AND subject_id = $2
-          AND principal_id = $3
-          AND operation_id = $4
-          AND idempotency_key = $5
+          AND principal_id = $2
+          AND operation_id = $3
+          AND idempotency_key = $4
         FOR UPDATE
         "#,
     )
     .bind(scope.tenant_id.0)
-    .bind(scope.subject_id.0)
     .bind(scope.principal_id)
     .bind(scope.operation_id)
     .bind(&idempotency.key)

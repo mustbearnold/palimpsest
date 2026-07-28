@@ -111,6 +111,8 @@ pub enum ServiceError {
     SupersessionConflict,
     #[error("recorded-time coordinate is in the future")]
     FutureRecordedTime,
+    #[error("invalid valid-time interval: {0}")]
+    InvalidValidTime(String),
     #[error("invalid request: {0}")]
     Invalid(String),
     #[error("service unavailable")]
@@ -467,7 +469,7 @@ fn validate_fact_revision(input: FactRevisionValidation<'_>) -> Result<(), Servi
         .until
         .is_some_and(|until| until <= input.valid_time.from)
     {
-        return Err(ServiceError::Invalid(
+        return Err(ServiceError::InvalidValidTime(
             "valid_time.until must be later than valid_time.from".to_owned(),
         ));
     }

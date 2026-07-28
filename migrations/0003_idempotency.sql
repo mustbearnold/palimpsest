@@ -88,9 +88,10 @@ ALTER TABLE memory.idempotency_receipts FORCE ROW LEVEL SECURITY;
 CREATE POLICY idempotency_receipt_scope ON memory.idempotency_receipts
     USING (
         tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
-        AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+        AND principal_id = NULLIF(current_setting('palimpsest.principal_id', true), '')
     )
     WITH CHECK (
         tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
         AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+        AND principal_id = NULLIF(current_setting('palimpsest.principal_id', true), '')
     );

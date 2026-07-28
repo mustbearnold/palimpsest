@@ -158,3 +158,15 @@ CREATE POLICY outbox_intents_insert_scope ON memory.outbox_intents
         tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
         AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
     );
+CREATE POLICY outbox_intents_publish_scope ON memory.outbox_intents
+    FOR UPDATE
+    USING (
+        tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+        AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+        AND published_at IS NULL
+    )
+    WITH CHECK (
+        tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+        AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+        AND published_at IS NOT NULL
+    );

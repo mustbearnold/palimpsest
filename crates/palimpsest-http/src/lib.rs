@@ -154,13 +154,7 @@ async fn append_episode(
     let principal = authenticate(&state, &headers)?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
-    let observed_at = OffsetDateTime::parse(&request.observed_at, &Rfc3339).map_err(|error| {
-        Problem::bad_request(
-            "invalid_observed_at",
-            "observed_at must be an RFC 3339 timestamp",
-            error.to_string(),
-        )
-    })?;
+    let observed_at = parse_time("observed_at", &request.observed_at)?;
 
     let episode = state
         .service
@@ -460,6 +454,15 @@ fn parse_uuid(field: &str, value: &str) -> Result<Uuid, Problem> {
 }
 
 fn parse_time(field: &str, value: &str) -> Result<OffsetDateTime, Problem> {
+    if !is_utc_microsecond_timestamp(value) {
+        return Err(Problem::bad_request(
+            "invalid_timestamp",
+            "Timestamp is invalid",
+            format!(
+                "{field} must be an RFC 3339 UTC timestamp ending in Z with at most six fractional digits"
+            ),
+        ));
+    }
     OffsetDateTime::parse(value, &Rfc3339).map_err(|error| {
         Problem::bad_request(
             "invalid_timestamp",
@@ -467,6 +470,30 @@ fn parse_time(field: &str, value: &str) -> Result<OffsetDateTime, Problem> {
             format!("{field} must be RFC 3339: {error}"),
         )
     })
+}
+
+fn is_utc_microsecond_timestamp(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let fixed_digits = [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18];
+    let fixed_shape = bytes.len() >= 20
+        && fixed_digits
+            .into_iter()
+            .all(|index| bytes[index].is_ascii_digit())
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'T'
+        && bytes[13] == b':'
+        && bytes[16] == b':';
+    if !fixed_shape {
+        return false;
+    }
+    if bytes.len() == 20 {
+        return bytes[19] == b'Z';
+    }
+    (22..=27).contains(&bytes.len())
+        && bytes[19] == b'.'
+        && bytes[bytes.len() - 1] == b'Z'
+        && bytes[20..bytes.len() - 1].iter().all(u8::is_ascii_digit)
 }
 
 fn resource_response(
@@ -663,6 +690,13 @@ impl Problem {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "future_recorded_time",
                 "recorded_at cannot be later than the request snapshot.",
+            ),
+            ServiceError::InvalidValidTime(detail) => Self::new(
+                "invalid-valid-time",
+                "Valid-time interval is invalid",
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "invalid_valid_time",
+                detail,
             ),
             ServiceError::Invalid(detail) => {
                 Self::bad_request("invalid_request", "Request is invalid", detail)
