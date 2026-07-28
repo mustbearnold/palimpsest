@@ -1,0 +1,46 @@
+name: Bug report
+description: Report reproducible behavior that violates the public contract.
+title: "[Bug] "
+labels:
+  - needs-triage
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: What happened, without private memory or credentials?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include version, commands, and sanitized inputs.
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Affected boundary
+      options:
+        - Checkpointing
+        - Temporal history
+        - Retrieval
+        - Authorization or isolation
+        - Export or deletion
+        - Operations or SDK
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: This report contains no credentials, private memory, or customer data.
+          required: true

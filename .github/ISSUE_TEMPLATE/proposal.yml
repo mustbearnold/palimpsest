@@ -1,0 +1,30 @@
+name: Product proposal
+description: Propose a user-visible capability or measurable improvement.
+title: "[Proposal] "
+labels:
+  - needs-triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the problem from the user's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: State observable behavior, not an implementation preference.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link primary sources, measurements, or representative scenarios.
+  - type: textarea
+    id: seam
+    attributes:
+      label: Suggested validation seam
+      description: What public behavior would prove this works?
