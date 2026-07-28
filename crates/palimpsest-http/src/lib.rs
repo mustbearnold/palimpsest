@@ -605,29 +605,8 @@ fn resource_response(
     location: Option<String>,
     idempotency_replayed: bool,
 ) -> Result<Response, Problem> {
-    let etag = HeaderValue::from_str(&format!("\"{}\"", episode.payload_sha256)).map_err(|_| {
-        Problem::internal("The service could not construct the resource validator.")
-    })?;
-    let mut response = (status, Json(episode)).into_response();
-    response.headers_mut().insert(header::ETAG, etag);
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
-    if let Some(location) = location {
-        response.headers_mut().insert(
-            header::LOCATION,
-            HeaderValue::from_str(&location)
-                .map_err(|_| Problem::internal("The service could not construct Location."))?,
-        );
-    }
-    if idempotency_replayed {
-        response.headers_mut().insert(
-            header::HeaderName::from_static("idempotency-replayed"),
-            HeaderValue::from_static("true"),
-        );
-    }
-    Ok(response)
+    let etag = format!("\"{}\"", episode.payload_sha256);
+    versioned_json_response(status, episode, etag, location, idempotency_replayed)
 }
 
 fn fact_response(
@@ -636,9 +615,30 @@ fn fact_response(
     location: Option<String>,
     idempotency_replayed: bool,
 ) -> Result<Response, Problem> {
-    let etag = HeaderValue::from_str(&format!("\"{}\"", view.head_revision_id.0))
-        .map_err(|_| Problem::internal("The service could not construct the fact validator."))?;
-    let mut response = (status, Json(view)).into_response();
+    let etag = format!("\"{}\"", view.head_revision_id.0);
+    versioned_json_response(status, view, etag, location, idempotency_replayed)
+}
+
+fn checkpoint_response(
+    status: StatusCode,
+    view: CheckpointView,
+    location: Option<String>,
+    idempotency_replayed: bool,
+) -> Result<Response, Problem> {
+    let etag = format!("\"{}\"", view.checkpoint_revision_id.0);
+    versioned_json_response(status, view, etag, location, idempotency_replayed)
+}
+
+fn versioned_json_response<T: Serialize>(
+    status: StatusCode,
+    value: T,
+    etag: String,
+    location: Option<String>,
+    idempotency_replayed: bool,
+) -> Result<Response, Problem> {
+    let etag = HeaderValue::from_str(&etag)
+        .map_err(|_| Problem::internal("The service could not construct the resource ETag."))?;
+    let mut response = (status, Json(value)).into_response();
     response.headers_mut().insert(header::ETAG, etag);
     response.headers_mut().insert(
         header::CACHE_CONTROL,
@@ -649,37 +649,6 @@ fn fact_response(
             header::LOCATION,
             HeaderValue::from_str(&location)
                 .map_err(|_| Problem::internal("The service could not construct Location."))?,
-        );
-    }
-    if idempotency_replayed {
-        response.headers_mut().insert(
-            header::HeaderName::from_static("idempotency-replayed"),
-            HeaderValue::from_static("true"),
-        );
-    }
-    Ok(response)
-}
-
-fn checkpoint_response(
-    status: StatusCode,
-    view: CheckpointView,
-    location: Option<String>,
-    idempotency_replayed: bool,
-) -> Result<Response, Problem> {
-    let etag = HeaderValue::from_str(&format!("\"{}\"", view.checkpoint_revision_id.0))
-        .map_err(|_| Problem::internal("The service could not construct the checkpoint ETag."))?;
-    let mut response = (status, Json(view)).into_response();
-    response.headers_mut().insert(header::ETAG, etag);
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
-    if let Some(location) = location {
-        response.headers_mut().insert(
-            header::LOCATION,
-            HeaderValue::from_str(&location).map_err(|_| {
-                Problem::internal("The service could not construct checkpoint Location.")
-            })?,
         );
     }
     if idempotency_replayed {

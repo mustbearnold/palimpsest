@@ -829,7 +829,7 @@ async fn verify_checkpoint_governance(pool: &PgPool, target: &Target) -> Result<
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(
-        checkpoint_audits == 4,
+        checkpoint_audits == 5,
         "checkpoint retries or failures duplicated audit records, or audit content leaked state"
     );
 
@@ -850,7 +850,7 @@ async fn verify_checkpoint_governance(pool: &PgPool, target: &Target) -> Result<
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(
-        checkpoint_outbox == 4,
+        checkpoint_outbox == 5,
         "checkpoint retries or failures duplicated outbox records, or outbox content leaked state"
     );
 
@@ -869,7 +869,7 @@ async fn verify_checkpoint_governance(pool: &PgPool, target: &Target) -> Result<
     .bind(target.subject_id)
     .fetch_one(&mut *transaction)
     .await?;
-    ensure!(checkpoint_receipts == 4);
+    ensure!(checkpoint_receipts == 5);
 
     let prepared_effects: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM memory.checkpoint_effect_intents WHERE tenant_id = $1 AND subject_id = $2",

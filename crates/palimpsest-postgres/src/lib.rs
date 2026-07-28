@@ -713,14 +713,21 @@ async fn checkpoint_revision_is_active(
         r#"
         SELECT EXISTS (
             SELECT 1
-            FROM memory.checkpoint_revisions
-            WHERE tenant_id = $1
-              AND subject_id = $2
-              AND agent_id = $3
-              AND thread_id = $4
-              AND checkpoint_id = $5
-              AND revision_id = $6
-              AND expires_at > clock_timestamp()
+            FROM memory.checkpoint_revisions AS revision
+            JOIN memory.checkpoints AS checkpoint
+              ON checkpoint.tenant_id = revision.tenant_id
+             AND checkpoint.subject_id = revision.subject_id
+             AND checkpoint.agent_id = revision.agent_id
+             AND checkpoint.thread_id = revision.thread_id
+             AND checkpoint.checkpoint_id = revision.checkpoint_id
+            WHERE revision.tenant_id = $1
+              AND revision.subject_id = $2
+              AND revision.agent_id = $3
+              AND revision.thread_id = $4
+              AND revision.checkpoint_id = $5
+              AND revision.revision_id = $6
+              AND revision.expires_at > clock_timestamp()
+              AND checkpoint.expires_at > clock_timestamp()
         )
         "#,
     )

@@ -866,30 +866,58 @@ pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()>
         target.tenant_id,
         target.subject_id
     );
-    let short_lived_body = json!({
+    let create_body = json!({
         "case_id": case_id,
         "parent_revision_id": null,
-        "state": {"step": "short-lived"},
+        "state": {"step": "long-lived-root"},
         "state_schema_version": 1,
         "effect_transitions": [],
         "provenance": {"source_type": "conformance", "external_id": "checkpoint-run-311"},
         "sensitivity": "internal",
-        "retention_policy_id": "checkpoint-test-1s-v1"
+        "retention_policy_id": "checkpoint-active-30d-v1"
     });
     let response = client
         .put(&checkpoint_url)
         .bearer_auth(&target.bearer_token)
         .header("Idempotency-Key", "checkpoint-run-311-create")
         .header(header::IF_NONE_MATCH, "*")
-        .json(&short_lived_body)
+        .json(&create_body)
         .send()
         .await?;
     ensure!(
         response.status() == StatusCode::CREATED,
-        "short-lived checkpoint returned {}",
+        "retention fixture root returned {}",
         response.status()
     );
-    let short_lived: Checkpoint = response.json().await?;
+    let root_etag = response
+        .headers()
+        .get(header::ETAG)
+        .context("retention fixture root omitted ETag")?
+        .to_str()?
+        .to_owned();
+    let root: Checkpoint = response.json().await?;
+    ensure!(root.retention_policy_id == "checkpoint-active-30d-v1");
+
+    let short_lived_body = json!({
+        "case_id": case_id,
+        "parent_revision_id": root.checkpoint_revision_id,
+        "state": {"step": "short-lived-head"},
+        "state_schema_version": 1,
+        "effect_transitions": [],
+        "provenance": {"source_type": "conformance", "external_id": "checkpoint-run-311"},
+        "sensitivity": "internal",
+        "retention_policy_id": "checkpoint-test-1s-v1"
+    });
+    let short_lived_response = client
+        .put(&checkpoint_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "checkpoint-run-311-shorten")
+        .header(header::IF_MATCH, root_etag)
+        .json(&short_lived_body)
+        .send()
+        .await?;
+    ensure!(short_lived_response.status() == StatusCode::OK);
+    let short_lived: Checkpoint = short_lived_response.json().await?;
     ensure!(short_lived.retention_policy_id == "checkpoint-test-1s-v1");
 
     tokio::time::sleep(Duration::from_millis(1_100)).await;
@@ -910,7 +938,7 @@ pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()>
         .bearer_auth(&target.bearer_token)
         .header("Idempotency-Key", "checkpoint-run-311-create")
         .header(header::IF_NONE_MATCH, "*")
-        .json(&short_lived_body)
+        .json(&create_body)
         .send()
         .await?;
     assert_problem(

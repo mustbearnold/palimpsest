@@ -24,7 +24,7 @@ snapshot revision.
 | Response-window termination | A child server exits with code 86 after the completion transaction returns but before its response is delivered | Pass |
 | Process restart | The production server binary restarts with a fresh pool against the same database after each interruption | Pass |
 | Completion replay | The lost completion response replays exactly after restart without a third provider attempt | Pass |
-| Retention | A database-configured one-second test policy expires only its target checkpoint; a sibling thread remains readable | Pass |
+| Retention | A 30-day root advances to a one-second head; after expiry `GET` and replay of the older root both return `404`, while a sibling remains readable | Pass |
 | Scope isolation | Sibling-subject and unauthorized-subject reads return indistinguishable RFC 9457 `404` responses | Pass |
 | Governance | Each committed revision has one audit/outbox pair; failures and replays add none | Pass |
 | Redaction | Private state and external-reference markers do not appear in audit authorization context or outbox payloads | Pass |
