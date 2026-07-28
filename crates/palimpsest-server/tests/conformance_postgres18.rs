@@ -21,13 +21,23 @@ use std::{
 };
 
 use palimpsest_conformance::{
-    Target, checkpoint_scopes_fail_closed, creates_an_attributable_fact_revision,
+    RetrievalIsolationFixture, RetrievalLifecycleFixture, Target, checkpoint_scopes_fail_closed,
+    concurrent_retrievals_converge_on_one_receipt, creates_an_attributable_fact_revision,
+    creates_and_replays_a_lexical_retrieval_receipt, creates_retrieval_lifecycle_fixture,
     cross_scope_reads_fail_closed, expires_only_the_targeted_checkpoint,
     reconstructs_both_temporal_axes, records_and_reads_an_immutable_episode,
-    rejects_cross_subject_idempotency_reuse, rejects_invalid_domain_and_timestamp_inputs,
-    saves_and_reads_a_resumable_checkpoint, supersedes_the_fact_head,
+    rejects_cross_subject_idempotency_reuse, rejects_cross_subject_retrieval_idempotency_reuse,
+    rejects_invalid_domain_and_timestamp_inputs,
+    retrieval_candidates_are_authorized_before_ranking,
+    retrieval_fails_closed_when_projection_is_corrupt,
+    retrieval_fails_closed_when_projection_is_missing,
+    retrieval_paginates_and_rejects_invalid_replays,
+    retrieval_receipt_does_not_resurrect_deleted_history, retrieval_receipt_hides_expired_content,
+    retrieval_recovers_after_projection_rebuild, retrieval_succeeds_after_projection_rebuild,
+    retrieves_the_effective_bitemporal_revision, saves_and_reads_a_resumable_checkpoint,
+    supersedes_the_fact_head,
 };
-use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
+use palimpsest_domain::{PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId};
 use palimpsest_http::StaticAuthenticator;
 use sqlx::{AssertSqlSafe, ConnectOptions, PgPool, Row, postgres::PgConnectOptions};
 use tokio::{
@@ -72,6 +82,11 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     let options = PgConnectOptions::from_str(&database_url)?.database(&database_name);
     let test_database_url = options.to_url_lossy().to_string();
     let pool = PgPool::connect_with(options).await?;
+    let migration_database_url =
+        std::env::var("PALIMPSEST_MIGRATION_DATABASE_URL").unwrap_or_else(|_| database_url.clone());
+    let migration_options =
+        PgConnectOptions::from_str(&migration_database_url)?.database(&database_name);
+    let migration_pool = PgPool::connect_with(migration_options).await?;
     let tenant_id = Uuid::parse_str("019be000-0000-7000-8000-000000000010")?;
     let subject_id = Uuid::parse_str("019be000-0000-7000-8000-000000000020")?;
     let target = Target {
@@ -80,6 +95,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         tenant_id,
         subject_id,
         principal_a_secondary_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000021")?,
+        principal_a_internal_bearer_token: "principal-a-internal-test-token".to_owned(),
         principal_b_bearer_token: "principal-b-test-token".to_owned(),
         principal_b_tenant_id: Uuid::parse_str("019be000-0000-7000-8000-000000000110")?,
         principal_b_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000120")?,
@@ -88,6 +104,17 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     };
     let result = async {
         palimpsest_postgres::migrate(&pool).await?;
+        verify_lexical_retrieval_policy(&migration_pool).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO memory.fact_retention_policies (
+                retention_policy_id, retention_interval, policy_origin, schema_version
+            )
+            VALUES ('retrieval-test-1s-v1', interval '1 second', 'migration', 1)
+            "#,
+        )
+        .execute(&migration_pool)
+        .await?;
         sqlx::query(
             r#"
             INSERT INTO memory.checkpoint_retention_policies (
@@ -108,6 +135,22 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                         SubjectId(subject_id),
                         SubjectId(target.principal_a_secondary_subject_id),
                     ],
+                    allowed_sensitivities: vec![
+                        Sensitivity::try_from("internal".to_owned())?,
+                        Sensitivity::try_from("restricted".to_owned())?,
+                    ],
+                },
+            ),
+            (
+                target.principal_a_internal_bearer_token.clone(),
+                PrincipalScope {
+                    principal_id: PrincipalId("principal-a".to_owned()),
+                    tenant_id: TenantId(tenant_id),
+                    subject_ids: vec![
+                        SubjectId(subject_id),
+                        SubjectId(target.principal_a_secondary_subject_id),
+                    ],
+                    allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
                 },
             ),
             (
@@ -116,6 +159,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     principal_id: PrincipalId("principal-b".to_owned()),
                     tenant_id: TenantId(target.principal_b_tenant_id),
                     subject_ids: vec![SubjectId(target.principal_b_subject_id)],
+                    allowed_sensitivities: vec![Sensitivity::try_from("restricted".to_owned())?],
                 },
             ),
             (
@@ -124,6 +168,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     principal_id: PrincipalId("principal-c".to_owned()),
                     tenant_id: TenantId(tenant_id),
                     subject_ids: vec![SubjectId(target.principal_c_subject_id)],
+                    allowed_sensitivities: vec![Sensitivity::try_from("restricted".to_owned())?],
                 },
             ),
         ]));
@@ -145,12 +190,73 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         let scenario = async {
             records_and_reads_an_immutable_episode(&scenario_target).await?;
             creates_an_attributable_fact_revision(&scenario_target).await?;
+            creates_and_replays_a_lexical_retrieval_receipt(&scenario_target).await?;
             supersedes_the_fact_head(&scenario_target).await?;
             reconstructs_both_temporal_axes(&scenario_target).await?;
+            retrieves_the_effective_bitemporal_revision(&scenario_target).await?;
             cross_scope_reads_fail_closed(&scenario_target).await?;
             rejects_cross_subject_idempotency_reuse(&scenario_target).await?;
             rejects_invalid_domain_and_timestamp_inputs(&scenario_target).await?;
             verify_governed_write_records(&pool, &scenario_target).await?;
+            let retrieval_isolation =
+                retrieval_candidates_are_authorized_before_ranking(&scenario_target).await?;
+            concurrent_retrievals_converge_on_one_receipt(&scenario_target).await?;
+            rejects_cross_subject_retrieval_idempotency_reuse(&scenario_target).await?;
+            verify_retrieval_manifest_is_authorized(&pool, &target, &retrieval_isolation).await?;
+            delete_retrieval_projection(&pool, &target, retrieval_isolation.allowed_revision_id)
+                .await?;
+            retrieval_fails_closed_when_projection_is_missing(&scenario_target).await?;
+            rebuild_retrieval_projection(&pool, &target, retrieval_isolation.allowed_revision_id)
+                .await?;
+            retrieval_recovers_after_projection_rebuild(
+                &scenario_target,
+                retrieval_isolation.allowed_revision_id,
+            )
+            .await?;
+            corrupt_retrieval_projection_digest(
+                &pool,
+                &target,
+                retrieval_isolation.allowed_revision_id,
+            )
+            .await?;
+            retrieval_fails_closed_when_projection_is_corrupt(
+                &scenario_target,
+                "retrieval-projection-digest-retry",
+            )
+            .await?;
+            rebuild_retrieval_projection(&pool, &target, retrieval_isolation.allowed_revision_id)
+                .await?;
+            retrieval_succeeds_after_projection_rebuild(
+                &scenario_target,
+                retrieval_isolation.allowed_revision_id,
+                "retrieval-projection-digest-retry",
+            )
+            .await?;
+            corrupt_retrieval_search_vector(
+                &pool,
+                &target,
+                retrieval_isolation.allowed_revision_id,
+            )
+            .await?;
+            retrieval_fails_closed_when_projection_is_corrupt(
+                &scenario_target,
+                "retrieval-projection-vector-retry",
+            )
+            .await?;
+            rebuild_retrieval_projection(&pool, &target, retrieval_isolation.allowed_revision_id)
+                .await?;
+            retrieval_succeeds_after_projection_rebuild(
+                &scenario_target,
+                retrieval_isolation.allowed_revision_id,
+                "retrieval-projection-vector-retry",
+            )
+            .await?;
+            retrieval_paginates_and_rejects_invalid_replays(&scenario_target).await?;
+            retrieval_receipt_hides_expired_content(&scenario_target).await?;
+            let lifecycle = creates_retrieval_lifecycle_fixture(&scenario_target).await?;
+            delete_retrieval_revision(&pool, &target, &lifecycle).await?;
+            retrieval_receipt_does_not_resurrect_deleted_history(&scenario_target, &lifecycle)
+                .await?;
             saves_and_reads_a_resumable_checkpoint(&scenario_target).await?;
             checkpoint_scopes_fail_closed(&scenario_target).await?;
             expires_only_the_targeted_checkpoint(&scenario_target).await?;
@@ -164,6 +270,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     }
     .await;
 
+    migration_pool.close().await;
     pool.close().await;
     sqlx::query(AssertSqlSafe(format!(
         "DROP DATABASE \"{database_name}\" WITH (FORCE)"
@@ -171,6 +278,371 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     .execute(&admin_pool)
     .await?;
     result
+}
+
+async fn verify_lexical_retrieval_policy(pool: &PgPool) -> Result<()> {
+    let row = sqlx::query(
+        r#"
+        SELECT policy_document, policy_sha256,
+            encode(
+                sha256(convert_to(policy_document::text, 'UTF8')),
+                'hex'
+            ) AS calculated_sha256
+        FROM memory.lexical_retrieval_policies
+        WHERE policy_id = 'retrieval-lexical-v1' AND policy_version = '1'
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    let policy_document: Value = row.try_get("policy_document")?;
+    let expected = json!({
+        "candidate_limit": 50,
+        "default_page_size": 10,
+        "exact_identity_precedence": true,
+        "fts_configuration": "pg_catalog.simple",
+        "fts_rank": "ts_rank_cd",
+        "fts_rank_normalization": 32,
+        "maximum_page_size": 50,
+        "score_scale": 12,
+        "tie_break": [
+            "exact_identity_rank_asc_nulls_last",
+            "lexical_rank_asc_nulls_last",
+            "fact_id_asc",
+            "revision_id_asc"
+        ]
+    });
+    ensure!(
+        policy_document == expected,
+        "retrieval-lexical-v1 did not pin the complete lexical-only ranking policy"
+    );
+    let stored_sha256: String = row.try_get("policy_sha256")?;
+    let calculated_sha256: String = row.try_get("calculated_sha256")?;
+    ensure!(
+        stored_sha256 == calculated_sha256,
+        "retrieval-lexical-v1 digest does not hash its canonical policy document"
+    );
+    Ok(())
+}
+
+async fn verify_retrieval_manifest_is_authorized(
+    pool: &PgPool,
+    target: &Target,
+    fixture: &RetrievalIsolationFixture,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.principal_id', 'principal-a', true)")
+        .execute(&mut *transaction)
+        .await?;
+    let revision_ids = sqlx::query(
+        r#"
+        SELECT revision_id
+        FROM memory.retrieval_manifest_items
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        ORDER BY ordinal
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.retrieval_id)
+    .fetch_all(&mut *transaction)
+    .await?
+    .into_iter()
+    .map(|row| row.try_get::<Uuid, _>("revision_id"))
+    .collect::<std::result::Result<Vec<_>, _>>()?;
+    ensure!(
+        revision_ids == vec![fixture.allowed_revision_id],
+        "the internal-only receipt manifest contains unauthorized candidates"
+    );
+    ensure!(
+        fixture
+            .forbidden_revision_ids
+            .iter()
+            .all(|revision_id| !revision_ids.contains(revision_id)),
+        "a forbidden revision entered the durable retrieval manifest"
+    );
+    let receipt_record: String = sqlx::query(
+        r#"
+        SELECT to_jsonb(receipt)::text AS record
+        FROM memory.retrieval_receipts AS receipt
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.retrieval_id)
+    .fetch_one(&mut *transaction)
+    .await?
+    .try_get("record")?;
+    let manifest_record: String = sqlx::query(
+        r#"
+        SELECT COALESCE(jsonb_agg(to_jsonb(item)), '[]'::jsonb)::text AS record
+        FROM memory.retrieval_manifest_items AS item
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.retrieval_id)
+    .fetch_one(&mut *transaction)
+    .await?
+    .try_get("record")?;
+    let idempotency_record: String = sqlx::query(
+        r#"
+        SELECT to_jsonb(reservation)::text AS record
+        FROM memory.retrieval_idempotency_reservations AS reservation
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.retrieval_id)
+    .fetch_one(&mut *transaction)
+    .await?
+    .try_get("record")?;
+    for private_text in [
+        "cobalt-otter-731",
+        "internal-visible-value",
+        "restricted-hidden-value",
+        "cross-subject-hidden-value",
+        "cross-tenant-hidden-value",
+    ] {
+        ensure!(
+            !receipt_record.contains(private_text)
+                && !manifest_record.contains(private_text)
+                && !idempotency_record.contains(private_text),
+            "durable retrieval metadata stored raw private text"
+        );
+    }
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn delete_retrieval_revision(
+    pool: &PgPool,
+    target: &Target,
+    fixture: &RetrievalLifecycleFixture,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.principal_id', 'principal-a', true)")
+        .execute(&mut *transaction)
+        .await?;
+    let manifest_revision_ids = sqlx::query(
+        r#"
+        SELECT revision_id
+        FROM memory.retrieval_manifest_items
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        ORDER BY ordinal
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.retrieval_id)
+    .fetch_all(&mut *transaction)
+    .await?
+    .into_iter()
+    .map(|row| row.try_get::<Uuid, _>("revision_id"))
+    .collect::<std::result::Result<Vec<_>, _>>()?;
+    ensure!(manifest_revision_ids == vec![fixture.deleted_revision_id]);
+    ensure!(!manifest_revision_ids.contains(&fixture.superseded_revision_id));
+    let pending = sqlx::query(
+        r#"
+        UPDATE memory.fact_revision_governance
+        SET lifecycle_state = 'deletion_pending'
+        WHERE tenant_id = $1 AND subject_id = $2 AND revision_id = $3
+          AND lifecycle_state = 'active'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.deleted_revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(pending.rows_affected() == 1);
+    let deleted = sqlx::query(
+        r#"
+        UPDATE memory.fact_revision_governance
+        SET lifecycle_state = 'deleted'
+        WHERE tenant_id = $1 AND subject_id = $2 AND revision_id = $3
+          AND lifecycle_state = 'deletion_pending'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.deleted_revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(deleted.rows_affected() == 1);
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn delete_retrieval_projection(
+    pool: &PgPool,
+    target: &Target,
+    revision_id: Uuid,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    let deleted = sqlx::query(
+        r#"
+        DELETE FROM memory.fact_revision_search_documents
+        WHERE tenant_id = $1 AND subject_id = $2 AND revision_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(deleted.rows_affected() == 1);
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn corrupt_retrieval_projection_digest(
+    pool: &PgPool,
+    target: &Target,
+    revision_id: Uuid,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    let updated = sqlx::query(
+        r#"
+        UPDATE memory.fact_revision_search_documents
+        SET projection_sha256 = repeat('0', 64)
+        WHERE tenant_id = $1 AND subject_id = $2 AND revision_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(updated.rows_affected() == 1);
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn corrupt_retrieval_search_vector(
+    pool: &PgPool,
+    target: &Target,
+    revision_id: Uuid,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    let updated = sqlx::query(
+        r#"
+        UPDATE memory.fact_revision_search_documents
+        SET search_vector = to_tsvector('pg_catalog.simple', 'corrupted projection')
+        WHERE tenant_id = $1 AND subject_id = $2 AND revision_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(updated.rows_affected() == 1);
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn rebuild_retrieval_projection(
+    pool: &PgPool,
+    target: &Target,
+    revision_id: Uuid,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(target.tenant_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(target.subject_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    let rebuilt = sqlx::query(
+        r#"
+        INSERT INTO memory.fact_revision_search_documents (
+            tenant_id, subject_id, case_id, fact_id, revision_id,
+            projection_schema_version, projection_schema_sha256,
+            source_content_sha256, projection_sha256, search_vector
+        )
+        SELECT revision.tenant_id, revision.subject_id, revision.case_id,
+            revision.fact_id, revision.revision_id,
+            projection.projection_schema_version, projection.projection_sha256,
+            revision.content_sha256,
+            memory.fact_projection_sha256_v1(
+                fact.namespace, fact.fact_key, revision.value
+            ),
+            memory.fact_search_vector_v1(
+                fact.namespace, fact.fact_key, revision.value
+            )
+        FROM memory.fact_revisions AS revision
+        JOIN memory.facts AS fact
+          ON fact.tenant_id = revision.tenant_id
+         AND fact.subject_id = revision.subject_id
+         AND fact.case_id = revision.case_id
+         AND fact.fact_id = revision.fact_id
+        CROSS JOIN memory.search_projection_schemas AS projection
+        WHERE revision.tenant_id = $1
+          AND revision.subject_id = $2
+          AND revision.revision_id = $3
+          AND projection.projection_schema_version = 1
+        ON CONFLICT (
+            tenant_id, subject_id, case_id, fact_id, revision_id
+        ) DO UPDATE SET
+            projection_schema_sha256 = EXCLUDED.projection_schema_sha256,
+            source_content_sha256 = EXCLUDED.source_content_sha256,
+            projection_sha256 = EXCLUDED.projection_sha256,
+            search_vector = EXCLUDED.search_vector
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(rebuilt.rows_affected() == 1);
+    transaction.commit().await?;
+    Ok(())
 }
 
 async fn crash_after_selected_commit(request: Request, next: Next) -> Response {
@@ -204,6 +676,10 @@ async fn crash_after_checkpoint_commit_child() -> Result<()> {
             principal_id: PrincipalId("principal-a".to_owned()),
             tenant_id: TenantId(tenant_id),
             subject_ids: vec![SubjectId(subject_id)],
+            allowed_sensitivities: vec![
+                Sensitivity::try_from("internal".to_owned())?,
+                Sensitivity::try_from("restricted".to_owned())?,
+            ],
         },
     )]));
     let listener = TcpListener::bind(&env::var("PALIMPSEST_TEST_CHILD_BIND")?).await?;

@@ -2,21 +2,596 @@ use async_trait::async_trait;
 use palimpsest_application::{
     AppendOutcome, CheckpointMutationOutcome, CheckpointRepository, EpisodeRepository,
     FactMutationOutcome, FactRepository, IdempotencyRequest, RepositoryError,
+    RetrievalMutationOutcome, RetrievalRepository,
 };
 use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
     CheckpointSnapshot, CheckpointView, EffectId, EffectKey, EffectKind, EffectReceipt,
     EffectRecoveryMode, EffectStatus, Episode, EpisodeId, EpisodeKind, FactId, FactKey,
     FactNamespace, FactRevision, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode,
-    NewFact, PrincipalId, Provenance, RetentionPolicyId, RevisionId, Sensitivity, SourceType,
-    SubjectId, TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    NewFact, NewRetrieval, PrincipalId, PrincipalScope, Provenance, RetentionPolicyId,
+    RetrievalAuthorizationReceipt, RetrievalId, RetrievalItem, RetrievalPerspective,
+    RetrievalPolicy, RetrievalPolicyId, RetrievalReceipt, RetrievalScore, RevisionId, Sensitivity,
+    SourceType, SubjectId, TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId,
+    WritePolicyVersion,
 };
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
 use time::OffsetDateTime;
 
 #[derive(Clone)]
 pub struct PostgresMemoryRepository {
     pool: PgPool,
+}
+
+#[derive(Debug)]
+struct LexicalCandidate {
+    case_id: uuid::Uuid,
+    fact_id: uuid::Uuid,
+    revision_id: uuid::Uuid,
+    exact_identity_rank: Option<i16>,
+    lexical_rank: Option<i64>,
+    lexical_score: String,
+    final_score: String,
+    source_content_sha256: String,
+    projection_sha256: String,
+    item_sha256: String,
+}
+
+impl PostgresMemoryRepository {
+    async fn create_receipt_once(
+        &self,
+        retrieval: NewRetrieval,
+        idempotency: IdempotencyRequest,
+    ) -> Result<RetrievalMutationOutcome, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        set_retrieval_scope(
+            &mut transaction,
+            retrieval.tenant_id,
+            retrieval.subject_id,
+            &retrieval.principal_id,
+            &retrieval.allowed_sensitivities,
+        )
+        .await?;
+
+        let reserved = sqlx::query(
+            r#"
+            INSERT INTO memory.retrieval_idempotency_reservations (
+                tenant_id, subject_id, principal_id, idempotency_key,
+                request_fingerprint, retrieval_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (tenant_id, principal_id, idempotency_key) DO NOTHING
+            RETURNING retrieval_id
+            "#,
+        )
+        .bind(retrieval.tenant_id.0)
+        .bind(retrieval.subject_id.0)
+        .bind(&retrieval.principal_id.0)
+        .bind(&idempotency.key)
+        .bind(&idempotency.fingerprint)
+        .bind(retrieval.retrieval_id.0)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(map_retrieval_sqlx)?;
+        if reserved.is_none() {
+            let existing = sqlx::query(
+                r#"
+                SELECT subject_id, retrieval_id, request_fingerprint
+                FROM memory.retrieval_idempotency_reservations
+                WHERE tenant_id = $1
+                  AND principal_id = $2
+                  AND idempotency_key = $3
+                "#,
+            )
+            .bind(retrieval.tenant_id.0)
+            .bind(&retrieval.principal_id.0)
+            .bind(&idempotency.key)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(map_retrieval_sqlx)?;
+            let stored_subject_id: uuid::Uuid =
+                existing.try_get("subject_id").map_err(unexpected)?;
+            let stored_fingerprint: String = existing
+                .try_get("request_fingerprint")
+                .map_err(unexpected)?;
+            if stored_subject_id != retrieval.subject_id.0
+                || stored_fingerprint != idempotency.fingerprint
+            {
+                return Err(RepositoryError::IdempotencyKeyReused);
+            }
+            let retrieval_id = RetrievalId(existing.try_get("retrieval_id").map_err(unexpected)?);
+            let receipt = select_retrieval_receipt(
+                &mut transaction,
+                retrieval.tenant_id,
+                retrieval.subject_id,
+                retrieval_id,
+                None,
+                &retrieval.authorization_scope_sha256,
+            )
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::Unexpected(
+                    "completed retrieval receipt could not be reauthorized".to_owned(),
+                )
+            })?;
+            transaction.commit().await.map_err(map_retrieval_sqlx)?;
+            return Ok(RetrievalMutationOutcome {
+                receipt,
+                replayed: true,
+            });
+        }
+
+        let evaluated_at: OffsetDateTime = sqlx::query("SELECT CURRENT_TIMESTAMP AS evaluated_at")
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(unexpected)?
+            .try_get("evaluated_at")
+            .map_err(unexpected)?;
+        let (perspective, valid_at, recorded_at) = match retrieval.perspective {
+            RetrievalPerspective::Current => ("current", evaluated_at, evaluated_at),
+            RetrievalPerspective::AsOf {
+                valid_at,
+                recorded_at,
+            } => {
+                if recorded_at > evaluated_at {
+                    return Err(RepositoryError::FutureRecordedTime);
+                }
+                ("as_of", valid_at, recorded_at)
+            }
+        };
+
+        let policy = sqlx::query(
+            r#"
+            SELECT policy_id, policy_version, policy_sha256,
+                (policy_document ->> 'candidate_limit')::integer AS candidate_limit,
+                (policy_document ->> 'fts_rank_normalization')::integer
+                    AS fts_rank_normalization,
+                (policy_document ->> 'score_scale')::integer AS score_scale
+            FROM memory.lexical_retrieval_policies
+            WHERE policy_id = $1 AND policy_version = '1'
+            "#,
+        )
+        .bind(retrieval.policy_id.as_str())
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unexpected)?
+        .ok_or_else(|| RepositoryError::Unexpected("retrieval policy is unavailable".to_owned()))?;
+        let policy_version: String = policy.try_get("policy_version").map_err(unexpected)?;
+        let policy_sha256: String = policy.try_get("policy_sha256").map_err(unexpected)?;
+        let candidate_limit: i32 = policy.try_get("candidate_limit").map_err(unexpected)?;
+        let fts_rank_normalization: i32 = policy
+            .try_get("fts_rank_normalization")
+            .map_err(unexpected)?;
+        let score_scale: i32 = policy.try_get("score_scale").map_err(unexpected)?;
+        let projection = sqlx::query(
+            r#"
+            SELECT projection_schema_version, projection_sha256
+            FROM memory.search_projection_schemas
+            WHERE projection_schema_version = 1
+            "#,
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unexpected)?
+        .ok_or_else(|| {
+            RepositoryError::Unexpected("search projection schema is unavailable".to_owned())
+        })?;
+        let projection_schema_version: i32 = projection
+            .try_get("projection_schema_version")
+            .map_err(unexpected)?;
+        let projection_schema_sha256: String = projection
+            .try_get("projection_sha256")
+            .map_err(unexpected)?;
+
+        let case_ids = retrieval
+            .filters
+            .case_ids
+            .as_ref()
+            .map(|values| values.iter().map(|value| value.0).collect::<Vec<_>>());
+        let namespaces = retrieval.filters.namespaces.as_ref().map(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect::<Vec<_>>()
+        });
+        let keys = retrieval.filters.keys.as_ref().map(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect::<Vec<_>>()
+        });
+        let requested_sensitivities = retrieval.filters.sensitivities.as_ref().map(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect::<Vec<_>>()
+        });
+        let allowed_sensitivities = retrieval
+            .allowed_sensitivities
+            .iter()
+            .map(|value| value.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let candidate_started = std::time::Instant::now();
+        let rows = sqlx::query(
+            r#"
+            WITH effective AS MATERIALIZED (
+                SELECT DISTINCT ON (revision.fact_id)
+                    revision.tenant_id,
+                    revision.subject_id,
+                    revision.case_id,
+                    revision.fact_id,
+                    revision.revision_id,
+                    fact.namespace,
+                    fact.fact_key,
+                    revision.value,
+                    revision.sensitivity,
+                    revision.content_sha256
+                FROM memory.fact_revisions AS revision
+                JOIN memory.facts AS fact
+                  ON fact.tenant_id = revision.tenant_id
+                 AND fact.subject_id = revision.subject_id
+                 AND fact.case_id = revision.case_id
+                 AND fact.fact_id = revision.fact_id
+                WHERE revision.tenant_id = $1
+                  AND revision.subject_id = $2
+                  AND revision.recorded_at <= $3
+                  AND revision.valid_during @> $4::timestamptz
+                  AND ($5::uuid[] IS NULL OR revision.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR fact.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
+                ORDER BY revision.fact_id, revision.revision_no DESC, revision.revision_id
+            ),
+            authorized AS MATERIALIZED (
+                SELECT effective.*
+                FROM effective
+                JOIN memory.fact_revision_governance AS governance
+                  ON governance.tenant_id = effective.tenant_id
+                 AND governance.subject_id = effective.subject_id
+                 AND governance.case_id = effective.case_id
+                 AND governance.fact_id = effective.fact_id
+                 AND governance.revision_id = effective.revision_id
+                WHERE governance.lifecycle_state = 'active'
+                  AND (
+                      governance.retention_expires_at IS NULL
+                      OR governance.retention_expires_at > $8
+                  )
+                  AND effective.sensitivity = ANY($9::text[])
+                  AND (
+                      $10::text[] IS NULL
+                      OR effective.sensitivity = ANY($10)
+                  )
+            ),
+            projected AS MATERIALIZED (
+                SELECT authorized.*, document.search_vector,
+                    document.projection_sha256,
+                    (
+                        document.revision_id IS NOT NULL
+                        AND document.projection_schema_sha256 = $12
+                        AND document.source_content_sha256 = authorized.content_sha256
+                        AND document.projection_sha256 =
+                            memory.fact_projection_sha256_v1(
+                                authorized.namespace,
+                                authorized.fact_key,
+                                authorized.value
+                            )
+                        AND document.search_vector = memory.fact_search_vector_v1(
+                            authorized.namespace,
+                            authorized.fact_key,
+                            authorized.value
+                        )
+                    ) AS projection_ready
+                FROM authorized
+                LEFT JOIN memory.fact_revision_search_documents AS document
+                  ON document.tenant_id = authorized.tenant_id
+                 AND document.subject_id = authorized.subject_id
+                 AND document.case_id = authorized.case_id
+                 AND document.fact_id = authorized.fact_id
+                 AND document.revision_id = authorized.revision_id
+                 AND document.projection_schema_version = $11
+            ),
+            coverage AS (
+                SELECT COALESCE(bool_or(NOT projection_ready), false)
+                    AS coverage_missing
+                FROM projected
+            ),
+            eligible AS MATERIALIZED (
+                SELECT *
+                FROM projected
+                WHERE projection_ready
+            ),
+            scored AS (
+                SELECT eligible.*,
+                    CASE
+                        WHEN lower(eligible.namespace || ':' || eligible.fact_key)
+                            = lower(btrim($13)) THEN 1::smallint
+                        WHEN lower(eligible.fact_key) = lower(btrim($13)) THEN 2::smallint
+                        ELSE NULL::smallint
+                    END AS exact_identity_rank,
+                    eligible.search_vector
+                        @@ websearch_to_tsquery('pg_catalog.simple', $13)
+                        AS lexical_match,
+                    ts_rank_cd(
+                        eligible.search_vector,
+                        websearch_to_tsquery('pg_catalog.simple', $13),
+                        $14
+                    )::double precision AS lexical_score
+                FROM eligible
+            ),
+            ranked AS (
+                SELECT scored.*,
+                    CASE WHEN lexical_match THEN
+                        row_number() OVER (
+                            PARTITION BY lexical_match
+                            ORDER BY lexical_score DESC, fact_id, revision_id
+                        )
+                    END AS lexical_rank
+                FROM scored
+                WHERE exact_identity_rank IS NOT NULL OR lexical_match
+            ),
+            limited AS MATERIALIZED (
+                SELECT case_id, fact_id, revision_id, exact_identity_rank,
+                    lexical_rank,
+                    round(lexical_score::numeric, $15)::text AS lexical_score,
+                    content_sha256,
+                    projection_sha256
+                FROM ranked
+                ORDER BY exact_identity_rank ASC NULLS LAST,
+                    lexical_rank ASC NULLS LAST, fact_id, revision_id
+                LIMIT $16
+            )
+            SELECT coverage.coverage_missing,
+                candidate.fact_id IS NOT NULL AS candidate_present,
+                candidate.case_id, candidate.fact_id, candidate.revision_id,
+                candidate.exact_identity_rank, candidate.lexical_rank,
+                candidate.lexical_score, candidate.content_sha256,
+                candidate.projection_sha256
+            FROM coverage
+            LEFT JOIN limited AS candidate
+              ON NOT coverage.coverage_missing
+            ORDER BY candidate.exact_identity_rank ASC NULLS LAST,
+                candidate.lexical_rank ASC NULLS LAST,
+                candidate.fact_id, candidate.revision_id
+            "#,
+        )
+        .bind(retrieval.tenant_id.0)
+        .bind(retrieval.subject_id.0)
+        .bind(recorded_at)
+        .bind(valid_at)
+        .bind(case_ids)
+        .bind(namespaces)
+        .bind(keys)
+        .bind(evaluated_at)
+        .bind(allowed_sensitivities)
+        .bind(requested_sensitivities)
+        .bind(projection_schema_version)
+        .bind(&projection_schema_sha256)
+        .bind(retrieval.query.as_str())
+        .bind(fts_rank_normalization)
+        .bind(score_scale)
+        .bind(candidate_limit)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+
+        let coverage_missing = rows
+            .first()
+            .ok_or_else(|| {
+                RepositoryError::Unexpected("retrieval query returned no rows".to_owned())
+            })?
+            .try_get::<bool, _>("coverage_missing")
+            .map_err(unexpected)?;
+        if coverage_missing {
+            return Err(RepositoryError::Unexpected(
+                "retrieval index is not ready".to_owned(),
+            ));
+        }
+        let mut candidates = Vec::new();
+        for row in &rows {
+            if row
+                .try_get::<bool, _>("candidate_present")
+                .map_err(unexpected)?
+            {
+                candidates.push(lexical_candidate_from_row(row)?);
+            }
+        }
+        let manifest_sha256 = hex::encode(Sha256::digest(
+            candidates
+                .iter()
+                .map(|candidate| candidate.item_sha256.as_str())
+                .collect::<String>()
+                .as_bytes(),
+        ));
+        let outcome = if candidates.is_empty() {
+            "abstention"
+        } else {
+            "results"
+        };
+        let abstention_reason = candidates.is_empty().then_some("no_authorized_match");
+        let stage_timings_ms = serde_json::json!({
+            "candidate_generation": candidate_started.elapsed().as_secs_f64() * 1000.0
+        });
+        let _inserted = sqlx::query(
+            r#"
+            INSERT INTO memory.retrieval_receipts (
+                tenant_id, subject_id, retrieval_id, principal_id,
+                idempotency_key, request_fingerprint, query_sha256,
+                perspective, valid_at, recorded_at, evaluated_at,
+                policy_id, policy_version, policy_sha256,
+                projection_schema_version, projection_schema_sha256,
+                authorization_scope_sha256, authorization_policy_version,
+                outcome, abstention_reason, stage_timings_ms, manifest_sha256,
+                page_size, schema_version
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                $12, $13, $14, $15, $16, $17, 'principal-scope-v1',
+                $18, $19, $20, $21, $22, 1
+            )
+            RETURNING retrieval_id
+            "#,
+        )
+        .bind(retrieval.tenant_id.0)
+        .bind(retrieval.subject_id.0)
+        .bind(retrieval.retrieval_id.0)
+        .bind(&retrieval.principal_id.0)
+        .bind(&idempotency.key)
+        .bind(&idempotency.fingerprint)
+        .bind(&retrieval.query_sha256)
+        .bind(perspective)
+        .bind(valid_at)
+        .bind(recorded_at)
+        .bind(evaluated_at)
+        .bind(retrieval.policy_id.as_str())
+        .bind(&policy_version)
+        .bind(&policy_sha256)
+        .bind(projection_schema_version)
+        .bind(&projection_schema_sha256)
+        .bind(&retrieval.authorization_scope_sha256)
+        .bind(outcome)
+        .bind(abstention_reason)
+        .bind(&stage_timings_ms)
+        .bind(&manifest_sha256)
+        .bind(i16::try_from(retrieval.page_size).map_err(unexpected)?)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(map_retrieval_sqlx)?;
+
+        for (index, candidate) in candidates.iter().enumerate() {
+            let ordinal = i16::try_from(index + 1).map_err(unexpected)?;
+            sqlx::query(
+                r#"
+                INSERT INTO memory.retrieval_manifest_items (
+                    tenant_id, subject_id, retrieval_id, principal_id,
+                    ordinal, case_id, fact_id, revision_id,
+                    exact_identity_rank, lexical_rank, lexical_score,
+                    final_rank, final_score, source_content_sha256,
+                    projection_sha256, item_sha256, schema_version
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11::numeric, $5, $12::numeric, $13, $14, $15, 1
+                )
+                "#,
+            )
+            .bind(retrieval.tenant_id.0)
+            .bind(retrieval.subject_id.0)
+            .bind(retrieval.retrieval_id.0)
+            .bind(&retrieval.principal_id.0)
+            .bind(ordinal)
+            .bind(candidate.case_id)
+            .bind(candidate.fact_id)
+            .bind(candidate.revision_id)
+            .bind(candidate.exact_identity_rank)
+            .bind(candidate.lexical_rank)
+            .bind(&candidate.lexical_score)
+            .bind(&candidate.final_score)
+            .bind(&candidate.source_content_sha256)
+            .bind(&candidate.projection_sha256)
+            .bind(&candidate.item_sha256)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        }
+
+        let receipt = select_retrieval_receipt(
+            &mut transaction,
+            retrieval.tenant_id,
+            retrieval.subject_id,
+            retrieval.retrieval_id,
+            None,
+            &retrieval.authorization_scope_sha256,
+        )
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+        transaction.commit().await.map_err(map_retrieval_sqlx)?;
+        Ok(RetrievalMutationOutcome {
+            receipt,
+            replayed: false,
+        })
+    }
+
+    async fn get_receipt_once(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        retrieval_id: RetrievalId,
+        cursor: Option<String>,
+        authorization_scope_sha256: &str,
+    ) -> Result<RetrievalReceipt, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        set_retrieval_scope(
+            &mut transaction,
+            tenant_id,
+            subject_id,
+            &principal.principal_id,
+            &principal.allowed_sensitivities,
+        )
+        .await?;
+        let receipt = select_retrieval_receipt(
+            &mut transaction,
+            tenant_id,
+            subject_id,
+            retrieval_id,
+            cursor.as_deref(),
+            authorization_scope_sha256,
+        )
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(receipt)
+    }
+}
+
+#[async_trait]
+impl RetrievalRepository for PostgresMemoryRepository {
+    async fn create_receipt(
+        &self,
+        retrieval: NewRetrieval,
+        idempotency: IdempotencyRequest,
+    ) -> Result<RetrievalMutationOutcome, RepositoryError> {
+        const MAX_SERIALIZATION_ATTEMPTS: usize = 3;
+        for attempt in 1..=MAX_SERIALIZATION_ATTEMPTS {
+            match self
+                .create_receipt_once(retrieval.clone(), idempotency.clone())
+                .await
+            {
+                Err(RepositoryError::SerializationRetry)
+                    if attempt < MAX_SERIALIZATION_ATTEMPTS => {}
+                outcome => return outcome,
+            }
+        }
+        unreachable!("the bounded serialization retry loop always returns")
+    }
+
+    async fn get_receipt(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        retrieval_id: RetrievalId,
+        cursor: Option<String>,
+        authorization_scope_sha256: String,
+    ) -> Result<RetrievalReceipt, RepositoryError> {
+        self.get_receipt_once(
+            principal,
+            tenant_id,
+            subject_id,
+            retrieval_id,
+            cursor,
+            &authorization_scope_sha256,
+        )
+        .await
+    }
 }
 
 #[async_trait]
@@ -1583,6 +2158,278 @@ async fn set_scope(
     Ok(())
 }
 
+async fn set_retrieval_scope(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    principal_id: &PrincipalId,
+    allowed_sensitivities: &[Sensitivity],
+) -> Result<(), RepositoryError> {
+    set_scope(transaction, tenant_id, subject_id).await?;
+    sqlx::query("SELECT set_config('palimpsest.principal_id', $1, true)")
+        .bind(&principal_id.0)
+        .execute(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
+    let allowed_sensitivities = serde_json::to_string(
+        &allowed_sensitivities
+            .iter()
+            .map(Sensitivity::as_str)
+            .collect::<Vec<_>>(),
+    )
+    .map_err(unexpected)?;
+    sqlx::query("SELECT set_config('palimpsest.allowed_sensitivities', $1, true)")
+        .bind(allowed_sensitivities)
+        .execute(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
+    Ok(())
+}
+
+fn lexical_candidate_from_row(row: &PgRow) -> Result<LexicalCandidate, RepositoryError> {
+    let exact_identity_rank: Option<i16> =
+        row.try_get("exact_identity_rank").map_err(unexpected)?;
+    let lexical_rank: Option<i64> = row.try_get("lexical_rank").map_err(unexpected)?;
+    let lexical_score: String = row.try_get("lexical_score").map_err(unexpected)?;
+    let final_score = lexical_score.clone();
+    let case_id: uuid::Uuid = row.try_get("case_id").map_err(unexpected)?;
+    let fact_id: uuid::Uuid = row.try_get("fact_id").map_err(unexpected)?;
+    let revision_id: uuid::Uuid = row.try_get("revision_id").map_err(unexpected)?;
+    let source_content_sha256: String = row.try_get("content_sha256").map_err(unexpected)?;
+    let projection_sha256: String = row.try_get("projection_sha256").map_err(unexpected)?;
+    let item_sha256 = hex::encode(Sha256::digest(
+        serde_json::to_vec(&serde_json::json!({
+            "case_id": case_id,
+            "fact_id": fact_id,
+            "revision_id": revision_id,
+            "exact_identity_rank": exact_identity_rank,
+            "lexical_rank": lexical_rank,
+            "lexical_score": lexical_score,
+            "final_score": final_score,
+            "source_content_sha256": source_content_sha256,
+            "projection_sha256": projection_sha256,
+        }))
+        .map_err(unexpected)?,
+    ));
+    Ok(LexicalCandidate {
+        case_id,
+        fact_id,
+        revision_id,
+        exact_identity_rank,
+        lexical_rank,
+        lexical_score,
+        final_score,
+        source_content_sha256,
+        projection_sha256,
+        item_sha256,
+    })
+}
+
+async fn select_retrieval_receipt(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    retrieval_id: RetrievalId,
+    cursor: Option<&str>,
+    authorization_scope_sha256: &str,
+) -> Result<Option<RetrievalReceipt>, RepositoryError> {
+    let receipt = sqlx::query(
+        r#"
+        SELECT evaluated_at, valid_at, recorded_at, policy_id, policy_version,
+            policy_sha256, projection_schema_version,
+            authorization_scope_sha256, page_size
+        FROM memory.retrieval_receipts
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        "#,
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(retrieval_id.0)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    let Some(receipt) = receipt else {
+        return Ok(None);
+    };
+    let page_size: i16 = receipt.try_get("page_size").map_err(unexpected)?;
+    let after_ordinal = if let Some(cursor) = cursor {
+        let Ok(cursor) = uuid::Uuid::parse_str(cursor) else {
+            return Ok(None);
+        };
+        let cursor_row = sqlx::query(
+            r#"
+            SELECT ordinal
+            FROM memory.retrieval_manifest_items
+            WHERE tenant_id = $1
+              AND subject_id = $2
+              AND retrieval_id = $3
+              AND cursor_token = $4
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .bind(retrieval_id.0)
+        .bind(cursor)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
+        let Some(cursor_row) = cursor_row else {
+            return Ok(None);
+        };
+        cursor_row
+            .try_get::<i16, _>("ordinal")
+            .map_err(unexpected)?
+    } else {
+        0
+    };
+    let rows = sqlx::query(
+        r#"
+        SELECT manifest.ordinal, manifest.cursor_token, manifest.fact_id,
+            manifest.revision_id, manifest.exact_identity_rank,
+            manifest.lexical_rank, manifest.lexical_score::text AS lexical_score,
+            manifest.final_rank, manifest.final_score::text AS final_score,
+            fact.namespace, fact.fact_key, revision.value,
+            ARRAY(
+                SELECT evidence.episode_id
+                FROM memory.fact_revision_evidence AS evidence
+                WHERE evidence.tenant_id = manifest.tenant_id
+                  AND evidence.subject_id = manifest.subject_id
+                  AND evidence.case_id = manifest.case_id
+                  AND evidence.fact_id = manifest.fact_id
+                  AND evidence.revision_id = manifest.revision_id
+                ORDER BY evidence.episode_id
+            ) AS evidence_episode_ids
+        FROM memory.authorized_retrieval_manifest AS manifest
+        JOIN memory.facts AS fact
+          ON fact.tenant_id = manifest.tenant_id
+         AND fact.subject_id = manifest.subject_id
+         AND fact.case_id = manifest.case_id
+         AND fact.fact_id = manifest.fact_id
+        JOIN memory.fact_revisions AS revision
+          ON revision.tenant_id = manifest.tenant_id
+         AND revision.subject_id = manifest.subject_id
+         AND revision.case_id = manifest.case_id
+         AND revision.fact_id = manifest.fact_id
+         AND revision.revision_id = manifest.revision_id
+        WHERE manifest.tenant_id = $1
+          AND manifest.subject_id = $2
+          AND manifest.retrieval_id = $3
+          AND manifest.ordinal > $4
+        ORDER BY manifest.ordinal
+        LIMIT $5
+        "#,
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(retrieval_id.0)
+    .bind(after_ordinal)
+    .bind(i32::from(page_size) + 1)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    let has_more = rows.len() > usize::try_from(page_size).map_err(unexpected)?;
+    let visible_rows = rows
+        .iter()
+        .take(usize::try_from(page_size).map_err(unexpected)?)
+        .collect::<Vec<_>>();
+    let next_cursor = has_more
+        .then(|| visible_rows.last())
+        .flatten()
+        .map(|row| row.try_get::<uuid::Uuid, _>("cursor_token"))
+        .transpose()
+        .map_err(unexpected)?
+        .map(|cursor| cursor.to_string());
+    let items = visible_rows
+        .into_iter()
+        .map(retrieval_item_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    let policy_id = RetrievalPolicyId::try_from(
+        receipt
+            .try_get::<String, _>("policy_id")
+            .map_err(unexpected)?,
+    )
+    .map_err(unexpected)?;
+    let projection_schema_version: i32 = receipt
+        .try_get("projection_schema_version")
+        .map_err(unexpected)?;
+    Ok(Some(RetrievalReceipt {
+        tenant_id,
+        subject_id,
+        retrieval_id,
+        status: if items.is_empty() {
+            "abstained".to_owned()
+        } else {
+            "results".to_owned()
+        },
+        evaluated_at: receipt.try_get("evaluated_at").map_err(unexpected)?,
+        valid_at: receipt.try_get("valid_at").map_err(unexpected)?,
+        recorded_at: receipt.try_get("recorded_at").map_err(unexpected)?,
+        policy: RetrievalPolicy {
+            id: policy_id,
+            version: receipt.try_get("policy_version").map_err(unexpected)?,
+            digest: receipt.try_get("policy_sha256").map_err(unexpected)?,
+        },
+        authorization: RetrievalAuthorizationReceipt {
+            decision: "authorized".to_owned(),
+            scope_digest: authorization_scope_sha256.to_owned(),
+        },
+        document_schema_version: u32::try_from(projection_schema_version).map_err(unexpected)?,
+        items,
+        next_cursor,
+    }))
+}
+
+fn retrieval_item_from_row(row: &PgRow) -> Result<RetrievalItem, RepositoryError> {
+    let mut scores = Vec::new();
+    if let Some(rank) = row
+        .try_get::<Option<i16>, _>("exact_identity_rank")
+        .map_err(unexpected)?
+    {
+        scores.push(RetrievalScore {
+            component: "exact_identity_rank".to_owned(),
+            value: rank.to_string(),
+        });
+    }
+    if let Some(rank) = row
+        .try_get::<Option<i64>, _>("lexical_rank")
+        .map_err(unexpected)?
+    {
+        scores.push(RetrievalScore {
+            component: "lexical_rank".to_owned(),
+            value: rank.to_string(),
+        });
+    }
+    scores.extend([
+        RetrievalScore {
+            component: "lexical_score".to_owned(),
+            value: row.try_get("lexical_score").map_err(unexpected)?,
+        },
+        RetrievalScore {
+            component: "final_rank".to_owned(),
+            value: row
+                .try_get::<i16, _>("final_rank")
+                .map_err(unexpected)?
+                .to_string(),
+        },
+        RetrievalScore {
+            component: "final_score".to_owned(),
+            value: row.try_get("final_score").map_err(unexpected)?,
+        },
+    ]);
+    let evidence_episode_ids: Vec<uuid::Uuid> =
+        row.try_get("evidence_episode_ids").map_err(unexpected)?;
+    Ok(RetrievalItem {
+        memory_kind: "fact_revision".to_owned(),
+        fact_id: FactId(row.try_get("fact_id").map_err(unexpected)?),
+        revision_id: RevisionId(row.try_get("revision_id").map_err(unexpected)?),
+        namespace: text_value_from_row::<FactNamespace>(row, "namespace")?,
+        key: text_value_from_row::<FactKey>(row, "fact_key")?,
+        value: row.try_get("value").map_err(unexpected)?,
+        evidence_episode_ids: evidence_episode_ids.into_iter().map(EpisodeId).collect(),
+        scores,
+    })
+}
+
 fn episode_from_row(row: &PgRow) -> Result<Episode, RepositoryError> {
     let schema_version: i32 = row.try_get("schema_version").map_err(unexpected)?;
     Ok(Episode {
@@ -1616,6 +2463,18 @@ fn map_sqlx(error: sqlx::Error) -> RepositoryError {
         .is_some_and(|code| code == "23505")
     {
         RepositoryError::Conflict
+    } else {
+        unexpected(error)
+    }
+}
+
+fn map_retrieval_sqlx(error: sqlx::Error) -> RepositoryError {
+    if error
+        .as_database_error()
+        .and_then(|database_error| database_error.code())
+        .is_some_and(|code| code == "40001")
+    {
+        RepositoryError::SerializationRetry
     } else {
         unexpected(error)
     }

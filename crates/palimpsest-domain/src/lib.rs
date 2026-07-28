@@ -28,6 +28,7 @@ uuid_id!(EffectId);
 uuid_id!(EpisodeId);
 uuid_id!(FactId);
 uuid_id!(RevisionId);
+uuid_id!(RetrievalId);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextValueError {
@@ -97,6 +98,8 @@ text_value!(WritePolicyVersion, 255);
 text_value!(EffectKey, 512);
 text_value!(EffectKind, 255);
 text_value!(ExternalEffectReference, 1024);
+text_value!(RetrievalQuery, 4096);
+text_value!(RetrievalPolicyId, 255);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -107,11 +110,16 @@ pub struct PrincipalScope {
     pub principal_id: PrincipalId,
     pub tenant_id: TenantId,
     pub subject_ids: Vec<SubjectId>,
+    pub allowed_sensitivities: Vec<Sensitivity>,
 }
 
 impl PrincipalScope {
     pub fn authorizes(&self, tenant_id: TenantId, subject_id: SubjectId) -> bool {
         self.tenant_id == tenant_id && self.subject_ids.contains(&subject_id)
+    }
+
+    pub fn authorizes_sensitivity(&self, sensitivity: &Sensitivity) -> bool {
+        self.allowed_sensitivities.contains(sensitivity)
     }
 }
 
@@ -498,4 +506,101 @@ pub struct FactView {
     #[serde(with = "time::serde::rfc3339")]
     pub recorded_at: OffsetDateTime,
     pub revision: Option<FactRevision>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RetrievalPerspective {
+    Current,
+    AsOf {
+        #[serde(with = "time::serde::rfc3339")]
+        valid_at: OffsetDateTime,
+        #[serde(with = "time::serde::rfc3339")]
+        recorded_at: OffsetDateTime,
+    },
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct RetrievalFilters {
+    pub case_ids: Option<Vec<CaseId>>,
+    pub namespaces: Option<Vec<FactNamespace>>,
+    pub keys: Option<Vec<FactKey>>,
+    pub sensitivities: Option<Vec<Sensitivity>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateRetrieval {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub query: RetrievalQuery,
+    pub perspective: RetrievalPerspective,
+    pub page_size: u16,
+    pub policy_id: Option<RetrievalPolicyId>,
+    pub filters: RetrievalFilters,
+}
+
+#[derive(Clone, Debug)]
+pub struct NewRetrieval {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub retrieval_id: RetrievalId,
+    pub query: RetrievalQuery,
+    pub query_sha256: String,
+    pub authorization_scope_sha256: String,
+    pub perspective: RetrievalPerspective,
+    pub page_size: u16,
+    pub policy_id: RetrievalPolicyId,
+    pub filters: RetrievalFilters,
+    pub principal_id: PrincipalId,
+    pub allowed_sensitivities: Vec<Sensitivity>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RetrievalPolicy {
+    pub id: RetrievalPolicyId,
+    pub version: String,
+    pub digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RetrievalAuthorizationReceipt {
+    pub decision: String,
+    pub scope_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RetrievalScore {
+    pub component: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RetrievalItem {
+    pub memory_kind: String,
+    pub fact_id: FactId,
+    pub revision_id: RevisionId,
+    pub namespace: FactNamespace,
+    pub key: FactKey,
+    pub value: Value,
+    pub evidence_episode_ids: Vec<EpisodeId>,
+    pub scores: Vec<RetrievalScore>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RetrievalReceipt {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub retrieval_id: RetrievalId,
+    pub status: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub evaluated_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub valid_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub recorded_at: OffsetDateTime,
+    pub policy: RetrievalPolicy,
+    pub authorization: RetrievalAuthorizationReceipt,
+    pub document_schema_version: u32,
+    pub items: Vec<RetrievalItem>,
+    pub next_cursor: Option<String>,
 }

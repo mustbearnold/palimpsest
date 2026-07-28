@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use axum::{
     Json, Router,
     extract::{
-        Path, Query, State,
+        DefaultBodyLimit, Path, Query, State,
         rejection::{JsonRejection, QueryRejection},
     },
     http::{HeaderMap, HeaderValue, StatusCode, header},
@@ -13,10 +13,12 @@ use axum::{
 use palimpsest_application::{MemoryService, ServiceError};
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
-    CreateFact, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace,
-    FactView, PrincipalScope, Provenance, RetentionPolicyId, RevisionId, SaveCheckpoint,
-    Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId, ValidTime, WritePolicy,
-    WritePolicyId, WritePolicyVersion, parse_utc_microsecond_timestamp,
+    CreateFact, CreateRetrieval, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId,
+    FactKey, FactNamespace, FactView, PrincipalScope, Provenance, RetentionPolicyId,
+    RetrievalFilters, RetrievalId, RetrievalPerspective, RetrievalPolicyId, RetrievalQuery,
+    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId,
+    ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -77,6 +79,14 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
         .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/facts/{fact_id}/as-of",
             get(get_fact_as_of),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/retrievals",
+            post(create_retrieval).layer(DefaultBodyLimit::max(65_536)),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/retrievals/{retrieval_id}",
+            get(get_retrieval),
         )
         .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
@@ -146,6 +156,47 @@ struct SupersedeFactRequest {
 struct AsOfQuery {
     valid_at: String,
     recorded_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum RetrievalPerspectiveRequest {
+    Current,
+    AsOf {
+        valid_at: String,
+        recorded_at: String,
+    },
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetrievalFiltersRequest {
+    case_ids: Option<Vec<Uuid>>,
+    namespaces: Option<Vec<FactNamespace>>,
+    keys: Option<Vec<FactKey>>,
+    sensitivities: Option<Vec<Sensitivity>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateRetrievalRequest {
+    query: String,
+    perspective: RetrievalPerspectiveRequest,
+    #[serde(default = "default_retrieval_page_size")]
+    page_size: u16,
+    policy_id: Option<RetrievalPolicyId>,
+    #[serde(default)]
+    filters: RetrievalFiltersRequest,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetrievalPageQuery {
+    cursor: Option<String>,
+}
+
+const fn default_retrieval_page_size() -> u16 {
+    10
 }
 
 #[derive(Debug, Deserialize)]
@@ -466,6 +517,106 @@ async fn get_fact_as_of(
     fact_response(StatusCode::OK, view, None, false)
 }
 
+async fn create_retrieval(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<CreateRetrievalRequest>, JsonRejection>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let Json(request) = payload.map_err(Problem::from_retrieval_json_rejection)?;
+    if request.query.len() > 4096 {
+        return Err(Problem::new(
+            "retrieval-request-too-large",
+            "Retrieval request is too large",
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "retrieval_request_too_large",
+            "query must contain at most 4096 bytes.",
+        ));
+    }
+    let query = RetrievalQuery::try_from(request.query)
+        .map_err(|error| Problem::unprocessable("invalid_retrieval_query", error.to_string()))?;
+    let perspective = match request.perspective {
+        RetrievalPerspectiveRequest::Current => RetrievalPerspective::Current,
+        RetrievalPerspectiveRequest::AsOf {
+            valid_at,
+            recorded_at,
+        } => RetrievalPerspective::AsOf {
+            valid_at: parse_time("perspective.valid_at", &valid_at)?,
+            recorded_at: parse_time("perspective.recorded_at", &recorded_at)?,
+        },
+    };
+    let outcome = state
+        .service
+        .create_retrieval(
+            &principal,
+            idempotency_key,
+            CreateRetrieval {
+                tenant_id,
+                subject_id,
+                query,
+                perspective,
+                page_size: request.page_size,
+                policy_id: request.policy_id,
+                filters: RetrievalFilters {
+                    case_ids: request
+                        .filters
+                        .case_ids
+                        .map(|values| values.into_iter().map(CaseId).collect()),
+                    namespaces: request.filters.namespaces,
+                    keys: request.filters.keys,
+                    sensitivities: request.filters.sensitivities,
+                },
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/retrievals/{}",
+        tenant_id.0, subject_id.0, outcome.receipt.retrieval_id.0
+    );
+    retrieval_response(
+        StatusCode::CREATED,
+        outcome.receipt,
+        Some(location),
+        outcome.replayed,
+    )
+}
+
+async fn get_retrieval(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, retrieval_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    query: Result<Query<RetrievalPageQuery>, QueryRejection>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let retrieval_id = RetrievalId(parse_uuid("retrieval_id", &retrieval_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let Query(query) = query.map_err(|error| {
+        Problem::bad_request(
+            "invalid_query",
+            "Retrieval page query is invalid",
+            error.body_text(),
+        )
+    })?;
+    let receipt = state
+        .service
+        .get_retrieval(
+            &principal,
+            tenant_id,
+            subject_id,
+            retrieval_id,
+            query.cursor,
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    retrieval_response(StatusCode::OK, receipt, None, false)
+}
+
 fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<PrincipalScope, Problem> {
     let token = headers
         .get(header::AUTHORIZATION)
@@ -629,6 +780,33 @@ fn checkpoint_response(
     versioned_json_response(status, view, etag, location, idempotency_replayed)
 }
 
+fn retrieval_response(
+    status: StatusCode,
+    receipt: RetrievalReceipt,
+    location: Option<String>,
+    idempotency_replayed: bool,
+) -> Result<Response, Problem> {
+    let mut response = (status, Json(receipt)).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    if let Some(location) = location {
+        response.headers_mut().insert(
+            header::LOCATION,
+            HeaderValue::from_str(&location)
+                .map_err(|_| Problem::internal("The service could not construct Location."))?,
+        );
+    }
+    if idempotency_replayed {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("idempotency-replayed"),
+            HeaderValue::from_static("true"),
+        );
+    }
+    Ok(response)
+}
+
 fn versioned_json_response<T: Serialize>(
     status: StatusCode,
     value: T,
@@ -699,6 +877,16 @@ impl Problem {
         )
     }
 
+    fn unprocessable(code: &'static str, detail: impl Into<String>) -> Self {
+        Self::new(
+            "unprocessable-request",
+            "Request cannot be processed",
+            StatusCode::UNPROCESSABLE_ENTITY,
+            code,
+            detail,
+        )
+    }
+
     fn from_json_rejection(error: JsonRejection) -> Self {
         if error.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
             Self::new(
@@ -710,6 +898,20 @@ impl Problem {
             )
         } else {
             Self::bad_request("invalid_json", "Request JSON is invalid", error.body_text())
+        }
+    }
+
+    fn from_retrieval_json_rejection(error: JsonRejection) -> Self {
+        if error.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            Self::new(
+                "retrieval-request-too-large",
+                "Retrieval request is too large",
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "retrieval_request_too_large",
+                "Reduce the query or retrieval filter set.",
+            )
+        } else {
+            Self::from_json_rejection(error)
         }
     }
 
@@ -867,8 +1069,18 @@ impl Problem {
                 "checkpoint_too_large",
                 "Reduce the checkpoint state or effect transition batch.",
             ),
+            ServiceError::RetrievalTooLarge => Self::new(
+                "retrieval-request-too-large",
+                "Retrieval request is too large",
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "retrieval_request_too_large",
+                "Reduce the query or retrieval filter set.",
+            ),
             ServiceError::Invalid(detail) => {
                 Self::bad_request("invalid_request", "Request is invalid", detail)
+            }
+            ServiceError::Unprocessable(detail) => {
+                Self::unprocessable("unprocessable_request", detail)
             }
             ServiceError::Unavailable => Self::new(
                 "service-unavailable",
