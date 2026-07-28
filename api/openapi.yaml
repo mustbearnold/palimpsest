@@ -9,7 +9,8 @@ info:
   description: |
     The first public MemoryService seam. Tenant and subject identifiers select a
     data scope but never grant authority; the authenticated principal and trusted
-    policy inputs determine access. Episodes and fact revisions are immutable.
+    policy inputs determine access. Checkpoint revisions, episodes, and fact
+    revisions are immutable.
 
     All memory representations and problem responses use
     `Cache-Control: private, no-store`. Service-created public identifiers are
@@ -24,6 +25,8 @@ tags:
     description: Immutable attributable observations
   - name: Facts
     description: Logical facts backed by immutable bitemporal revision chains
+  - name: Checkpoints
+    description: Crash-safe full snapshots and durable external-effect receipts
 paths:
   /v1/tenants/{tenant_id}/subjects/{subject_id}/episodes:
     post:
@@ -113,6 +116,145 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint:
+    get:
+      tags: [Checkpoints]
+      operationId: getCheckpoint
+      summary: Read the current checkpoint for one agent thread
+      description: |
+        Returns the current full thread snapshot and the cumulative view of its
+        prepared and completed external effects. Tenant, subject, agent, and
+        thread values select the exact data scope but never grant authority.
+        An absent, expired, or hidden checkpoint returns the same redacted `404`.
+
+        This operation exposes only the logical checkpoint head. `/v1` does not
+        expose revision history, deltas, workflow execution, or provider calls.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/ThreadId'
+      responses:
+        '200':
+          description: Current authorized checkpoint head
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Checkpoints]
+      operationId: putCheckpoint
+      summary: Initialize or atomically advance one checkpoint head
+      description: |
+        Commits one full snapshot as a new immutable revision and atomically
+        advances the logical head. The same transaction applies typed effect
+        transitions, stores the cumulative effect view, and commits trusted
+        authorization metadata, an audit receipt, an outbox intent, and the
+        completed idempotency receipt. Palimpsest records effect state but never
+        invokes an external provider or executes a workflow.
+
+        `Idempotency-Key` is mandatory. Exactly one conditional header is also
+        mandatory, but OpenAPI cannot express an exclusive choice between two
+        header parameters: use `If-None-Match: *` with
+        `parent_revision_id: null` to initialize an absent head, or use one
+        strong `If-Match` value copied from `GET` with `parent_revision_id`
+        equal to that current revision. Supplying neither or both conditional
+        headers is invalid. Weak validators, validator lists, and `If-Match: *`
+        are invalid.
+
+        A completed idempotent retry is resolved before conditional evaluation,
+        so it replays the original status, body, ETag, and Location even when its
+        original precondition is now stale. A different request with the same
+        idempotency key never mutates state.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/ThreadId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckpointIfMatch'
+        - $ref: '#/components/parameters/CheckpointIfNoneMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutCheckpointRequest'
+      responses:
+        '200':
+          description: Existing checkpoint advanced, or original advance replayed
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '201':
+          description: Initial checkpoint created, or original creation replayed
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/CheckpointConflict'
+        '412':
+          $ref: '#/components/responses/CheckpointPreconditionFailed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/CheckpointPreconditionRequired'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -351,6 +493,24 @@ components:
       schema:
         type: string
         format: uuid
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      description: |
+        Stable tenant-scoped software-agent identifier. It organizes checkpoint
+        state but never grants the authenticated principal authority.
+      schema:
+        type: string
+        format: uuid
+    ThreadId:
+      name: thread_id
+      in: path
+      required: true
+      description: Stable resumable-thread identifier within the agent and subject scope
+      schema:
+        type: string
+        format: uuid
     EpisodeId:
       name: episode_id
       in: path
@@ -391,6 +551,30 @@ components:
       schema:
         type: string
         minLength: 3
+    CheckpointIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: |
+        Advance precondition containing exactly one strong ETag copied from the
+        current logical checkpoint. It is mutually exclusive with
+        `If-None-Match`; weak validators, lists, and `*` are invalid. OpenAPI
+        cannot express the operation's required exclusive-header choice.
+      schema:
+        type: string
+        minLength: 3
+        pattern: '^"[^"]+"$'
+    CheckpointIfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: |
+        Initial-creation precondition. The only accepted value is `*`, and it is
+        mutually exclusive with `If-Match`. OpenAPI cannot express the
+        operation's required exclusive-header choice.
+      schema:
+        type: string
+        const: '*'
     ValidAt:
       name: valid_at
       in: query
@@ -419,7 +603,8 @@ components:
       required: true
       description: |
         Strong opaque validator. For a fact, it represents the whole accepted
-        lineage and changes whenever any accepted revision is appended.
+        lineage and changes whenever any accepted revision is appended. For a
+        checkpoint, it represents the logical head and changes on every advance.
       schema:
         type: string
         minLength: 3
@@ -470,6 +655,276 @@ components:
         external_id:
           type: [string, 'null']
           maxLength: 1024
+
+    PutCheckpointRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - case_id
+        - parent_revision_id
+        - state
+        - state_schema_version
+        - effect_transitions
+        - provenance
+        - sensitivity
+        - retention_policy_id
+      properties:
+        case_id:
+          type: string
+          format: uuid
+        parent_revision_id:
+          description: |
+            `null` for initial creation. For an advance, the UUIDv7 identifier of
+            the revision represented by `If-Match`; it must still be the head.
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        state:
+          description: |
+            Complete resumable thread state, including JSON `null`. This is not
+            a delta, command, workflow definition, or provider request. Its
+            compact serialized JSON form is limited to 1 MiB in `/v1`.
+        state_schema_version:
+          type: integer
+          minimum: 1
+        effect_transitions:
+          type: array
+          maxItems: 100
+          description: |
+            Ordered durable effect-state transitions applied with this snapshot.
+            One effect may appear at most once per request. A `prepare` must be
+            committed before its provider call; a later `complete` records the
+            successful result. Palimpsest never performs the provider call.
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/PrepareEffectTransition'
+              - $ref: '#/components/schemas/CompleteEffectTransition'
+            discriminator:
+              propertyName: type
+              mapping:
+                prepare: '#/components/schemas/PrepareEffectTransition'
+                complete: '#/components/schemas/CompleteEffectTransition'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+        sensitivity:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Operator-defined classification inherited by new effect state
+        retention_policy_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: |
+            Trusted policy identifier from which the server computes expiry.
+            The request cannot provide or extend `expires_at` directly.
+
+    PrepareEffectTransition:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - effect_key
+        - kind
+        - recovery_mode
+      properties:
+        type:
+          type: string
+          const: prepare
+        effect_key:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: |
+            Caller-stable identity for one logical effect within this checkpoint.
+            Reusing it with different intent is rejected.
+        kind:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Open namespaced effect classification; not a closed enum
+        recovery_mode:
+          type: string
+          enum: [idempotency_key, reconcile]
+          description: |
+            Recovery protocol the caller promises to use after a crash. The
+            service-created effect ID is the stable provider key or reconciliation
+            reference; Palimpsest does not claim provider-independent exactly-once.
+
+    CompleteEffectTransition:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - effect_id
+        - receipt
+      properties:
+        type:
+          type: string
+          const: complete
+        effect_id:
+          type: string
+          format: uuid
+          description: Existing prepared effect in this exact checkpoint scope
+        receipt:
+          $ref: '#/components/schemas/EffectReceipt'
+
+    EffectReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - observed_at
+        - external_reference
+        - outcome_sha256
+      properties:
+        observed_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        external_reference:
+          type: [string, 'null']
+          maxLength: 1024
+          description: Provider reference used for reconciliation when available
+        outcome_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    CheckpointEffect:
+      type: object
+      description: |
+        Cumulative durable intent and optional completion receipt. A prepared
+        effect must be retried or reconciled; a completed effect must be skipped.
+      required:
+        - effect_id
+        - effect_key
+        - kind
+        - recovery_mode
+        - status
+        - prepared_at
+        - completed_at
+        - receipt
+      properties:
+        effect_id:
+          type: string
+          format: uuid
+          description: Service-created UUIDv7 stable recovery reference
+        effect_key:
+          type: string
+          minLength: 1
+          maxLength: 512
+        kind:
+          type: string
+          minLength: 1
+        recovery_mode:
+          type: string
+          enum: [idempotency_key, reconcile]
+        status:
+          type: string
+          enum: [prepared, completed]
+        prepared_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        completed_at:
+          oneOf:
+            - $ref: '#/components/schemas/UtcDateTime'
+            - type: 'null'
+        receipt:
+          oneOf:
+            - $ref: '#/components/schemas/EffectReceipt'
+            - type: 'null'
+
+    Checkpoint:
+      type: object
+      description: |
+        Current full snapshot and cumulative durable-effect view for one logical
+        agent thread. Clients must ignore unknown response members added within
+        `/v1`.
+      required:
+        - tenant_id
+        - subject_id
+        - agent_id
+        - thread_id
+        - case_id
+        - checkpoint_id
+        - checkpoint_revision_id
+        - revision_number
+        - parent_revision_id
+        - recorded_at
+        - state
+        - state_schema_version
+        - state_sha256
+        - effects
+        - provenance
+        - sensitivity
+        - retention_policy_id
+        - expires_at
+        - writer_principal_id
+        - schema_version
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        subject_id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          format: uuid
+        thread_id:
+          type: string
+          format: uuid
+        case_id:
+          type: string
+          format: uuid
+        checkpoint_id:
+          type: string
+          format: uuid
+          description: Service-created UUIDv7 logical checkpoint identifier
+        checkpoint_revision_id:
+          type: string
+          format: uuid
+          description: Service-created UUIDv7 immutable revision identifier
+        revision_number:
+          type: integer
+          minimum: 1
+        parent_revision_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        recorded_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        state:
+          description: Complete resumable state for the current revision
+        state_schema_version:
+          type: integer
+          minimum: 1
+        state_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        effects:
+          type: array
+          description: |
+            Cumulative prepared and completed effects for the live checkpoint
+            scope, ordered by preparation time and effect identifier.
+          items:
+            $ref: '#/components/schemas/CheckpointEffect'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+        sensitivity:
+          type: string
+          minLength: 1
+        retention_policy_id:
+          type: string
+          minLength: 1
+        expires_at:
+          $ref: '#/components/schemas/UtcDateTime'
+          description: Server-computed expiry; callers cannot supply or extend it
+        writer_principal_id:
+          type: string
+          minLength: 1
+          description: Trusted authenticated writer identity; never request-supplied
+        schema_version:
+          type: integer
+          minimum: 1
 
     AppendEpisodeRequest:
       type: object
@@ -879,6 +1334,9 @@ components:
         `idempotency-key-required`, `authentication-required`,
         `operation-forbidden`, `resource-not-found`, `fact-key-conflict`,
         `supersession-conflict`, `idempotency-in-progress`, `stale-fact`,
+        `checkpoint-parent-conflict`, `effect-key-conflict`,
+        `invalid-effect-transition`,
+        `stale-checkpoint`, `checkpoint-precondition-required`,
         `invalid-valid-time`, `idempotency-key-reused`,
         `future-recorded-time`, `fact-precondition-required`,
         `unsupported-media-type`, `rate-limit-exceeded`, `internal-error`, and
@@ -970,8 +1428,40 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    CheckpointConflict:
+      description: |
+        No mutation was committed. Stable types are
+        `checkpoint-parent-conflict`, `effect-key-conflict`,
+        `invalid-effect-transition`, and `idempotency-in-progress`. Parent
+        conflict means the body does not name the head represented by the valid
+        conditional header. Effect conflicts include preparing an existing
+        effect, completing an unprepared or already completed effect, or
+        applying two transitions to one effect in a request. The in-progress
+        form includes `Retry-After`.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     PreconditionFailed:
       description: Strong `If-Match` validator is stale; stable type `stale-fact`
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    CheckpointPreconditionFailed:
+      description: |
+        The initialization assertion or strong checkpoint validator is stale;
+        stable types `stale-checkpoint` and `checkpoint-already-exists`. No
+        checkpoint, effect transition, audit receipt, outbox intent, or
+        idempotency completion was committed.
       headers:
         Cache-Control:
           $ref: '#/components/headers/PrivateNoStore'
@@ -992,7 +1482,7 @@ components:
       description: |
         Syntactically valid request violates domain semantics. Stable types:
         `invalid-valid-time`, `idempotency-key-reused`,
-        `future-recorded-time`.
+        `future-recorded-time`, `retention-policy-rejected`.
       headers:
         Cache-Control:
           $ref: '#/components/headers/PrivateNoStore'
@@ -1002,6 +1492,28 @@ components:
             $ref: '#/components/schemas/Problem'
     PreconditionRequired:
       description: Supersession omitted required `If-Match`
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    CheckpointPreconditionRequired:
+      description: |
+        Checkpoint mutation omitted both `If-None-Match: *` and one strong
+        `If-Match`; stable type `checkpoint-precondition-required`.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    PayloadTooLarge:
+      description: |
+        The bounded inline checkpoint state or effect transition batch exceeds
+        the supported limit; stable type `checkpoint-too-large`.
       headers:
         Cache-Control:
           $ref: '#/components/headers/PrivateNoStore'

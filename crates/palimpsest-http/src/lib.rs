@@ -12,10 +12,11 @@ use axum::{
 };
 use palimpsest_application::{MemoryService, ServiceError};
 use palimpsest_domain::{
-    AppendEpisode, CaseId, CreateFact, Episode, EpisodeId, EpisodeKind, FactId, FactKey,
-    FactNamespace, FactView, PrincipalScope, Provenance, RetentionPolicyId, RevisionId,
-    Sensitivity, SubjectId, SupersedeFact, TenantId, ValidTime, WritePolicy, WritePolicyId,
-    WritePolicyVersion,
+    AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
+    CreateFact, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace,
+    FactView, PrincipalScope, Provenance, RetentionPolicyId, RevisionId, SaveCheckpoint,
+    Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId, ValidTime, WritePolicy,
+    WritePolicyId, WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -76,6 +77,10 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
         .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/facts/{fact_id}/as-of",
             get(get_fact_as_of),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
+            get(get_checkpoint).put(save_checkpoint),
         )
         .with_state(state)
 }
@@ -141,6 +146,85 @@ struct SupersedeFactRequest {
 struct AsOfQuery {
     valid_at: String,
     recorded_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveCheckpointRequest {
+    case_id: Uuid,
+    parent_revision_id: Option<Uuid>,
+    state: Value,
+    state_schema_version: u32,
+    effect_transitions: Vec<EffectTransition>,
+    provenance: Provenance,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
+}
+
+async fn save_checkpoint(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, agent_id, thread_id)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<SaveCheckpointRequest>, JsonRejection>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let agent_id = AgentId(parse_uuid("agent_id", &agent_id)?);
+    let thread_id = ThreadId(parse_uuid("thread_id", &thread_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let precondition = require_checkpoint_precondition(&headers)?;
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
+    let outcome = state
+        .service
+        .save_checkpoint(
+            &principal,
+            idempotency_key,
+            precondition,
+            SaveCheckpoint {
+                tenant_id,
+                subject_id,
+                agent_id,
+                thread_id,
+                case_id: CaseId(request.case_id),
+                parent_revision_id: request.parent_revision_id.map(CheckpointRevisionId),
+                state: request.state,
+                state_schema_version: request.state_schema_version,
+                effect_transitions: request.effect_transitions,
+                provenance: request.provenance,
+                sensitivity: request.sensitivity,
+                retention_policy_id: request.retention_policy_id,
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let status = match precondition {
+        CheckpointPrecondition::Create => StatusCode::CREATED,
+        CheckpointPrecondition::Match(_) => StatusCode::OK,
+    };
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/agents/{}/threads/{}/checkpoint",
+        tenant_id.0, subject_id.0, agent_id.0, thread_id.0
+    );
+    checkpoint_response(status, outcome.view, Some(location), outcome.replayed)
+}
+
+async fn get_checkpoint(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, agent_id, thread_id)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let agent_id = AgentId(parse_uuid("agent_id", &agent_id)?);
+    let thread_id = ThreadId(parse_uuid("thread_id", &thread_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .get_checkpoint(&principal, tenant_id, subject_id, agent_id, thread_id)
+        .await
+        .map_err(Problem::from_service)?;
+    checkpoint_response(StatusCode::OK, view, None, false)
 }
 
 async fn append_episode(
@@ -443,6 +527,55 @@ fn require_if_match(headers: &HeaderMap) -> Result<RevisionId, Problem> {
     Ok(RevisionId(revision_id))
 }
 
+fn require_checkpoint_precondition(headers: &HeaderMap) -> Result<CheckpointPrecondition, Problem> {
+    let if_match = headers.get(header::IF_MATCH);
+    let if_none_match = headers.get(header::IF_NONE_MATCH);
+    match (if_match, if_none_match) {
+        (Some(_), Some(_)) => Err(Problem::bad_request(
+            "invalid_checkpoint_precondition",
+            "Checkpoint precondition is invalid",
+            "Supply exactly one of If-None-Match: * or one strong If-Match ETag.",
+        )),
+        (None, Some(value)) if value == "*" => Ok(CheckpointPrecondition::Create),
+        (None, Some(_)) => Err(Problem::bad_request(
+            "invalid_checkpoint_precondition",
+            "Checkpoint precondition is invalid",
+            "Initial checkpoint creation requires If-None-Match: *.",
+        )),
+        (Some(value), None) => {
+            let value = value.to_str().map_err(|_| {
+                Problem::bad_request(
+                    "invalid_checkpoint_precondition",
+                    "Checkpoint precondition is invalid",
+                    "If-Match must contain one strong quoted checkpoint ETag.",
+                )
+            })?;
+            if value.starts_with("W/") || value == "*" || value.contains(',') {
+                return Err(Problem::bad_request(
+                    "invalid_checkpoint_precondition",
+                    "Checkpoint precondition is invalid",
+                    "If-Match must contain one strong quoted checkpoint ETag.",
+                ));
+            }
+            let revision_id = value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .ok_or_else(|| {
+                    Problem::bad_request(
+                        "invalid_checkpoint_precondition",
+                        "Checkpoint precondition is invalid",
+                        "If-Match must contain one strong quoted checkpoint ETag.",
+                    )
+                })?;
+            Ok(CheckpointPrecondition::Match(CheckpointRevisionId(
+                revision_id,
+            )))
+        }
+        (None, None) => Err(Problem::checkpoint_precondition_required()),
+    }
+}
+
 fn parse_uuid(field: &str, value: &str) -> Result<Uuid, Problem> {
     Uuid::parse_str(value).map_err(|_| {
         Problem::bad_request(
@@ -557,6 +690,37 @@ fn fact_response(
     Ok(response)
 }
 
+fn checkpoint_response(
+    status: StatusCode,
+    view: CheckpointView,
+    location: Option<String>,
+    idempotency_replayed: bool,
+) -> Result<Response, Problem> {
+    let etag = HeaderValue::from_str(&format!("\"{}\"", view.checkpoint_revision_id.0))
+        .map_err(|_| Problem::internal("The service could not construct the checkpoint ETag."))?;
+    let mut response = (status, Json(view)).into_response();
+    response.headers_mut().insert(header::ETAG, etag);
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    if let Some(location) = location {
+        response.headers_mut().insert(
+            header::LOCATION,
+            HeaderValue::from_str(&location).map_err(|_| {
+                Problem::internal("The service could not construct checkpoint Location.")
+            })?,
+        );
+    }
+    if idempotency_replayed {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("idempotency-replayed"),
+            HeaderValue::from_static("true"),
+        );
+    }
+    Ok(response)
+}
+
 #[derive(Debug, Serialize)]
 struct Problem {
     #[serde(rename = "type")]
@@ -640,9 +804,19 @@ impl Problem {
         )
     }
 
+    fn checkpoint_precondition_required() -> Self {
+        Self::new(
+            "checkpoint-precondition-required",
+            "Checkpoint precondition is required",
+            StatusCode::PRECONDITION_REQUIRED,
+            "checkpoint_precondition_required",
+            "Supply If-None-Match: * to create or one strong checkpoint ETag in If-Match to advance.",
+        )
+    }
+
     fn from_service(error: ServiceError) -> Self {
         match error {
-            ServiceError::NotFound => Self::new(
+            ServiceError::NotFound | ServiceError::CheckpointExpired => Self::new(
                 "resource-not-found",
                 "Resource not found",
                 StatusCode::NOT_FOUND,
@@ -697,6 +871,58 @@ impl Problem {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_valid_time",
                 detail,
+            ),
+            ServiceError::CheckpointPreconditionRequired => {
+                Self::checkpoint_precondition_required()
+            }
+            ServiceError::CheckpointPreconditionFailed => Self::new(
+                "stale-checkpoint",
+                "Checkpoint precondition failed",
+                StatusCode::PRECONDITION_FAILED,
+                "stale_checkpoint",
+                "Load the current checkpoint and retry with its strong ETag.",
+            ),
+            ServiceError::CheckpointParentConflict => Self::new(
+                "checkpoint-parent-conflict",
+                "Checkpoint parent conflicts with the current head",
+                StatusCode::CONFLICT,
+                "checkpoint_parent_conflict",
+                "parent_revision_id and If-Match must identify the current checkpoint head.",
+            ),
+            ServiceError::CheckpointAlreadyExists => Self::new(
+                "checkpoint-already-exists",
+                "Checkpoint already exists",
+                StatusCode::PRECONDITION_FAILED,
+                "checkpoint_already_exists",
+                "Load the current checkpoint and advance it with If-Match.",
+            ),
+            ServiceError::EffectKeyConflict => Self::new(
+                "effect-key-conflict",
+                "Effect key conflicts with an existing effect",
+                StatusCode::CONFLICT,
+                "effect_key_conflict",
+                "Reuse an effect key only for its original prepared effect.",
+            ),
+            ServiceError::InvalidEffectTransition => Self::new(
+                "invalid-effect-transition",
+                "Effect transition is invalid",
+                StatusCode::CONFLICT,
+                "invalid_effect_transition",
+                "Prepare each effect once and complete only an existing prepared effect.",
+            ),
+            ServiceError::RetentionPolicyRejected => Self::new(
+                "retention-policy-rejected",
+                "Retention policy rejected the checkpoint",
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "retention_policy_rejected",
+                "Use an active checkpoint retention policy.",
+            ),
+            ServiceError::CheckpointTooLarge => Self::new(
+                "checkpoint-too-large",
+                "Checkpoint exceeds the supported size",
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "checkpoint_too_large",
+                "Reduce the checkpoint state or effect transition batch.",
             ),
             ServiceError::Invalid(detail) => {
                 Self::bad_request("invalid_request", "Request is invalid", detail)

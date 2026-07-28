@@ -1,14 +1,20 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
 use palimpsest_domain::{
-    AppendEpisode, CreateFact, Episode, EpisodeId, FactId, FactView, NewEpisode, NewFact,
-    NewFactRevision, PrincipalScope, RevisionId, SubjectId, SupersedeFact, TenantId,
+    AgentId, AppendEpisode, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
+    CompleteEffectTransition, CreateFact, EffectId, EffectTransition, Episode, EpisodeId, FactId,
+    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
+    NewPreparedEffect, PrincipalScope, RevisionId, SaveCheckpoint, SubjectId, SupersedeFact,
+    TenantId, ThreadId,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
+
+const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
+const MAX_CHECKPOINT_EFFECT_TRANSITIONS: usize = 100;
 
 #[derive(Debug, Error)]
 pub enum RepositoryError {
@@ -26,6 +32,20 @@ pub enum RepositoryError {
     SupersessionConflict,
     #[error("recorded-time coordinate is in the future")]
     FutureRecordedTime,
+    #[error("checkpoint precondition did not match the current head")]
+    CheckpointPreconditionFailed,
+    #[error("checkpoint parent does not name the current head")]
+    CheckpointParentConflict,
+    #[error("checkpoint already exists")]
+    CheckpointAlreadyExists,
+    #[error("checkpoint has expired")]
+    CheckpointExpired,
+    #[error("effect key conflicts with an existing effect")]
+    EffectKeyConflict,
+    #[error("effect transition is invalid")]
+    InvalidEffectTransition,
+    #[error("retention policy rejected the checkpoint")]
+    RetentionPolicyRejected,
     #[error("repository failure: {0}")]
     Unexpected(String),
 }
@@ -77,6 +97,23 @@ pub trait FactRepository: Send + Sync {
     ) -> Result<FactView, RepositoryError>;
 }
 
+#[async_trait]
+pub trait CheckpointRepository: Send + Sync {
+    async fn save(
+        &self,
+        revision: NewCheckpointRevision,
+        idempotency: IdempotencyRequest,
+    ) -> Result<CheckpointMutationOutcome, RepositoryError>;
+
+    async fn get_current(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        agent_id: AgentId,
+        thread_id: ThreadId,
+    ) -> Result<CheckpointView, RepositoryError>;
+}
+
 #[derive(Debug)]
 pub struct IdempotencyRequest {
     pub key: String,
@@ -92,6 +129,12 @@ pub struct AppendOutcome {
 #[derive(Debug)]
 pub struct FactMutationOutcome {
     pub view: FactView,
+    pub replayed: bool,
+}
+
+#[derive(Debug)]
+pub struct CheckpointMutationOutcome {
+    pub view: CheckpointView,
     pub replayed: bool,
 }
 
@@ -115,6 +158,24 @@ pub enum ServiceError {
     InvalidValidTime(String),
     #[error("invalid request: {0}")]
     Invalid(String),
+    #[error("checkpoint precondition is required")]
+    CheckpointPreconditionRequired,
+    #[error("checkpoint precondition failed")]
+    CheckpointPreconditionFailed,
+    #[error("checkpoint parent conflicts with the current head")]
+    CheckpointParentConflict,
+    #[error("checkpoint already exists")]
+    CheckpointAlreadyExists,
+    #[error("checkpoint has expired")]
+    CheckpointExpired,
+    #[error("effect key conflicts with an existing effect")]
+    EffectKeyConflict,
+    #[error("effect transition is invalid")]
+    InvalidEffectTransition,
+    #[error("retention policy rejected the checkpoint")]
+    RetentionPolicyRejected,
+    #[error("checkpoint exceeds the supported size")]
+    CheckpointTooLarge,
     #[error("service unavailable")]
     Unavailable,
 }
@@ -123,11 +184,124 @@ pub enum ServiceError {
 pub struct MemoryService {
     episodes: Arc<dyn EpisodeRepository>,
     facts: Arc<dyn FactRepository>,
+    checkpoints: Arc<dyn CheckpointRepository>,
 }
 
 impl MemoryService {
-    pub fn new(episodes: Arc<dyn EpisodeRepository>, facts: Arc<dyn FactRepository>) -> Self {
-        Self { episodes, facts }
+    pub fn new(
+        episodes: Arc<dyn EpisodeRepository>,
+        facts: Arc<dyn FactRepository>,
+        checkpoints: Arc<dyn CheckpointRepository>,
+    ) -> Self {
+        Self {
+            episodes,
+            facts,
+            checkpoints,
+        }
+    }
+
+    pub async fn save_checkpoint(
+        &self,
+        principal: &PrincipalScope,
+        idempotency_key: String,
+        precondition: CheckpointPrecondition,
+        command: SaveCheckpoint,
+    ) -> Result<CheckpointMutationOutcome, ServiceError> {
+        authorize(principal, command.tenant_id, command.subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        validate_checkpoint(&command, precondition)?;
+
+        let (precondition_kind, expected_head_revision_id) = match precondition {
+            CheckpointPrecondition::Create => ("create", None),
+            CheckpointPrecondition::Match(revision_id) => ("match", Some(revision_id.0)),
+        };
+        let fingerprint_input = json!({
+            "operation_id": "saveCheckpoint",
+            "content_type": "application/json",
+            "principal_id": principal.principal_id.0,
+            "tenant_id": command.tenant_id.0,
+            "subject_id": command.subject_id.0,
+            "agent_id": command.agent_id.0,
+            "thread_id": command.thread_id.0,
+            "case_id": command.case_id.0,
+            "precondition": precondition_kind,
+            "expected_head_revision_id": expected_head_revision_id,
+            "parent_revision_id": command.parent_revision_id.map(|revision_id| revision_id.0),
+            "state": command.state,
+            "state_schema_version": command.state_schema_version,
+            "effect_transitions": command.effect_transitions,
+            "provenance": command.provenance,
+            "sensitivity": command.sensitivity,
+            "retention_policy_id": command.retention_policy_id,
+        });
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&fingerprint_input)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        let state_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(&command.state)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        let effect_transitions = command
+            .effect_transitions
+            .into_iter()
+            .map(|transition| match transition {
+                EffectTransition::Prepare(transition) => {
+                    NewEffectTransition::Prepare(NewPreparedEffect {
+                        effect_id: EffectId(Uuid::now_v7()),
+                        effect_key: transition.effect_key,
+                        kind: transition.kind,
+                        recovery_mode: transition.recovery_mode,
+                    })
+                }
+                EffectTransition::Complete(transition) => NewEffectTransition::Complete(transition),
+            })
+            .collect();
+
+        self.checkpoints
+            .save(
+                NewCheckpointRevision {
+                    tenant_id: command.tenant_id,
+                    subject_id: command.subject_id,
+                    agent_id: command.agent_id,
+                    thread_id: command.thread_id,
+                    case_id: command.case_id,
+                    checkpoint_id: palimpsest_domain::CheckpointId(Uuid::now_v7()),
+                    revision_id: CheckpointRevisionId(Uuid::now_v7()),
+                    parent_revision_id: command.parent_revision_id,
+                    precondition,
+                    state: command.state,
+                    state_schema_version: command.state_schema_version,
+                    effect_transitions,
+                    provenance: command.provenance,
+                    sensitivity: command.sensitivity,
+                    retention_policy_id: command.retention_policy_id,
+                    writer_principal_id: principal.principal_id.clone(),
+                    schema_version: 1,
+                    state_sha256,
+                },
+                IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+            )
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn get_checkpoint(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        agent_id: AgentId,
+        thread_id: ThreadId,
+    ) -> Result<CheckpointView, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        self.checkpoints
+            .get_current(tenant_id, subject_id, agent_id, thread_id)
+            .await
+            .map_err(map_repository)
     }
 
     pub async fn append_episode(
@@ -401,6 +575,67 @@ fn validate_append(command: &AppendEpisode) -> Result<(), ServiceError> {
     Ok(())
 }
 
+fn validate_idempotency_key(idempotency_key: &str) -> Result<(), ServiceError> {
+    if idempotency_key.trim().is_empty() || idempotency_key.chars().count() > 255 {
+        return Err(ServiceError::Invalid(
+            "idempotency_key must contain 1 to 255 characters".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_checkpoint(
+    command: &SaveCheckpoint,
+    precondition: CheckpointPrecondition,
+) -> Result<(), ServiceError> {
+    let state_bytes = serde_json::to_vec(&command.state)
+        .map_err(|error| ServiceError::Invalid(error.to_string()))?;
+    if state_bytes.len() > MAX_CHECKPOINT_STATE_BYTES
+        || command.effect_transitions.len() > MAX_CHECKPOINT_EFFECT_TRANSITIONS
+    {
+        return Err(ServiceError::CheckpointTooLarge);
+    }
+    if command.state_schema_version == 0 {
+        return Err(ServiceError::Invalid(
+            "state_schema_version must be greater than zero".to_owned(),
+        ));
+    }
+    match (precondition, command.parent_revision_id) {
+        (CheckpointPrecondition::Create, None) => {}
+        (CheckpointPrecondition::Match(expected), Some(parent)) if expected == parent => {}
+        _ => return Err(ServiceError::CheckpointParentConflict),
+    }
+
+    let mut prepared_effect_keys = HashSet::new();
+    let mut completed_effect_ids = HashSet::new();
+    for transition in &command.effect_transitions {
+        match transition {
+            EffectTransition::Prepare(transition) => {
+                if !prepared_effect_keys.insert(transition.effect_key.as_str()) {
+                    return Err(ServiceError::EffectKeyConflict);
+                }
+            }
+            EffectTransition::Complete(CompleteEffectTransition { effect_id, receipt }) => {
+                if !completed_effect_ids.insert(effect_id.0) {
+                    return Err(ServiceError::InvalidEffectTransition);
+                }
+                if receipt.outcome_sha256.len() != 64
+                    || !receipt
+                        .outcome_sha256
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                {
+                    return Err(ServiceError::Invalid(
+                        "effect receipt outcome_sha256 must be 64 lowercase hexadecimal characters"
+                            .to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_create_fact(command: &CreateFact) -> Result<(), ServiceError> {
     for (name, value) in [
         ("namespace", command.namespace.as_str()),
@@ -490,6 +725,13 @@ fn map_repository(error: RepositoryError) -> ServiceError {
         RepositoryError::PreconditionFailed => ServiceError::PreconditionFailed,
         RepositoryError::SupersessionConflict => ServiceError::SupersessionConflict,
         RepositoryError::FutureRecordedTime => ServiceError::FutureRecordedTime,
+        RepositoryError::CheckpointPreconditionFailed => ServiceError::CheckpointPreconditionFailed,
+        RepositoryError::CheckpointParentConflict => ServiceError::CheckpointParentConflict,
+        RepositoryError::CheckpointAlreadyExists => ServiceError::CheckpointAlreadyExists,
+        RepositoryError::CheckpointExpired => ServiceError::CheckpointExpired,
+        RepositoryError::EffectKeyConflict => ServiceError::EffectKeyConflict,
+        RepositoryError::InvalidEffectTransition => ServiceError::InvalidEffectTransition,
+        RepositoryError::RetentionPolicyRejected => ServiceError::RetentionPolicyRejected,
         RepositoryError::Unexpected(_) => ServiceError::Unavailable,
     }
 }

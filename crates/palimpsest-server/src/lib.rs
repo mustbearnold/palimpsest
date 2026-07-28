@@ -9,7 +9,7 @@ use sqlx::PgPool;
 pub fn app(pool: PgPool, authenticator: Arc<dyn Authenticator>) -> Router {
     let repository = Arc::new(PostgresMemoryRepository::new(pool));
     palimpsest_http::router(
-        MemoryService::new(repository.clone(), repository),
+        MemoryService::new(repository.clone(), repository.clone(), repository),
         authenticator,
     )
 }

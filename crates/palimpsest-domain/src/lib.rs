@@ -20,6 +20,11 @@ macro_rules! uuid_id {
 uuid_id!(TenantId);
 uuid_id!(SubjectId);
 uuid_id!(CaseId);
+uuid_id!(AgentId);
+uuid_id!(ThreadId);
+uuid_id!(CheckpointId);
+uuid_id!(CheckpointRevisionId);
+uuid_id!(EffectId);
 uuid_id!(EpisodeId);
 uuid_id!(FactId);
 uuid_id!(RevisionId);
@@ -89,6 +94,9 @@ text_value!(FactNamespace, 255);
 text_value!(FactKey, 512);
 text_value!(WritePolicyId, 255);
 text_value!(WritePolicyVersion, 255);
+text_value!(EffectKey, 512);
+text_value!(EffectKind, 255);
+text_value!(ExternalEffectReference, 1024);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -105,6 +113,152 @@ impl PrincipalScope {
     pub fn authorizes(&self, tenant_id: TenantId, subject_id: SubjectId) -> bool {
         self.tenant_id == tenant_id && self.subject_ids.contains(&subject_id)
     }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectRecoveryMode {
+    IdempotencyKey,
+    Reconcile,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EffectReceipt {
+    #[serde(with = "time::serde::rfc3339")]
+    pub observed_at: OffsetDateTime,
+    pub external_reference: Option<ExternalEffectReference>,
+    pub outcome_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PrepareEffectTransition {
+    pub effect_key: EffectKey,
+    pub kind: EffectKind,
+    pub recovery_mode: EffectRecoveryMode,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CompleteEffectTransition {
+    pub effect_id: EffectId,
+    pub receipt: EffectReceipt,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EffectTransition {
+    Prepare(PrepareEffectTransition),
+    Complete(CompleteEffectTransition),
+}
+
+#[derive(Clone, Debug)]
+pub struct NewPreparedEffect {
+    pub effect_id: EffectId,
+    pub effect_key: EffectKey,
+    pub kind: EffectKind,
+    pub recovery_mode: EffectRecoveryMode,
+}
+
+#[derive(Clone, Debug)]
+pub enum NewEffectTransition {
+    Prepare(NewPreparedEffect),
+    Complete(CompleteEffectTransition),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectStatus {
+    Prepared,
+    Completed,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CheckpointEffect {
+    pub effect_id: EffectId,
+    pub effect_key: EffectKey,
+    pub kind: EffectKind,
+    pub recovery_mode: EffectRecoveryMode,
+    pub status: EffectStatus,
+    #[serde(with = "time::serde::rfc3339")]
+    pub prepared_at: OffsetDateTime,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub completed_at: Option<OffsetDateTime>,
+    pub receipt: Option<EffectReceipt>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CheckpointSnapshot {
+    pub state: Value,
+    pub effects: Vec<CheckpointEffect>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SaveCheckpoint {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub agent_id: AgentId,
+    pub thread_id: ThreadId,
+    pub case_id: CaseId,
+    pub parent_revision_id: Option<CheckpointRevisionId>,
+    pub state: Value,
+    pub state_schema_version: u32,
+    pub effect_transitions: Vec<EffectTransition>,
+    pub provenance: Provenance,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CheckpointPrecondition {
+    Create,
+    Match(CheckpointRevisionId),
+}
+
+#[derive(Clone, Debug)]
+pub struct NewCheckpointRevision {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub agent_id: AgentId,
+    pub thread_id: ThreadId,
+    pub case_id: CaseId,
+    pub checkpoint_id: CheckpointId,
+    pub revision_id: CheckpointRevisionId,
+    pub parent_revision_id: Option<CheckpointRevisionId>,
+    pub precondition: CheckpointPrecondition,
+    pub state: Value,
+    pub state_schema_version: u32,
+    pub effect_transitions: Vec<NewEffectTransition>,
+    pub provenance: Provenance,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+    pub writer_principal_id: PrincipalId,
+    pub schema_version: u32,
+    pub state_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CheckpointView {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub agent_id: AgentId,
+    pub thread_id: ThreadId,
+    pub case_id: CaseId,
+    pub checkpoint_id: CheckpointId,
+    pub checkpoint_revision_id: CheckpointRevisionId,
+    pub parent_revision_id: Option<CheckpointRevisionId>,
+    pub revision_number: u64,
+    #[serde(with = "time::serde::rfc3339")]
+    pub recorded_at: OffsetDateTime,
+    #[serde(flatten)]
+    pub snapshot: CheckpointSnapshot,
+    pub state_schema_version: u32,
+    pub provenance: Provenance,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+    #[serde(with = "time::serde::rfc3339")]
+    pub expires_at: OffsetDateTime,
+    pub writer_principal_id: PrincipalId,
+    pub schema_version: u32,
+    pub state_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
