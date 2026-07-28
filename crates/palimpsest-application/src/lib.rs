@@ -3,10 +3,11 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 use palimpsest_domain::{
     AgentId, AppendEpisode, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
-    CompleteEffectTransition, CreateFact, EffectId, EffectTransition, Episode, EpisodeId, FactId,
-    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
-    NewPreparedEffect, PrincipalScope, RevisionId, SaveCheckpoint, SubjectId, SupersedeFact,
-    TenantId, ThreadId,
+    CompleteEffectTransition, CreateFact, CreateRetrieval, EffectId, EffectTransition, Episode,
+    EpisodeId, FactId, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact,
+    NewFactRevision, NewPreparedEffect, NewRetrieval, PrincipalScope, RetrievalFilters,
+    RetrievalId, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint,
+    Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -15,6 +16,8 @@ use uuid::Uuid;
 
 const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
 const MAX_CHECKPOINT_EFFECT_TRANSITIONS: usize = 100;
+const MAX_RETRIEVAL_QUERY_BYTES: usize = 4096;
+const MAX_RETRIEVAL_FILTER_VALUES: usize = 100;
 
 #[derive(Debug, Error)]
 pub enum RepositoryError {
@@ -48,6 +51,8 @@ pub enum RepositoryError {
     InvalidEffectTransition,
     #[error("retention policy rejected the checkpoint")]
     RetentionPolicyRejected,
+    #[error("transaction serialization must be retried")]
+    SerializationRetry,
     #[error("repository failure: {0}")]
     Unexpected(String),
 }
@@ -116,7 +121,26 @@ pub trait CheckpointRepository: Send + Sync {
     ) -> Result<CheckpointView, RepositoryError>;
 }
 
-#[derive(Debug)]
+#[async_trait]
+pub trait RetrievalRepository: Send + Sync {
+    async fn create_receipt(
+        &self,
+        retrieval: NewRetrieval,
+        idempotency: IdempotencyRequest,
+    ) -> Result<RetrievalMutationOutcome, RepositoryError>;
+
+    async fn get_receipt(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        retrieval_id: RetrievalId,
+        cursor: Option<String>,
+        authorization_scope_sha256: String,
+    ) -> Result<RetrievalReceipt, RepositoryError>;
+}
+
+#[derive(Clone, Debug)]
 pub struct IdempotencyRequest {
     pub key: String,
     pub fingerprint: String,
@@ -140,6 +164,12 @@ pub struct CheckpointMutationOutcome {
     pub replayed: bool,
 }
 
+#[derive(Debug)]
+pub struct RetrievalMutationOutcome {
+    pub receipt: RetrievalReceipt,
+    pub replayed: bool,
+}
+
 #[derive(Debug, Error)]
 pub enum ServiceError {
     #[error("resource not found")]
@@ -160,6 +190,8 @@ pub enum ServiceError {
     InvalidValidTime(String),
     #[error("invalid request: {0}")]
     Invalid(String),
+    #[error("unprocessable request: {0}")]
+    Unprocessable(String),
     #[error("checkpoint precondition failed")]
     CheckpointPreconditionFailed,
     #[error("checkpoint parent conflicts with the current head")]
@@ -178,6 +210,8 @@ pub enum ServiceError {
     RetentionPolicyRejected,
     #[error("checkpoint exceeds the supported size")]
     CheckpointTooLarge,
+    #[error("retrieval request exceeds the supported size")]
+    RetrievalTooLarge,
     #[error("service unavailable")]
     Unavailable,
 }
@@ -187,6 +221,7 @@ pub struct MemoryService {
     episodes: Arc<dyn EpisodeRepository>,
     facts: Arc<dyn FactRepository>,
     checkpoints: Arc<dyn CheckpointRepository>,
+    retrievals: Arc<dyn RetrievalRepository>,
 }
 
 impl MemoryService {
@@ -194,11 +229,13 @@ impl MemoryService {
         episodes: Arc<dyn EpisodeRepository>,
         facts: Arc<dyn FactRepository>,
         checkpoints: Arc<dyn CheckpointRepository>,
+        retrievals: Arc<dyn RetrievalRepository>,
     ) -> Self {
         Self {
             episodes,
             facts,
             checkpoints,
+            retrievals,
         }
     }
 
@@ -546,6 +583,187 @@ impl MemoryService {
             .await
             .map_err(map_repository)
     }
+
+    pub async fn create_retrieval(
+        &self,
+        principal: &PrincipalScope,
+        idempotency_key: String,
+        command: CreateRetrieval,
+    ) -> Result<RetrievalMutationOutcome, ServiceError> {
+        authorize(principal, command.tenant_id, command.subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        if !(1..=50).contains(&command.page_size) {
+            return Err(ServiceError::Unprocessable(
+                "page_size must be between 1 and 50".to_owned(),
+            ));
+        }
+        if command.query.as_str().len() > MAX_RETRIEVAL_QUERY_BYTES {
+            return Err(ServiceError::RetrievalTooLarge);
+        }
+        let query = RetrievalQuery::try_from(command.query.as_str().trim().to_owned())
+            .map_err(|error| ServiceError::Unprocessable(error.to_string()))?;
+        let policy_id = command.policy_id.unwrap_or(
+            RetrievalPolicyId::try_from("retrieval-lexical-v1".to_owned())
+                .expect("the built-in retrieval policy ID is valid"),
+        );
+        if policy_id.as_str() != "retrieval-lexical-v1" {
+            return Err(ServiceError::Unprocessable(
+                "policy_id is not supported".to_owned(),
+            ));
+        }
+        let filters = normalize_retrieval_filters(command.filters, principal)?;
+        let fingerprint_input = json!({
+            "operation_id": "createRetrieval",
+            "content_type": "application/json",
+            "principal_id": principal.principal_id.0,
+            "tenant_id": command.tenant_id.0,
+            "subject_id": command.subject_id.0,
+            "query": query.as_str(),
+            "perspective": command.perspective,
+            "page_size": command.page_size,
+            "policy_id": policy_id,
+            "filters": filters,
+        });
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&fingerprint_input)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        let query_sha256 = hex::encode(Sha256::digest(query.as_str().as_bytes()));
+        let mut allowed_sensitivities = principal.allowed_sensitivities.clone();
+        allowed_sensitivities.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        allowed_sensitivities.dedup_by(|left, right| left.as_str() == right.as_str());
+        let authorization_scope_sha256 = retrieval_authorization_scope_sha256(
+            principal,
+            command.tenant_id,
+            command.subject_id,
+            &allowed_sensitivities,
+        )?;
+
+        self.retrievals
+            .create_receipt(
+                NewRetrieval {
+                    tenant_id: command.tenant_id,
+                    subject_id: command.subject_id,
+                    retrieval_id: RetrievalId(Uuid::now_v7()),
+                    query,
+                    query_sha256,
+                    authorization_scope_sha256,
+                    perspective: command.perspective,
+                    page_size: command.page_size,
+                    policy_id,
+                    filters,
+                    principal_id: principal.principal_id.clone(),
+                    allowed_sensitivities,
+                },
+                IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+            )
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn get_retrieval(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        retrieval_id: RetrievalId,
+        cursor: Option<String>,
+    ) -> Result<RetrievalReceipt, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        if cursor
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 2048)
+        {
+            return Err(ServiceError::Unprocessable(
+                "cursor must contain 1 to 2048 characters".to_owned(),
+            ));
+        }
+        let mut allowed_sensitivities = principal.allowed_sensitivities.clone();
+        allowed_sensitivities.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        allowed_sensitivities.dedup_by(|left, right| left.as_str() == right.as_str());
+        let authorization_scope_sha256 = retrieval_authorization_scope_sha256(
+            principal,
+            tenant_id,
+            subject_id,
+            &allowed_sensitivities,
+        )?;
+        self.retrievals
+            .get_receipt(
+                principal,
+                tenant_id,
+                subject_id,
+                retrieval_id,
+                cursor,
+                authorization_scope_sha256,
+            )
+            .await
+            .map_err(map_repository)
+    }
+}
+
+fn retrieval_authorization_scope_sha256(
+    principal: &PrincipalScope,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    allowed_sensitivities: &[Sensitivity],
+) -> Result<String, ServiceError> {
+    Ok(hex::encode(Sha256::digest(
+        serde_json::to_vec(&json!({
+            "principal_id": principal.principal_id.0,
+            "tenant_id": tenant_id.0,
+            "subject_id": subject_id.0,
+            "allowed_sensitivities": allowed_sensitivities,
+        }))
+        .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+    )))
+}
+
+fn normalize_retrieval_filters(
+    mut filters: RetrievalFilters,
+    principal: &PrincipalScope,
+) -> Result<RetrievalFilters, ServiceError> {
+    if [
+        filters.case_ids.as_ref().map(Vec::len),
+        filters.namespaces.as_ref().map(Vec::len),
+        filters.keys.as_ref().map(Vec::len),
+        filters.sensitivities.as_ref().map(Vec::len),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|length| length > MAX_RETRIEVAL_FILTER_VALUES)
+    {
+        return Err(ServiceError::RetrievalTooLarge);
+    }
+    if filters.case_ids.as_ref().is_some_and(Vec::is_empty)
+        || filters.namespaces.as_ref().is_some_and(Vec::is_empty)
+        || filters.keys.as_ref().is_some_and(Vec::is_empty)
+        || filters.sensitivities.as_ref().is_some_and(Vec::is_empty)
+    {
+        return Err(ServiceError::Unprocessable(
+            "retrieval filter arrays must not be empty".to_owned(),
+        ));
+    }
+    if let Some(case_ids) = &mut filters.case_ids {
+        case_ids.sort_by_key(|value| value.0);
+        case_ids.dedup();
+    }
+    if let Some(namespaces) = &mut filters.namespaces {
+        namespaces.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        namespaces.dedup_by(|left, right| left.as_str() == right.as_str());
+    }
+    if let Some(keys) = &mut filters.keys {
+        keys.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        keys.dedup_by(|left, right| left.as_str() == right.as_str());
+    }
+    if let Some(sensitivities) = &mut filters.sensitivities {
+        sensitivities.retain(|value| principal.authorizes_sensitivity(value));
+        sensitivities.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        sensitivities.dedup_by(|left, right| left.as_str() == right.as_str());
+    }
+    Ok(filters)
 }
 
 fn authorize(
@@ -735,6 +953,7 @@ fn map_repository(error: RepositoryError) -> ServiceError {
         RepositoryError::EffectKeyConflict => ServiceError::EffectKeyConflict,
         RepositoryError::InvalidEffectTransition => ServiceError::InvalidEffectTransition,
         RepositoryError::RetentionPolicyRejected => ServiceError::RetentionPolicyRejected,
+        RepositoryError::SerializationRetry => ServiceError::Unavailable,
         RepositoryError::Unexpected(_) => ServiceError::Unavailable,
     }
 }

@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use anyhow::{Context, Result};
-use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
+use palimpsest_domain::{PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId};
 use palimpsest_http::StaticAuthenticator;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
@@ -14,6 +14,13 @@ async fn main() -> Result<()> {
     let principal_id = required("PALIMPSEST_PRINCIPAL_ID")?;
     let tenant_id = parse_uuid("PALIMPSEST_TENANT_ID")?;
     let subject_id = parse_uuid("PALIMPSEST_SUBJECT_ID")?;
+    let allowed_sensitivities = env::var("PALIMPSEST_ALLOWED_SENSITIVITIES")
+        .unwrap_or_default()
+        .split(',')
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| Sensitivity::try_from(value.trim().to_owned()))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("PALIMPSEST_ALLOWED_SENSITIVITIES contains an invalid label")?;
     let bind = env::var("PALIMPSEST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
 
     let pool = PgPool::connect(&database_url)
@@ -29,6 +36,7 @@ async fn main() -> Result<()> {
             principal_id: PrincipalId(principal_id),
             tenant_id: TenantId(tenant_id),
             subject_ids: vec![SubjectId(subject_id)],
+            allowed_sensitivities,
         },
     )]));
     let listener = TcpListener::bind(&bind)

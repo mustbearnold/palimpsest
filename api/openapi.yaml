@@ -25,6 +25,8 @@ tags:
     description: Immutable attributable observations
   - name: Facts
     description: Logical facts backed by immutable bitemporal revision chains
+  - name: Retrievals
+    description: Durable authorization-first retrieval receipts
   - name: Checkpoints
     description: Crash-safe full snapshots and durable external-effect receipts
 paths:
@@ -467,6 +469,111 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/retrievals:
+    post:
+      tags: [Retrievals]
+      operationId: createRetrieval
+      summary: Create one durable authorization-first retrieval receipt
+      description: |
+        Captures one repeatable server snapshot, selects the effective fact
+        revision for the requested temporal perspective, and applies trusted
+        principal, tenant, subject, sensitivity, lifecycle, retention, and
+        request filters before exact-identity or PostgreSQL full-text ranking.
+        Request filters can narrow authority but can never grant it.
+
+        `Idempotency-Key` is mandatory. A completed replay reauthorizes the
+        receipt and every manifest item before rehydrating canonical content, so
+        content that has since been deleted, expired, or revoked is not returned.
+        The durable receipt stores only identifiers, deterministic ranks and
+        scores, policy and projection digests, redacted timings, and the request
+        digest. It does not store query text, memory values,
+        credentials, or other raw private content.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRetrievalRequest'
+      responses:
+        '201':
+          description: |
+            Retrieval receipt created, or the authorized view of the original
+            completed receipt replayed
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/RetrievalPayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/RetrievalUnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/retrievals/{retrieval_id}:
+    get:
+      tags: [Retrievals]
+      operationId: getRetrieval
+      summary: Read one currently authorized retrieval-receipt page
+      description: |
+        Reads the first page when `cursor` is omitted and the next manifest page
+        when an opaque cursor is supplied. Every read reauthorizes the receipt
+        and each manifest item against current sensitivity, lifecycle, retention,
+        and principal grants before rehydrating canonical content. Newly hidden
+        items are omitted without revealing their identifiers or counts. An
+        absent or hidden receipt returns the same redacted `404` response.
+
+        A cursor is valid only for this receipt and its immutable manifest. The
+        receipt never persists raw query text or returned memory content.
+        Invalid, cross-receipt, and cross-scope cursors return the same redacted
+        `404` response as an absent or hidden receipt.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/RetrievalId'
+        - $ref: '#/components/parameters/RetrievalCursor'
+      responses:
+        '200':
+          description: Currently authorized page of the durable retrieval receipt
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/RetrievalUnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -527,6 +634,25 @@ components:
       schema:
         type: string
         format: uuid
+    RetrievalId:
+      name: retrieval_id
+      in: path
+      required: true
+      description: Service-created UUIDv7 durable retrieval-receipt identifier
+      schema:
+        type: string
+        format: uuid
+    RetrievalCursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        Opaque cursor for the next page of this receipt's immutable manifest.
+        Clients must not inspect, alter, or reuse it with another receipt.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1055,6 +1181,298 @@ components:
           maxLength: 255
       description: Immutable identity of the policy that authorized derivation
 
+    CurrentRetrievalPerspective:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          const: current
+      description: Use one server snapshot for valid and recorded time
+
+    AsOfRetrievalPerspective:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - valid_at
+        - recorded_at
+      properties:
+        kind:
+          type: string
+          const: as_of
+        valid_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        recorded_at:
+          $ref: '#/components/schemas/UtcDateTime'
+      description: |
+        Select revisions effective at `valid_at` and already known at
+        `recorded_at`. A future recorded-time coordinate is rejected.
+
+    RetrievalPerspective:
+      oneOf:
+        - $ref: '#/components/schemas/CurrentRetrievalPerspective'
+        - $ref: '#/components/schemas/AsOfRetrievalPerspective'
+      discriminator:
+        propertyName: kind
+        mapping:
+          current: '#/components/schemas/CurrentRetrievalPerspective'
+          as_of: '#/components/schemas/AsOfRetrievalPerspective'
+
+    RetrievalFilters:
+      type: object
+      additionalProperties: false
+      description: |
+        Optional exact narrowing filters. An empty object applies no additional
+        narrowing; every supplied filter still intersects trusted authority and
+        can never widen it.
+      properties:
+        case_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        namespaces:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 255
+        keys:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 512
+        sensitivities:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          description: |
+            Operator-defined labels that narrow the authenticated principal's
+            trusted allowlist; they never widen it.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 255
+
+    CreateRetrievalRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - query
+        - perspective
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: |
+            Raw user search text accepted by a safe PostgreSQL web-search
+            parser. Only its digest is retained in the durable receipt.
+        perspective:
+          $ref: '#/components/schemas/RetrievalPerspective'
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+        policy_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Optional immutable server policy to pin for this receipt
+        filters:
+          $ref: '#/components/schemas/RetrievalFilters'
+      description: |
+        The compact serialized JSON body is bounded independently of schema
+        limits. Requests over that service limit receive `413`.
+
+    RetrievalPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - version
+        - digest
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 255
+        version:
+          type: string
+          minLength: 1
+          maxLength: 255
+        digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 digest of the immutable retrieval policy
+
+    RetrievalScore:
+      type: object
+      additionalProperties: false
+      required:
+        - component
+        - value
+      properties:
+        component:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: |
+            Open namespaced score component. Clients must ignore components they
+            do not understand; component names are additive within `/v1`.
+        value:
+          type: string
+          pattern: '^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,12})?$'
+          description: Deterministic base-10 fixed-point value
+
+    RetrievalAuthorizationReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - decision
+        - scope_digest
+      properties:
+        decision:
+          type: string
+          const: authorized
+        scope_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: |
+            Digest of the trusted principal, tenant, subject, and current
+            sensitivity allowlist; it contains no raw grants or hidden candidate
+            counts. A narrower current grant produces a different digest.
+
+    RetrievalItem:
+      type: object
+      additionalProperties: false
+      required:
+        - memory_kind
+        - fact_id
+        - revision_id
+        - namespace
+        - key
+        - value
+        - evidence_episode_ids
+        - scores
+      properties:
+        memory_kind:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: |
+            Open namespaced result kind; the initial lexical policy returns
+            `fact_revision`. Clients must ignore kinds they do not understand.
+        fact_id:
+          type: string
+          format: uuid
+        revision_id:
+          type: string
+          format: uuid
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+        key:
+          type: string
+          minLength: 1
+          maxLength: 512
+        value:
+          description: |
+            Canonical value rehydrated only after current authorization. It is
+            not stored in the receipt manifest.
+          not:
+            type: 'null'
+        evidence_episode_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        scores:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RetrievalScore'
+
+    RetrievalReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - subject_id
+        - retrieval_id
+        - status
+        - evaluated_at
+        - valid_at
+        - recorded_at
+        - policy
+        - authorization
+        - document_schema_version
+        - items
+        - next_cursor
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        subject_id:
+          type: string
+          format: uuid
+        retrieval_id:
+          type: string
+          format: uuid
+          description: Service-created UUIDv7 durable receipt identifier
+        status:
+          type: string
+          enum: [results, abstained]
+          description: |
+            `abstained` means no currently authorized item satisfied the query
+            and policy; `items` is then empty.
+        evaluated_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        valid_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        recorded_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        policy:
+          $ref: '#/components/schemas/RetrievalPolicy'
+        authorization:
+          $ref: '#/components/schemas/RetrievalAuthorizationReceipt'
+        document_schema_version:
+          type: integer
+          minimum: 1
+          description: Schema version of the rebuildable search projection
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/RetrievalItem'
+        next_cursor:
+          description: |
+            Opaque next-page cursor, or `null` when the currently authorized
+            manifest has no later page.
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 2048
+            - type: 'null'
+
     CreateFactRequest:
       type: object
       additionalProperties: false
@@ -1339,7 +1757,8 @@ components:
         `checkpoint-already-exists`, `checkpoint-precondition-required`,
         `checkpoint-too-large`, `retention-policy-rejected`,
         `invalid-valid-time`, `idempotency-key-reused`, `future-recorded-time`,
-        `fact-precondition-required`,
+        `fact-precondition-required`, `retrieval-request-too-large`,
+        `unprocessable-request`,
         `unsupported-media-type`, `rate-limit-exceeded`, `internal-error`, and
         `service-unavailable` under `https://palimpsest.dev/problems/`.
       required:
@@ -1515,6 +1934,32 @@ components:
       description: |
         The bounded inline checkpoint state or effect transition batch exceeds
         the supported limit; stable type `checkpoint-too-large`.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    RetrievalPayloadTooLarge:
+      description: |
+        The bounded retrieval query, filter set, or serialized request body
+        exceeds the supported limit; stable type `retrieval-request-too-large`.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    RetrievalUnprocessableEntity:
+      description: |
+        Syntactically valid retrieval input violates supported request or
+        temporal semantics, or reuses an idempotency key with different
+        content. Stable types: `unprocessable-request`,
+        `future-recorded-time`, and `idempotency-key-reused`. A cursor that does
+        not identify a position in this authorized receipt returns the redacted
+        `resource-not-found` response instead.
       headers:
         Cache-Control:
           $ref: '#/components/headers/PrivateNoStore'
