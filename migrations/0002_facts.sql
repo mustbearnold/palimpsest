@@ -7,8 +7,8 @@ CREATE TABLE memory.facts (
     subject_id uuid NOT NULL,
     case_id uuid NOT NULL,
     fact_id uuid NOT NULL,
-    namespace text NOT NULL CHECK (btrim(namespace) <> ''),
-    fact_key text NOT NULL CHECK (btrim(fact_key) <> ''),
+    namespace text NOT NULL CHECK (btrim(namespace) <> '' AND length(namespace) <= 255),
+    fact_key text NOT NULL CHECK (btrim(fact_key) <> '' AND length(fact_key) <= 512),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp()
         CHECK (isfinite(created_at)),
     schema_version integer NOT NULL CHECK (schema_version > 0),
@@ -32,10 +32,16 @@ CREATE TABLE memory.fact_revisions (
     value jsonb NOT NULL CHECK (value <> 'null'::jsonb),
     confidence numeric(5, 4) NOT NULL CHECK (confidence BETWEEN 0 AND 1),
     writer_principal_id text NOT NULL CHECK (btrim(writer_principal_id) <> ''),
-    write_policy_id text NOT NULL CHECK (btrim(write_policy_id) <> ''),
-    write_policy_version text NOT NULL CHECK (btrim(write_policy_version) <> ''),
-    sensitivity text NOT NULL CHECK (btrim(sensitivity) <> ''),
-    retention_policy_id text NOT NULL CHECK (btrim(retention_policy_id) <> ''),
+    write_policy_id text NOT NULL CHECK (
+        btrim(write_policy_id) <> '' AND length(write_policy_id) <= 255
+    ),
+    write_policy_version text NOT NULL CHECK (
+        btrim(write_policy_version) <> '' AND length(write_policy_version) <= 255
+    ),
+    sensitivity text NOT NULL CHECK (btrim(sensitivity) <> '' AND length(sensitivity) <= 255),
+    retention_policy_id text NOT NULL CHECK (
+        btrim(retention_policy_id) <> '' AND length(retention_policy_id) <= 255
+    ),
     schema_version integer NOT NULL CHECK (schema_version > 0),
     content_sha256 character(64) NOT NULL
         CHECK (content_sha256 ~ '^[0-9a-f]{64}$'),

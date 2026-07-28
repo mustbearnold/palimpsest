@@ -12,8 +12,10 @@ use axum::{
 };
 use palimpsest_application::{MemoryService, ServiceError};
 use palimpsest_domain::{
-    AppendEpisode, CaseId, CreateFact, Episode, EpisodeId, FactId, FactView, PrincipalScope,
-    Provenance, RevisionId, SubjectId, SupersedeFact, TenantId, ValidTime, WritePolicy,
+    AppendEpisode, CaseId, CreateFact, Episode, EpisodeId, EpisodeKind, FactId, FactKey,
+    FactNamespace, FactView, PrincipalScope, Provenance, RetentionPolicyId, RevisionId,
+    Sensitivity, SubjectId, SupersedeFact, TenantId, ValidTime, WritePolicy, WritePolicyId,
+    WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -82,11 +84,11 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
 #[serde(deny_unknown_fields)]
 struct AppendEpisodeRequest {
     case_id: Uuid,
-    kind: String,
+    kind: EpisodeKind,
     observed_at: String,
     provenance: Provenance,
-    sensitivity: String,
-    retention_policy_id: String,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
     payload: Value,
 }
 
@@ -100,24 +102,24 @@ struct ValidTimeRequest {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WritePolicyRequest {
-    id: String,
-    version: String,
+    id: WritePolicyId,
+    version: WritePolicyVersion,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateFactRequest {
     case_id: Uuid,
-    namespace: String,
-    key: String,
+    namespace: FactNamespace,
+    key: FactKey,
     value: Value,
     observed_at: String,
     valid_time: ValidTimeRequest,
     evidence_episode_ids: Vec<Uuid>,
     write_policy: WritePolicyRequest,
     confidence: f64,
-    sensitivity: String,
-    retention_policy_id: String,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,8 +132,8 @@ struct SupersedeFactRequest {
     evidence_episode_ids: Vec<Uuid>,
     write_policy: WritePolicyRequest,
     confidence: f64,
-    sensitivity: String,
-    retention_policy_id: String,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
 }
 
 #[derive(Debug, Deserialize)]
@@ -151,9 +153,7 @@ async fn append_episode(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
-    let Json(request) = payload.map_err(|error| {
-        Problem::bad_request("invalid_json", "Request JSON is invalid", error.body_text())
-    })?;
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = OffsetDateTime::parse(&request.observed_at, &Rfc3339).map_err(|error| {
         Problem::bad_request(
             "invalid_observed_at",
@@ -222,9 +222,7 @@ async fn create_fact(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
-    let Json(request) = payload.map_err(|error| {
-        Problem::bad_request("invalid_json", "Request JSON is invalid", error.body_text())
-    })?;
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
     let valid_from = parse_time("valid_time.from", &request.valid_time.from)?;
     let valid_until = request
@@ -308,9 +306,7 @@ async fn supersede_fact(
     let principal = authenticate(&state, &headers)?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let expected_head_revision_id = require_if_match(&headers)?;
-    let Json(request) = payload.map_err(|error| {
-        Problem::bad_request("invalid_json", "Request JSON is invalid", error.body_text())
-    })?;
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
     let valid_from = parse_time("valid_time.from", &request.valid_time.from)?;
     let valid_until = request
@@ -403,9 +399,12 @@ fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<PrincipalScope,
 }
 
 fn require_idempotency_key(headers: &HeaderMap) -> Result<&str, Problem> {
-    headers
+    let value = headers
         .get("idempotency-key")
-        .and_then(|value| value.to_str().ok())
+        .ok_or_else(Problem::idempotency_key_required)?;
+    value
+        .to_str()
+        .ok()
         .filter(|value| !value.is_empty() && value.len() <= 255)
         .ok_or_else(|| {
             Problem::bad_request(
@@ -534,121 +533,186 @@ fn fact_response(
 #[derive(Debug, Serialize)]
 struct Problem {
     #[serde(rename = "type")]
-    type_uri: &'static str,
+    type_uri: String,
     title: &'static str,
     status: u16,
     code: &'static str,
     detail: String,
+    trace_id: String,
 }
 
 impl Problem {
-    fn bad_request(code: &'static str, title: &'static str, detail: impl Into<String>) -> Self {
+    fn new(
+        type_suffix: &'static str,
+        title: &'static str,
+        status: StatusCode,
+        code: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
         Self {
-            type_uri: "https://palimpsest.dev/problems/invalid-request",
+            type_uri: format!("https://palimpsest.dev/problems/{type_suffix}"),
             title,
-            status: StatusCode::BAD_REQUEST.as_u16(),
+            status: status.as_u16(),
             code,
             detail: detail.into(),
+            trace_id: Uuid::now_v7().to_string(),
+        }
+    }
+
+    fn bad_request(code: &'static str, title: &'static str, detail: impl Into<String>) -> Self {
+        Self::new(
+            "invalid-request",
+            title,
+            StatusCode::BAD_REQUEST,
+            code,
+            detail,
+        )
+    }
+
+    fn from_json_rejection(error: JsonRejection) -> Self {
+        if error.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+            Self::new(
+                "unsupported-media-type",
+                "Content type is unsupported",
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_media_type",
+                "Use Content-Type: application/json.",
+            )
+        } else {
+            Self::bad_request("invalid_json", "Request JSON is invalid", error.body_text())
         }
     }
 
     fn unauthorized() -> Self {
-        Self {
-            type_uri: "https://palimpsest.dev/problems/unauthorized",
-            title: "Authentication required",
-            status: StatusCode::UNAUTHORIZED.as_u16(),
-            code: "unauthorized",
-            detail: "Supply a valid bearer token.".to_owned(),
-        }
+        Self::new(
+            "authentication-required",
+            "Authentication required",
+            StatusCode::UNAUTHORIZED,
+            "authentication_required",
+            "Supply a valid bearer token.",
+        )
+    }
+
+    fn idempotency_key_required() -> Self {
+        Self::new(
+            "idempotency-key-required",
+            "Idempotency key is required",
+            StatusCode::BAD_REQUEST,
+            "idempotency_key_required",
+            "Supply a non-empty Idempotency-Key header.",
+        )
     }
 
     fn precondition_required() -> Self {
-        Self {
-            type_uri: "https://palimpsest.dev/problems/fact-precondition-required",
-            title: "Fact precondition is required",
-            status: StatusCode::PRECONDITION_REQUIRED.as_u16(),
-            code: "fact_precondition_required",
-            detail: "Supply exactly one strong fact ETag in If-Match.".to_owned(),
-        }
+        Self::new(
+            "fact-precondition-required",
+            "Fact precondition is required",
+            StatusCode::PRECONDITION_REQUIRED,
+            "fact_precondition_required",
+            "Supply exactly one strong fact ETag in If-Match.",
+        )
     }
 
     fn from_service(error: ServiceError) -> Self {
         match error {
-            ServiceError::NotFound => Self {
-                type_uri: "https://palimpsest.dev/problems/not-found",
-                title: "Resource not found",
-                status: StatusCode::NOT_FOUND.as_u16(),
-                code: "not_found",
-                detail: "No resource was found in the authorized scope.".to_owned(),
-            },
-            ServiceError::Conflict => Self {
-                type_uri: "https://palimpsest.dev/problems/conflict",
-                title: "Request conflict",
-                status: StatusCode::CONFLICT.as_u16(),
-                code: "conflict",
-                detail: "The request conflicts with existing data.".to_owned(),
-            },
-            ServiceError::IdempotencyKeyReused => Self {
-                type_uri: "https://palimpsest.dev/problems/idempotency-key-reused",
-                title: "Idempotency key was already used",
-                status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
-                code: "idempotency_key_reused",
-                detail: "Use a new Idempotency-Key for a different request.".to_owned(),
-            },
-            ServiceError::IdempotencyInProgress => Self {
-                type_uri: "https://palimpsest.dev/problems/idempotency-in-progress",
-                title: "Idempotent request is in progress",
-                status: StatusCode::CONFLICT.as_u16(),
-                code: "idempotency_in_progress",
-                detail: "Retry the identical request after a short delay.".to_owned(),
-            },
-            ServiceError::PreconditionFailed => Self {
-                type_uri: "https://palimpsest.dev/problems/stale-fact",
-                title: "Fact precondition failed",
-                status: StatusCode::PRECONDITION_FAILED.as_u16(),
-                code: "stale_fact",
-                detail: "Fetch the current fact and retry with its ETag.".to_owned(),
-            },
-            ServiceError::SupersessionConflict => Self {
-                type_uri: "https://palimpsest.dev/problems/supersession-conflict",
-                title: "Fact supersession conflicts with the current head",
-                status: StatusCode::CONFLICT.as_u16(),
-                code: "supersession_conflict",
-                detail: "supersedes_revision_id must identify the current fact head.".to_owned(),
-            },
-            ServiceError::FutureRecordedTime => Self {
-                type_uri: "https://palimpsest.dev/problems/future-recorded-time",
-                title: "Recorded-time coordinate is in the future",
-                status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
-                code: "future_recorded_time",
-                detail: "recorded_at cannot be later than the request snapshot.".to_owned(),
-            },
+            ServiceError::NotFound => Self::new(
+                "resource-not-found",
+                "Resource not found",
+                StatusCode::NOT_FOUND,
+                "resource_not_found",
+                "No resource was found in the authorized scope.",
+            ),
+            ServiceError::Conflict => Self::new(
+                "fact-key-conflict",
+                "Fact key already exists",
+                StatusCode::CONFLICT,
+                "fact_key_conflict",
+                "The fact identity already exists in this scope.",
+            ),
+            ServiceError::IdempotencyKeyReused => Self::new(
+                "idempotency-key-reused",
+                "Idempotency key was already used",
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "idempotency_key_reused",
+                "Use a new Idempotency-Key for a different request.",
+            ),
+            ServiceError::IdempotencyInProgress => Self::new(
+                "idempotency-in-progress",
+                "Idempotent request is in progress",
+                StatusCode::CONFLICT,
+                "idempotency_in_progress",
+                "Retry the identical request after a short delay.",
+            ),
+            ServiceError::PreconditionFailed => Self::new(
+                "stale-fact",
+                "Fact precondition failed",
+                StatusCode::PRECONDITION_FAILED,
+                "stale_fact",
+                "Fetch the current fact and retry with its ETag.",
+            ),
+            ServiceError::SupersessionConflict => Self::new(
+                "supersession-conflict",
+                "Fact supersession conflicts with the current head",
+                StatusCode::CONFLICT,
+                "supersession_conflict",
+                "supersedes_revision_id must identify the current fact head.",
+            ),
+            ServiceError::FutureRecordedTime => Self::new(
+                "future-recorded-time",
+                "Recorded-time coordinate is in the future",
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "future_recorded_time",
+                "recorded_at cannot be later than the request snapshot.",
+            ),
             ServiceError::Invalid(detail) => {
                 Self::bad_request("invalid_request", "Request is invalid", detail)
             }
-            ServiceError::Unavailable => Self::internal("The persistence operation failed."),
+            ServiceError::Unavailable => Self::new(
+                "service-unavailable",
+                "Service unavailable",
+                StatusCode::SERVICE_UNAVAILABLE,
+                "service_unavailable",
+                "The persistence operation failed.",
+            ),
         }
     }
 
     fn internal(detail: impl Into<String>) -> Self {
-        Self {
-            type_uri: "https://palimpsest.dev/problems/internal",
-            title: "Internal service error",
-            status: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            code: "internal",
-            detail: detail.into(),
-        }
+        Self::new(
+            "internal-error",
+            "Internal service error",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            detail,
+        )
     }
 }
 
 impl IntoResponse for Problem {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (
+        let retryable = self.type_uri.ends_with("/idempotency-in-progress")
+            || status == StatusCode::SERVICE_UNAVAILABLE;
+        let mut response = (
             status,
             [(header::CONTENT_TYPE, "application/problem+json")],
             Json(self),
         )
-            .into_response()
+            .into_response();
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        if status == StatusCode::UNAUTHORIZED {
+            response
+                .headers_mut()
+                .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+        }
+        if retryable {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
+        }
+        response
     }
 }

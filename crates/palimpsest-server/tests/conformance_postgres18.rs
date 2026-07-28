@@ -2,7 +2,7 @@ use anyhow::{Context, Result, ensure};
 use std::{str::FromStr, sync::Arc};
 
 use palimpsest_conformance::{
-    Target, creates_an_attributable_fact_revision, cross_tenant_read_fails_closed,
+    Target, creates_an_attributable_fact_revision, cross_scope_reads_fail_closed,
     reconstructs_both_temporal_axes, records_and_reads_an_immutable_episode,
     supersedes_the_fact_head,
 };
@@ -13,7 +13,7 @@ use tokio::net::TcpListener;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn records_and_reads_an_immutable_episode_over_http_and_postgres() -> Result<()> {
+async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> {
     let database_url = std::env::var("PALIMPSEST_TEST_DATABASE_URL").unwrap_or_else(|_| {
         "postgresql://mustbearnold@localhost/postgres?host=/var/run/postgresql".to_owned()
     });
@@ -52,6 +52,8 @@ async fn records_and_reads_an_immutable_episode_over_http_and_postgres() -> Resu
         principal_b_bearer_token: "principal-b-test-token".to_owned(),
         principal_b_tenant_id: Uuid::parse_str("019be000-0000-7000-8000-000000000110")?,
         principal_b_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000120")?,
+        principal_c_bearer_token: "principal-c-test-token".to_owned(),
+        principal_c_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000220")?,
     };
     let result = async {
         palimpsest_postgres::migrate(&pool).await?;
@@ -72,6 +74,14 @@ async fn records_and_reads_an_immutable_episode_over_http_and_postgres() -> Resu
                     subject_ids: vec![SubjectId(target.principal_b_subject_id)],
                 },
             ),
+            (
+                target.principal_c_bearer_token.clone(),
+                PrincipalScope {
+                    principal_id: PrincipalId("principal-c".to_owned()),
+                    tenant_id: TenantId(tenant_id),
+                    subject_ids: vec![SubjectId(target.principal_c_subject_id)],
+                },
+            ),
         ]));
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
@@ -88,7 +98,7 @@ async fn records_and_reads_an_immutable_episode_over_http_and_postgres() -> Resu
             creates_an_attributable_fact_revision(&scenario_target).await?;
             supersedes_the_fact_head(&scenario_target).await?;
             reconstructs_both_temporal_axes(&scenario_target).await?;
-            cross_tenant_read_fails_closed(&scenario_target).await
+            cross_scope_reads_fail_closed(&scenario_target).await
         }
         .await;
         server.abort();

@@ -24,6 +24,72 @@ uuid_id!(EpisodeId);
 uuid_id!(FactId);
 uuid_id!(RevisionId);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextValueError {
+    kind: &'static str,
+    max_length: usize,
+}
+
+impl std::fmt::Display for TextValueError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} must contain 1 to {} characters",
+            self.kind, self.max_length
+        )
+    }
+}
+
+impl std::error::Error for TextValueError {}
+
+macro_rules! text_value {
+    ($name:ident, $max_length:expr) => {
+        #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = TextValueError;
+
+            fn try_from(value: String) -> Result<Self, Self::Error> {
+                if value.trim().is_empty() || value.chars().count() > $max_length {
+                    Err(TextValueError {
+                        kind: stringify!($name),
+                        max_length: $max_length,
+                    })
+                } else {
+                    Ok(Self(value))
+                }
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                Self::try_from(value).map_err(serde::de::Error::custom)
+            }
+        }
+    };
+}
+
+text_value!(EpisodeKind, 255);
+text_value!(SourceType, 255);
+text_value!(Sensitivity, 255);
+text_value!(RetentionPolicyId, 255);
+text_value!(FactNamespace, 255);
+text_value!(FactKey, 512);
+text_value!(WritePolicyId, 255);
+text_value!(WritePolicyVersion, 255);
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct PrincipalId(pub String);
@@ -43,7 +109,7 @@ impl PrincipalScope {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Provenance {
-    pub source_type: String,
+    pub source_type: SourceType,
     pub source_uri: Option<String>,
     pub external_id: Option<String>,
 }
@@ -53,11 +119,11 @@ pub struct AppendEpisode {
     pub tenant_id: TenantId,
     pub subject_id: SubjectId,
     pub case_id: CaseId,
-    pub kind: String,
+    pub kind: EpisodeKind,
     pub observed_at: OffsetDateTime,
     pub provenance: Provenance,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
     pub payload: Value,
 }
 
@@ -67,12 +133,12 @@ pub struct NewEpisode {
     pub subject_id: SubjectId,
     pub case_id: CaseId,
     pub episode_id: EpisodeId,
-    pub kind: String,
+    pub kind: EpisodeKind,
     pub observed_at: OffsetDateTime,
     pub writer_principal_id: PrincipalId,
     pub provenance: Provenance,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
     pub schema_version: u32,
     pub payload: Value,
     pub payload_sha256: String,
@@ -84,15 +150,15 @@ pub struct Episode {
     pub subject_id: SubjectId,
     pub case_id: CaseId,
     pub episode_id: EpisodeId,
-    pub kind: String,
+    pub kind: EpisodeKind,
     #[serde(with = "time::serde::rfc3339")]
     pub observed_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
     pub recorded_at: OffsetDateTime,
     pub writer_principal_id: PrincipalId,
     pub provenance: Provenance,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
     pub schema_version: u32,
     pub payload: Value,
     pub payload_sha256: String,
@@ -108,8 +174,8 @@ pub struct ValidTime {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WritePolicy {
-    pub id: String,
-    pub version: String,
+    pub id: WritePolicyId,
+    pub version: WritePolicyVersion,
 }
 
 #[derive(Clone, Debug)]
@@ -117,16 +183,16 @@ pub struct CreateFact {
     pub tenant_id: TenantId,
     pub subject_id: SubjectId,
     pub case_id: CaseId,
-    pub namespace: String,
-    pub key: String,
+    pub namespace: FactNamespace,
+    pub key: FactKey,
     pub value: Value,
     pub observed_at: OffsetDateTime,
     pub valid_time: ValidTime,
     pub evidence_episode_ids: Vec<EpisodeId>,
     pub write_policy: WritePolicy,
     pub confidence: f64,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
 }
 
 #[derive(Clone, Debug)]
@@ -136,16 +202,16 @@ pub struct NewFact {
     pub case_id: CaseId,
     pub fact_id: FactId,
     pub revision_id: RevisionId,
-    pub namespace: String,
-    pub key: String,
+    pub namespace: FactNamespace,
+    pub key: FactKey,
     pub value: Value,
     pub observed_at: OffsetDateTime,
     pub valid_time: ValidTime,
     pub evidence_episode_ids: Vec<EpisodeId>,
     pub write_policy: WritePolicy,
     pub confidence: f64,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
     pub writer_principal_id: PrincipalId,
     pub schema_version: u32,
     pub value_sha256: String,
@@ -163,8 +229,8 @@ pub struct SupersedeFact {
     pub evidence_episode_ids: Vec<EpisodeId>,
     pub write_policy: WritePolicy,
     pub confidence: f64,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
 }
 
 #[derive(Clone, Debug)]
@@ -181,8 +247,8 @@ pub struct NewFactRevision {
     pub evidence_episode_ids: Vec<EpisodeId>,
     pub write_policy: WritePolicy,
     pub confidence: f64,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
     pub writer_principal_id: PrincipalId,
     pub schema_version: u32,
     pub value_sha256: String,
@@ -197,8 +263,8 @@ pub struct FactRevision {
     pub revision_id: RevisionId,
     pub revision_number: u64,
     pub supersedes_revision_id: Option<RevisionId>,
-    pub namespace: String,
-    pub key: String,
+    pub namespace: FactNamespace,
+    pub key: FactKey,
     pub value: Value,
     #[serde(with = "time::serde::rfc3339")]
     pub observed_at: OffsetDateTime,
@@ -208,8 +274,8 @@ pub struct FactRevision {
     pub evidence_episode_ids: Vec<EpisodeId>,
     pub write_policy: WritePolicy,
     pub confidence: f64,
-    pub sensitivity: String,
-    pub retention_policy_id: String,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
     pub writer_principal_id: PrincipalId,
     pub schema_version: u32,
 }
@@ -220,8 +286,8 @@ pub struct FactView {
     pub subject_id: SubjectId,
     pub case_id: CaseId,
     pub fact_id: FactId,
-    pub namespace: String,
-    pub key: String,
+    pub namespace: FactNamespace,
+    pub key: FactKey,
     pub head_revision_id: RevisionId,
     #[serde(with = "time::serde::rfc3339")]
     pub evaluated_at: OffsetDateTime,

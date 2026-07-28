@@ -291,11 +291,11 @@ impl MemoryService {
             value: &command.value,
             valid_time: &command.valid_time,
             evidence_episode_ids: &command.evidence_episode_ids,
-            write_policy_id: &command.write_policy.id,
-            write_policy_version: &command.write_policy.version,
+            write_policy_id: command.write_policy.id.as_str(),
+            write_policy_version: command.write_policy.version.as_str(),
             confidence: command.confidence,
-            sensitivity: &command.sensitivity,
-            retention_policy_id: &command.retention_policy_id,
+            sensitivity: command.sensitivity.as_str(),
+            retention_policy_id: command.retention_policy_id.as_str(),
         })?;
         let fingerprint_input = json!({
             "operation_id": "supersedeFact",
@@ -396,9 +396,6 @@ fn validate_append(command: &AppendEpisode) -> Result<(), ServiceError> {
             return Err(ServiceError::Invalid(format!("{name} must not be empty")));
         }
     }
-    if command.payload.is_null() {
-        return Err(ServiceError::Invalid("payload must not be null".to_owned()));
-    }
     Ok(())
 }
 
@@ -406,13 +403,6 @@ fn validate_create_fact(command: &CreateFact) -> Result<(), ServiceError> {
     for (name, value) in [
         ("namespace", command.namespace.as_str()),
         ("key", command.key.as_str()),
-        ("write_policy.id", command.write_policy.id.as_str()),
-        (
-            "write_policy.version",
-            command.write_policy.version.as_str(),
-        ),
-        ("sensitivity", command.sensitivity.as_str()),
-        ("retention_policy_id", command.retention_policy_id.as_str()),
     ] {
         if value.trim().is_empty() {
             return Err(ServiceError::Invalid(format!("{name} must not be empty")));
@@ -422,11 +412,11 @@ fn validate_create_fact(command: &CreateFact) -> Result<(), ServiceError> {
         value: &command.value,
         valid_time: &command.valid_time,
         evidence_episode_ids: &command.evidence_episode_ids,
-        write_policy_id: &command.write_policy.id,
-        write_policy_version: &command.write_policy.version,
+        write_policy_id: command.write_policy.id.as_str(),
+        write_policy_version: command.write_policy.version.as_str(),
         confidence: command.confidence,
-        sensitivity: &command.sensitivity,
-        retention_policy_id: &command.retention_policy_id,
+        sensitivity: command.sensitivity.as_str(),
+        retention_policy_id: command.retention_policy_id.as_str(),
     })
 }
 

@@ -20,6 +20,8 @@ pub struct Target {
     pub principal_b_bearer_token: String,
     pub principal_b_tenant_id: Uuid,
     pub principal_b_subject_id: Uuid,
+    pub principal_c_bearer_token: String,
+    pub principal_c_subject_id: Uuid,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -237,6 +239,33 @@ pub async fn records_and_reads_an_immutable_episode(target: &Target) -> Result<(
         serde_json::to_value(&read)? == serde_json::to_value(&created)?,
         "read episode differs from appended episode"
     );
+
+    let null_payload_response = client
+        .post(&collection_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "episode-null-payload-create")
+        .json(&json!({
+            "case_id": case_id,
+            "kind": "signal",
+            "observed_at": "2026-01-11T09:00:00Z",
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": "episode-null-payload"
+            },
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+            "payload": null
+        }))
+        .send()
+        .await?;
+    ensure!(
+        null_payload_response.status() == StatusCode::CREATED,
+        "JSON null episode payload returned {}",
+        null_payload_response.status()
+    );
+    let null_payload: Episode = null_payload_response.json().await?;
+    ensure!(null_payload.payload.is_null(), "JSON null payload changed");
 
     Ok(())
 }
@@ -684,72 +713,27 @@ pub async fn reconstructs_both_temporal_axes(target: &Target) -> Result<()> {
     Ok(())
 }
 
-pub async fn cross_tenant_read_fails_closed(target: &Target) -> Result<()> {
+pub async fn cross_scope_reads_fail_closed(target: &Target) -> Result<()> {
     let client = Client::new();
-    let case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000101")?;
-    let episode_url = format!(
-        "{}/v1/tenants/{}/subjects/{}/episodes",
-        target.base_url.trim_end_matches('/'),
-        target.principal_b_tenant_id,
-        target.principal_b_subject_id
-    );
-    let episode_response = client
-        .post(episode_url)
-        .bearer_auth(&target.principal_b_bearer_token)
-        .header("Idempotency-Key", "tenant-b-episode-create")
-        .json(&json!({
-            "case_id": case_id,
-            "kind": "message",
-            "observed_at": "2026-03-10T09:00:00Z",
-            "provenance": {
-                "source_type": "conformance",
-                "source_uri": null,
-                "external_id": "tenant-b-episode"
-            },
-            "sensitivity": "restricted",
-            "retention_policy_id": "standard",
-            "payload": {"secret": "tenant-b-only"}
-        }))
-        .send()
-        .await?;
-    ensure!(
-        episode_response.status() == StatusCode::CREATED,
-        "tenant B setup episode returned {}",
-        episode_response.status()
-    );
-    let episode: Episode = episode_response.json().await?;
-
+    let tenant_b_fact = create_private_fact(
+        &client,
+        target,
+        PrivateFactFixture {
+            bearer_token: &target.principal_b_bearer_token,
+            tenant_id: target.principal_b_tenant_id,
+            subject_id: target.principal_b_subject_id,
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000101")?,
+            name: "tenant-b",
+            secret: "tenant-b-only",
+        },
+    )
+    .await?;
     let facts_url = format!(
         "{}/v1/tenants/{}/subjects/{}/facts",
         target.base_url.trim_end_matches('/'),
         target.principal_b_tenant_id,
         target.principal_b_subject_id
     );
-    let fact_response = client
-        .post(&facts_url)
-        .bearer_auth(&target.principal_b_bearer_token)
-        .header("Idempotency-Key", "tenant-b-fact-create")
-        .json(&json!({
-            "case_id": case_id,
-            "namespace": "case.private",
-            "key": "tenant_secret",
-            "value": "tenant-b-only",
-            "observed_at": "2026-03-10T09:00:00Z",
-            "valid_time": {"from": "2026-03-10T00:00:00Z", "until": null},
-            "evidence_episode_ids": [episode.episode_id],
-            "write_policy": {"id": "direct-evidence", "version": "1"},
-            "confidence": 1.0,
-            "sensitivity": "restricted",
-            "retention_policy_id": "standard"
-        }))
-        .send()
-        .await?;
-    ensure!(
-        fact_response.status() == StatusCode::CREATED,
-        "tenant B setup fact returned {}",
-        fact_response.status()
-    );
-    let tenant_b_fact: FactView = fact_response.json().await?;
     let tenant_b_fact_url = format!("{facts_url}/{}", tenant_b_fact.fact_id);
 
     let authorized = client
@@ -779,7 +763,24 @@ pub async fn cross_tenant_read_fails_closed(target: &Target) -> Result<()> {
             .is_some_and(|value| value == "application/problem+json"),
         "cross-tenant rejection is not RFC 9457 problem JSON"
     );
+    ensure!(
+        hidden
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .is_some_and(|value| value == "private, no-store"),
+        "cross-tenant problem can be cached"
+    );
     let hidden_problem: Value = hidden.json().await?;
+    ensure!(
+        hidden_problem["type"] == "https://palimpsest.dev/problems/resource-not-found",
+        "cross-tenant problem type is not stable"
+    );
+    ensure!(
+        hidden_problem["trace_id"]
+            .as_str()
+            .is_some_and(|value| Uuid::parse_str(value).is_ok()),
+        "cross-tenant problem has no valid trace_id"
+    );
     ensure!(
         !hidden_problem.to_string().contains("tenant-b-only"),
         "cross-tenant problem disclosed private value"
@@ -791,5 +792,138 @@ pub async fn cross_tenant_read_fails_closed(target: &Target) -> Result<()> {
         "cross-tenant problem disclosed hidden identifier"
     );
 
+    let subject_c_fact = create_private_fact(
+        &client,
+        target,
+        PrivateFactFixture {
+            bearer_token: &target.principal_c_bearer_token,
+            tenant_id: target.tenant_id,
+            subject_id: target.principal_c_subject_id,
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000201")?,
+            name: "subject-c",
+            secret: "subject-c-only",
+        },
+    )
+    .await?;
+    let subject_c_fact_url = format!(
+        "{}/v1/tenants/{}/subjects/{}/facts/{}",
+        target.base_url.trim_end_matches('/'),
+        target.tenant_id,
+        target.principal_c_subject_id,
+        subject_c_fact.fact_id
+    );
+    let authorized = client
+        .get(&subject_c_fact_url)
+        .bearer_auth(&target.principal_c_bearer_token)
+        .send()
+        .await?;
+    ensure!(
+        authorized.status() == StatusCode::OK,
+        "subject C cannot read its own fact"
+    );
+    let hidden = client
+        .get(subject_c_fact_url)
+        .bearer_auth(&target.bearer_token)
+        .send()
+        .await?;
+    ensure!(
+        hidden.status() == StatusCode::NOT_FOUND,
+        "cross-subject fact read returned {}, expected cloaked 404",
+        hidden.status()
+    );
+    let hidden_problem: Value = hidden.json().await?;
+    ensure!(
+        !hidden_problem.to_string().contains("subject-c-only"),
+        "cross-subject problem disclosed private value"
+    );
+    ensure!(
+        !hidden_problem
+            .to_string()
+            .contains(&subject_c_fact.fact_id.to_string()),
+        "cross-subject problem disclosed hidden identifier"
+    );
+
     Ok(())
+}
+
+struct PrivateFactFixture<'a> {
+    bearer_token: &'a str,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+    case_id: Uuid,
+    name: &'a str,
+    secret: &'a str,
+}
+
+async fn create_private_fact(
+    client: &Client,
+    target: &Target,
+    fixture: PrivateFactFixture<'_>,
+) -> Result<FactView> {
+    let PrivateFactFixture {
+        bearer_token,
+        tenant_id,
+        subject_id,
+        case_id,
+        name: fixture_name,
+        secret,
+    } = fixture;
+    let episode_url = format!(
+        "{}/v1/tenants/{tenant_id}/subjects/{subject_id}/episodes",
+        target.base_url.trim_end_matches('/')
+    );
+    let episode_response = client
+        .post(episode_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", format!("{fixture_name}-episode-create"))
+        .json(&json!({
+            "case_id": case_id,
+            "kind": "message",
+            "observed_at": "2026-03-10T09:00:00Z",
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": format!("{fixture_name}-episode")
+            },
+            "sensitivity": "restricted",
+            "retention_policy_id": "standard",
+            "payload": {"secret": secret}
+        }))
+        .send()
+        .await?;
+    ensure!(
+        episode_response.status() == StatusCode::CREATED,
+        "{fixture_name} setup episode returned {}",
+        episode_response.status()
+    );
+    let episode: Episode = episode_response.json().await?;
+    let facts_url = format!(
+        "{}/v1/tenants/{tenant_id}/subjects/{subject_id}/facts",
+        target.base_url.trim_end_matches('/')
+    );
+    let fact_response = client
+        .post(facts_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", format!("{fixture_name}-fact-create"))
+        .json(&json!({
+            "case_id": case_id,
+            "namespace": "case.private",
+            "key": "scoped_secret",
+            "value": secret,
+            "observed_at": "2026-03-10T09:00:00Z",
+            "valid_time": {"from": "2026-03-10T00:00:00Z", "until": null},
+            "evidence_episode_ids": [episode.episode_id],
+            "write_policy": {"id": "direct-evidence", "version": "1"},
+            "confidence": 1.0,
+            "sensitivity": "restricted",
+            "retention_policy_id": "standard"
+        }))
+        .send()
+        .await?;
+    ensure!(
+        fact_response.status() == StatusCode::CREATED,
+        "{fixture_name} setup fact returned {}",
+        fact_response.status()
+    );
+    fact_response.json().await.map_err(Into::into)
 }

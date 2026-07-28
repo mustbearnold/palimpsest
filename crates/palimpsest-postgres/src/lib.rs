@@ -4,19 +4,21 @@ use palimpsest_application::{
     RepositoryError,
 };
 use palimpsest_domain::{
-    CaseId, Episode, EpisodeId, FactId, FactRevision, FactView, NewEpisode, NewFact, PrincipalId,
-    Provenance, RevisionId, SubjectId, TenantId, ValidTime, WritePolicy,
+    CaseId, Episode, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace, FactRevision,
+    FactView, NewEpisode, NewFact, PrincipalId, Provenance, RetentionPolicyId, RevisionId,
+    Sensitivity, SourceType, SubjectId, TenantId, ValidTime, WritePolicy, WritePolicyId,
+    WritePolicyVersion,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
 use time::OffsetDateTime;
 
 #[derive(Clone)]
-pub struct PostgresEpisodeRepository {
+pub struct PostgresMemoryRepository {
     pool: PgPool,
 }
 
 #[async_trait]
-impl FactRepository for PostgresEpisodeRepository {
+impl FactRepository for PostgresMemoryRepository {
     async fn create(
         &self,
         fact: NewFact,
@@ -25,62 +27,15 @@ impl FactRepository for PostgresEpisodeRepository {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, fact.tenant_id, fact.subject_id).await?;
 
-        let reserved = sqlx::query(
-            r#"
-            INSERT INTO memory.idempotency_receipts (
-                tenant_id, subject_id, principal_id, operation_id,
-                idempotency_key, request_fingerprint, state
-            )
-            VALUES ($1, $2, $3, 'createFact', $4, $5, 'in_progress')
-            ON CONFLICT (tenant_id, principal_id, operation_id, idempotency_key)
-                DO NOTHING
-            RETURNING true AS reserved
-            "#,
-        )
-        .bind(fact.tenant_id.0)
-        .bind(fact.subject_id.0)
-        .bind(&fact.writer_principal_id.0)
-        .bind(&idempotency.key)
-        .bind(&idempotency.fingerprint)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(unexpected)?
-        .is_some();
-
-        if !reserved {
-            let receipt = sqlx::query(
-                r#"
-                SELECT request_fingerprint, state, resource_fact_id, response_body
-                FROM memory.idempotency_receipts
-                WHERE tenant_id = $1
-                  AND principal_id = $2
-                  AND operation_id = 'createFact'
-                  AND idempotency_key = $3
-                FOR UPDATE
-                "#,
-            )
-            .bind(fact.tenant_id.0)
-            .bind(&fact.writer_principal_id.0)
-            .bind(&idempotency.key)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(unexpected)?;
-            let stored_fingerprint: String =
-                receipt.try_get("request_fingerprint").map_err(unexpected)?;
-            if stored_fingerprint != idempotency.fingerprint {
-                return Err(RepositoryError::IdempotencyKeyReused);
-            }
-            let state: String = receipt.try_get("state").map_err(unexpected)?;
-            if state != "completed" {
-                return Err(RepositoryError::IdempotencyInProgress);
-            }
-            let resource_fact_id: Option<uuid::Uuid> =
-                receipt.try_get("resource_fact_id").map_err(unexpected)?;
-            resource_fact_id.ok_or_else(|| {
-                RepositoryError::Unexpected("completed idempotency receipt has no fact".to_owned())
-            })?;
-            let response_body: serde_json::Value =
-                receipt.try_get("response_body").map_err(unexpected)?;
+        let idempotency_scope = IdempotencyScope {
+            tenant_id: fact.tenant_id,
+            subject_id: fact.subject_id,
+            principal_id: &fact.writer_principal_id.0,
+            operation_id: "createFact",
+        };
+        if let Some(response_body) =
+            reserve_idempotency(&mut transaction, idempotency_scope, &idempotency).await?
+        {
             let view: FactView = serde_json::from_value(response_body).map_err(unexpected)?;
             transaction.commit().await.map_err(unexpected)?;
             return Ok(FactMutationOutcome {
@@ -101,8 +56,8 @@ impl FactRepository for PostgresEpisodeRepository {
         .bind(fact.subject_id.0)
         .bind(fact.case_id.0)
         .bind(fact.fact_id.0)
-        .bind(&fact.namespace)
-        .bind(&fact.key)
+        .bind(fact.namespace.as_str())
+        .bind(fact.key.as_str())
         .bind(i32::try_from(fact.schema_version).map_err(|error| {
             RepositoryError::Unexpected(format!("schema version is out of range: {error}"))
         })?)
@@ -136,10 +91,10 @@ impl FactRepository for PostgresEpisodeRepository {
         .bind(&fact.value)
         .bind(fact.confidence)
         .bind(&fact.writer_principal_id.0)
-        .bind(&fact.write_policy.id)
-        .bind(&fact.write_policy.version)
-        .bind(&fact.sensitivity)
-        .bind(&fact.retention_policy_id)
+        .bind(fact.write_policy.id.as_str())
+        .bind(fact.write_policy.version.as_str())
+        .bind(fact.sensitivity.as_str())
+        .bind(fact.retention_policy_id.as_str())
         .bind(i32::try_from(fact.schema_version).map_err(|error| {
             RepositoryError::Unexpected(format!("schema version is out of range: {error}"))
         })?)
@@ -171,6 +126,23 @@ impl FactRepository for PostgresEpisodeRepository {
             .map_err(map_sqlx)?;
         }
 
+        record_governed_write(
+            &mut transaction,
+            GovernedWrite {
+                tenant_id: fact.tenant_id,
+                subject_id: fact.subject_id,
+                case_id: fact.case_id,
+                principal_id: &fact.writer_principal_id.0,
+                operation_id: "createFact",
+                request_fingerprint: &idempotency.fingerprint,
+                resource_episode_id: None,
+                resource_fact_id: Some(fact.fact_id),
+                resource_revision_id: Some(fact.revision_id),
+                event_type: "memory.fact.created.v1",
+            },
+        )
+        .await?;
+
         let view = select_fact_view(
             &mut transaction,
             fact.tenant_id,
@@ -190,29 +162,20 @@ impl FactRepository for PostgresEpisodeRepository {
             "/v1/tenants/{}/subjects/{}/facts/{}",
             view.tenant_id.0, view.subject_id.0, view.fact_id.0
         );
-        sqlx::query(
-            r#"
-            UPDATE memory.idempotency_receipts
-            SET state = 'completed', resource_fact_id = $1,
-                response_status = 201, response_body = $2, response_etag = $3,
-                response_location = $4, completed_at = clock_timestamp()
-            WHERE tenant_id = $5
-              AND principal_id = $6
-              AND operation_id = 'createFact'
-              AND idempotency_key = $7
-              AND state = 'in_progress'
-            "#,
+        complete_idempotency(
+            &mut transaction,
+            IdempotencyCompletion {
+                scope: idempotency_scope,
+                key: &idempotency.key,
+                resource_episode_id: None,
+                resource_fact_id: Some(fact.fact_id),
+                status: 201,
+                body: response_body,
+                etag: &response_etag,
+                location: &response_location,
+            },
         )
-        .bind(fact.fact_id.0)
-        .bind(response_body)
-        .bind(response_etag)
-        .bind(response_location)
-        .bind(fact.tenant_id.0)
-        .bind(&fact.writer_principal_id.0)
-        .bind(&idempotency.key)
-        .execute(&mut *transaction)
-        .await
-        .map_err(unexpected)?;
+        .await?;
 
         transaction.commit().await.map_err(unexpected)?;
         Ok(FactMutationOutcome {
@@ -257,62 +220,15 @@ impl FactRepository for PostgresEpisodeRepository {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, revision.tenant_id, revision.subject_id).await?;
 
-        let reserved = sqlx::query(
-            r#"
-            INSERT INTO memory.idempotency_receipts (
-                tenant_id, subject_id, principal_id, operation_id,
-                idempotency_key, request_fingerprint, state
-            )
-            VALUES ($1, $2, $3, 'supersedeFact', $4, $5, 'in_progress')
-            ON CONFLICT (tenant_id, principal_id, operation_id, idempotency_key)
-                DO NOTHING
-            RETURNING true AS reserved
-            "#,
-        )
-        .bind(revision.tenant_id.0)
-        .bind(revision.subject_id.0)
-        .bind(&revision.writer_principal_id.0)
-        .bind(&idempotency.key)
-        .bind(&idempotency.fingerprint)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(unexpected)?
-        .is_some();
-
-        if !reserved {
-            let receipt = sqlx::query(
-                r#"
-                SELECT request_fingerprint, state, resource_fact_id, response_body
-                FROM memory.idempotency_receipts
-                WHERE tenant_id = $1
-                  AND principal_id = $2
-                  AND operation_id = 'supersedeFact'
-                  AND idempotency_key = $3
-                FOR UPDATE
-                "#,
-            )
-            .bind(revision.tenant_id.0)
-            .bind(&revision.writer_principal_id.0)
-            .bind(&idempotency.key)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(unexpected)?;
-            let stored_fingerprint: String =
-                receipt.try_get("request_fingerprint").map_err(unexpected)?;
-            if stored_fingerprint != idempotency.fingerprint {
-                return Err(RepositoryError::IdempotencyKeyReused);
-            }
-            let state: String = receipt.try_get("state").map_err(unexpected)?;
-            if state != "completed" {
-                return Err(RepositoryError::IdempotencyInProgress);
-            }
-            let resource_fact_id: Option<uuid::Uuid> =
-                receipt.try_get("resource_fact_id").map_err(unexpected)?;
-            resource_fact_id.ok_or_else(|| {
-                RepositoryError::Unexpected("completed idempotency receipt has no fact".to_owned())
-            })?;
-            let response_body: serde_json::Value =
-                receipt.try_get("response_body").map_err(unexpected)?;
+        let idempotency_scope = IdempotencyScope {
+            tenant_id: revision.tenant_id,
+            subject_id: revision.subject_id,
+            principal_id: &revision.writer_principal_id.0,
+            operation_id: "supersedeFact",
+        };
+        if let Some(response_body) =
+            reserve_idempotency(&mut transaction, idempotency_scope, &idempotency).await?
+        {
             let view: FactView = serde_json::from_value(response_body).map_err(unexpected)?;
             transaction.commit().await.map_err(unexpected)?;
             return Ok(FactMutationOutcome {
@@ -397,10 +313,10 @@ impl FactRepository for PostgresEpisodeRepository {
         .bind(&revision.value)
         .bind(revision.confidence)
         .bind(&revision.writer_principal_id.0)
-        .bind(&revision.write_policy.id)
-        .bind(&revision.write_policy.version)
-        .bind(&revision.sensitivity)
-        .bind(&revision.retention_policy_id)
+        .bind(revision.write_policy.id.as_str())
+        .bind(revision.write_policy.version.as_str())
+        .bind(revision.sensitivity.as_str())
+        .bind(revision.retention_policy_id.as_str())
         .bind(i32::try_from(revision.schema_version).map_err(unexpected)?)
         .bind(&revision.value_sha256)
         .fetch_one(&mut *transaction)
@@ -430,6 +346,23 @@ impl FactRepository for PostgresEpisodeRepository {
             .map_err(map_sqlx)?;
         }
 
+        record_governed_write(
+            &mut transaction,
+            GovernedWrite {
+                tenant_id: revision.tenant_id,
+                subject_id: revision.subject_id,
+                case_id,
+                principal_id: &revision.writer_principal_id.0,
+                operation_id: "supersedeFact",
+                request_fingerprint: &idempotency.fingerprint,
+                resource_episode_id: None,
+                resource_fact_id: Some(revision.fact_id),
+                resource_revision_id: Some(revision.revision_id),
+                event_type: "memory.fact.superseded.v1",
+            },
+        )
+        .await?;
+
         let view = select_fact_view(
             &mut transaction,
             revision.tenant_id,
@@ -449,29 +382,20 @@ impl FactRepository for PostgresEpisodeRepository {
             "/v1/tenants/{}/subjects/{}/facts/{}",
             view.tenant_id.0, view.subject_id.0, view.fact_id.0
         );
-        sqlx::query(
-            r#"
-            UPDATE memory.idempotency_receipts
-            SET state = 'completed', resource_fact_id = $1,
-                response_status = 200, response_body = $2, response_etag = $3,
-                response_location = $4, completed_at = clock_timestamp()
-            WHERE tenant_id = $5
-              AND principal_id = $6
-              AND operation_id = 'supersedeFact'
-              AND idempotency_key = $7
-              AND state = 'in_progress'
-            "#,
+        complete_idempotency(
+            &mut transaction,
+            IdempotencyCompletion {
+                scope: idempotency_scope,
+                key: &idempotency.key,
+                resource_episode_id: None,
+                resource_fact_id: Some(revision.fact_id),
+                status: 200,
+                body: response_body,
+                etag: &response_etag,
+                location: &response_location,
+            },
         )
-        .bind(revision.fact_id.0)
-        .bind(response_body)
-        .bind(response_etag)
-        .bind(response_location)
-        .bind(revision.tenant_id.0)
-        .bind(&revision.writer_principal_id.0)
-        .bind(&idempotency.key)
-        .execute(&mut *transaction)
-        .await
-        .map_err(unexpected)?;
+        .await?;
 
         transaction.commit().await.map_err(unexpected)?;
         Ok(FactMutationOutcome {
@@ -514,7 +438,7 @@ impl FactRepository for PostgresEpisodeRepository {
     }
 }
 
-impl PostgresEpisodeRepository {
+impl PostgresMemoryRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -525,7 +449,7 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 }
 
 #[async_trait]
-impl EpisodeRepository for PostgresEpisodeRepository {
+impl EpisodeRepository for PostgresMemoryRepository {
     async fn append(
         &self,
         episode: NewEpisode,
@@ -534,64 +458,15 @@ impl EpisodeRepository for PostgresEpisodeRepository {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, episode.tenant_id, episode.subject_id).await?;
 
-        let reserved = sqlx::query(
-            r#"
-            INSERT INTO memory.idempotency_receipts (
-                tenant_id, subject_id, principal_id, operation_id,
-                idempotency_key, request_fingerprint, state
-            )
-            VALUES ($1, $2, $3, 'appendEpisode', $4, $5, 'in_progress')
-            ON CONFLICT (tenant_id, principal_id, operation_id, idempotency_key)
-                DO NOTHING
-            RETURNING true AS reserved
-            "#,
-        )
-        .bind(episode.tenant_id.0)
-        .bind(episode.subject_id.0)
-        .bind(&episode.writer_principal_id.0)
-        .bind(&idempotency.key)
-        .bind(&idempotency.fingerprint)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(unexpected)?
-        .is_some();
-
-        if !reserved {
-            let receipt = sqlx::query(
-                r#"
-                SELECT request_fingerprint, state, resource_episode_id, response_body
-                FROM memory.idempotency_receipts
-                WHERE tenant_id = $1
-                  AND principal_id = $2
-                  AND operation_id = 'appendEpisode'
-                  AND idempotency_key = $3
-                FOR UPDATE
-                "#,
-            )
-            .bind(episode.tenant_id.0)
-            .bind(&episode.writer_principal_id.0)
-            .bind(&idempotency.key)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(unexpected)?;
-            let stored_fingerprint: String =
-                receipt.try_get("request_fingerprint").map_err(unexpected)?;
-            if stored_fingerprint != idempotency.fingerprint {
-                return Err(RepositoryError::IdempotencyKeyReused);
-            }
-            let state: String = receipt.try_get("state").map_err(unexpected)?;
-            if state != "completed" {
-                return Err(RepositoryError::IdempotencyInProgress);
-            }
-            let episode_id: Option<uuid::Uuid> =
-                receipt.try_get("resource_episode_id").map_err(unexpected)?;
-            episode_id.ok_or_else(|| {
-                RepositoryError::Unexpected(
-                    "completed idempotency receipt has no episode".to_owned(),
-                )
-            })?;
-            let response_body: serde_json::Value =
-                receipt.try_get("response_body").map_err(unexpected)?;
+        let idempotency_scope = IdempotencyScope {
+            tenant_id: episode.tenant_id,
+            subject_id: episode.subject_id,
+            principal_id: &episode.writer_principal_id.0,
+            operation_id: "appendEpisode",
+        };
+        if let Some(response_body) =
+            reserve_idempotency(&mut transaction, idempotency_scope, &idempotency).await?
+        {
             let stored: Episode = serde_json::from_value(response_body).map_err(unexpected)?;
             transaction.commit().await.map_err(unexpected)?;
             return Ok(AppendOutcome {
@@ -617,14 +492,14 @@ impl EpisodeRepository for PostgresEpisodeRepository {
         .bind(episode.subject_id.0)
         .bind(episode.case_id.0)
         .bind(episode.episode_id.0)
-        .bind(&episode.kind)
+        .bind(episode.kind.as_str())
         .bind(episode.observed_at)
         .bind(&episode.writer_principal_id.0)
-        .bind(&episode.provenance.source_type)
+        .bind(episode.provenance.source_type.as_str())
         .bind(&episode.provenance.source_uri)
         .bind(&episode.provenance.external_id)
-        .bind(&episode.sensitivity)
-        .bind(&episode.retention_policy_id)
+        .bind(episode.sensitivity.as_str())
+        .bind(episode.retention_policy_id.as_str())
         .bind(i32::try_from(episode.schema_version).map_err(|error| {
             RepositoryError::Unexpected(format!("schema version is out of range: {error}"))
         })?)
@@ -634,6 +509,23 @@ impl EpisodeRepository for PostgresEpisodeRepository {
         .await
         .map_err(map_sqlx)?;
 
+        record_governed_write(
+            &mut transaction,
+            GovernedWrite {
+                tenant_id: episode.tenant_id,
+                subject_id: episode.subject_id,
+                case_id: episode.case_id,
+                principal_id: &episode.writer_principal_id.0,
+                operation_id: "appendEpisode",
+                request_fingerprint: &idempotency.fingerprint,
+                resource_episode_id: Some(episode.episode_id),
+                resource_fact_id: None,
+                resource_revision_id: None,
+                event_type: "memory.episode.appended.v1",
+            },
+        )
+        .await?;
+
         let stored_episode = episode_from_row(&row)?;
         let response_body = serde_json::to_value(&stored_episode).map_err(unexpected)?;
         let response_etag = format!("\"{}\"", stored_episode.payload_sha256);
@@ -641,29 +533,20 @@ impl EpisodeRepository for PostgresEpisodeRepository {
             "/v1/tenants/{}/subjects/{}/episodes/{}",
             stored_episode.tenant_id.0, stored_episode.subject_id.0, stored_episode.episode_id.0
         );
-        sqlx::query(
-            r#"
-            UPDATE memory.idempotency_receipts
-            SET state = 'completed', resource_episode_id = $1,
-                response_status = 201, response_body = $2, response_etag = $3,
-                response_location = $4, completed_at = clock_timestamp()
-            WHERE tenant_id = $5
-              AND principal_id = $6
-              AND operation_id = 'appendEpisode'
-              AND idempotency_key = $7
-              AND state = 'in_progress'
-            "#,
+        complete_idempotency(
+            &mut transaction,
+            IdempotencyCompletion {
+                scope: idempotency_scope,
+                key: &idempotency.key,
+                resource_episode_id: Some(episode.episode_id),
+                resource_fact_id: None,
+                status: 201,
+                body: response_body,
+                etag: &response_etag,
+                location: &response_location,
+            },
         )
-        .bind(episode.episode_id.0)
-        .bind(response_body)
-        .bind(response_etag)
-        .bind(response_location)
-        .bind(episode.tenant_id.0)
-        .bind(&episode.writer_principal_id.0)
-        .bind(&idempotency.key)
-        .execute(&mut *transaction)
-        .await
-        .map_err(unexpected)?;
+        .await?;
 
         transaction.commit().await.map_err(unexpected)?;
         Ok(AppendOutcome {
@@ -714,8 +597,8 @@ async fn select_fact_view(
         return Ok(None);
     };
     let case_id = CaseId(metadata.try_get("case_id").map_err(unexpected)?);
-    let namespace: String = metadata.try_get("namespace").map_err(unexpected)?;
-    let key: String = metadata.try_get("fact_key").map_err(unexpected)?;
+    let namespace = text_value_from_row::<FactNamespace>(&metadata, "namespace")?;
+    let key = text_value_from_row::<FactKey>(&metadata, "fact_key")?;
 
     let head = sqlx::query(
         r#"
@@ -795,13 +678,22 @@ async fn select_fact_view(
     }))
 }
 
+fn text_value_from_row<T>(row: &PgRow, column: &'static str) -> Result<T, RepositoryError>
+where
+    T: TryFrom<String>,
+    T::Error: std::fmt::Display,
+{
+    let raw: String = row.try_get(column).map_err(unexpected)?;
+    T::try_from(raw).map_err(unexpected)
+}
+
 fn fact_revision_from_row(
     row: &PgRow,
     tenant_id: TenantId,
     subject_id: SubjectId,
     fact_id: FactId,
-    namespace: &str,
-    key: &str,
+    namespace: &FactNamespace,
+    key: &FactKey,
 ) -> Result<FactRevision, RepositoryError> {
     let revision_number: i64 = row.try_get("revision_no").map_err(unexpected)?;
     let schema_version: i32 = row.try_get("schema_version").map_err(unexpected)?;
@@ -817,8 +709,8 @@ fn fact_revision_from_row(
         revision_id: RevisionId(row.try_get("revision_id").map_err(unexpected)?),
         revision_number: u64::try_from(revision_number).map_err(unexpected)?,
         supersedes_revision_id: supersedes_revision_id.map(RevisionId),
-        namespace: namespace.to_owned(),
-        key: key.to_owned(),
+        namespace: namespace.clone(),
+        key: key.clone(),
         value: row.try_get("value").map_err(unexpected)?,
         observed_at: row.try_get("observed_at").map_err(unexpected)?,
         recorded_at: row.try_get("recorded_at").map_err(unexpected)?,
@@ -828,12 +720,12 @@ fn fact_revision_from_row(
         },
         evidence_episode_ids: evidence_episode_ids.into_iter().map(EpisodeId).collect(),
         write_policy: WritePolicy {
-            id: row.try_get("write_policy_id").map_err(unexpected)?,
-            version: row.try_get("write_policy_version").map_err(unexpected)?,
+            id: text_value_from_row::<WritePolicyId>(row, "write_policy_id")?,
+            version: text_value_from_row::<WritePolicyVersion>(row, "write_policy_version")?,
         },
         confidence: row.try_get("confidence").map_err(unexpected)?,
-        sensitivity: row.try_get("sensitivity").map_err(unexpected)?,
-        retention_policy_id: row.try_get("retention_policy_id").map_err(unexpected)?,
+        sensitivity: text_value_from_row::<Sensitivity>(row, "sensitivity")?,
+        retention_policy_id: text_value_from_row::<RetentionPolicyId>(row, "retention_policy_id")?,
         writer_principal_id: PrincipalId(row.try_get("writer_principal_id").map_err(unexpected)?),
         schema_version: u32::try_from(schema_version).map_err(unexpected)?,
     })
@@ -863,6 +755,211 @@ async fn select_episode(
     row.as_ref().map(episode_from_row).transpose()
 }
 
+struct GovernedWrite<'a> {
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    case_id: CaseId,
+    principal_id: &'a str,
+    operation_id: &'a str,
+    request_fingerprint: &'a str,
+    resource_episode_id: Option<EpisodeId>,
+    resource_fact_id: Option<FactId>,
+    resource_revision_id: Option<RevisionId>,
+    event_type: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct IdempotencyScope<'a> {
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    principal_id: &'a str,
+    operation_id: &'a str,
+}
+
+struct IdempotencyCompletion<'a> {
+    scope: IdempotencyScope<'a>,
+    key: &'a str,
+    resource_episode_id: Option<EpisodeId>,
+    resource_fact_id: Option<FactId>,
+    status: i16,
+    body: serde_json::Value,
+    etag: &'a str,
+    location: &'a str,
+}
+
+async fn reserve_idempotency(
+    transaction: &mut Transaction<'_, Postgres>,
+    scope: IdempotencyScope<'_>,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<serde_json::Value>, RepositoryError> {
+    let reserved = sqlx::query(
+        r#"
+        INSERT INTO memory.idempotency_receipts (
+            tenant_id, subject_id, principal_id, operation_id,
+            idempotency_key, request_fingerprint, state
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'in_progress')
+        ON CONFLICT (tenant_id, principal_id, operation_id, idempotency_key)
+            DO NOTHING
+        RETURNING true AS reserved
+        "#,
+    )
+    .bind(scope.tenant_id.0)
+    .bind(scope.subject_id.0)
+    .bind(scope.principal_id)
+    .bind(scope.operation_id)
+    .bind(&idempotency.key)
+    .bind(&idempotency.fingerprint)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unexpected)?
+    .is_some();
+    if reserved {
+        return Ok(None);
+    }
+
+    let receipt = sqlx::query(
+        r#"
+        SELECT request_fingerprint, state, response_body
+        FROM memory.idempotency_receipts
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND principal_id = $3
+          AND operation_id = $4
+          AND idempotency_key = $5
+        FOR UPDATE
+        "#,
+    )
+    .bind(scope.tenant_id.0)
+    .bind(scope.subject_id.0)
+    .bind(scope.principal_id)
+    .bind(scope.operation_id)
+    .bind(&idempotency.key)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    let stored_fingerprint: String = receipt.try_get("request_fingerprint").map_err(unexpected)?;
+    if stored_fingerprint != idempotency.fingerprint {
+        return Err(RepositoryError::IdempotencyKeyReused);
+    }
+    let state: String = receipt.try_get("state").map_err(unexpected)?;
+    if state != "completed" {
+        return Err(RepositoryError::IdempotencyInProgress);
+    }
+    receipt
+        .try_get("response_body")
+        .map(Some)
+        .map_err(unexpected)
+}
+
+async fn complete_idempotency(
+    transaction: &mut Transaction<'_, Postgres>,
+    completion: IdempotencyCompletion<'_>,
+) -> Result<(), RepositoryError> {
+    let result = sqlx::query(
+        r#"
+        UPDATE memory.idempotency_receipts
+        SET state = 'completed', resource_episode_id = $1, resource_fact_id = $2,
+            response_status = $3, response_body = $4, response_etag = $5,
+            response_location = $6, completed_at = clock_timestamp()
+        WHERE tenant_id = $7
+          AND subject_id = $8
+          AND principal_id = $9
+          AND operation_id = $10
+          AND idempotency_key = $11
+          AND state = 'in_progress'
+        "#,
+    )
+    .bind(completion.resource_episode_id.map(|id| id.0))
+    .bind(completion.resource_fact_id.map(|id| id.0))
+    .bind(completion.status)
+    .bind(completion.body)
+    .bind(completion.etag)
+    .bind(completion.location)
+    .bind(completion.scope.tenant_id.0)
+    .bind(completion.scope.subject_id.0)
+    .bind(completion.scope.principal_id)
+    .bind(completion.scope.operation_id)
+    .bind(completion.key)
+    .execute(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    if result.rows_affected() != 1 {
+        return Err(RepositoryError::Unexpected(
+            "idempotency receipt completion did not update one row".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn record_governed_write(
+    transaction: &mut Transaction<'_, Postgres>,
+    write: GovernedWrite<'_>,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO memory.write_audit_receipts (
+            tenant_id, subject_id, case_id, principal_id, operation_id,
+            authorization_decision, authorization_context, request_fingerprint,
+            resource_episode_id, resource_fact_id, resource_revision_id
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, 'authorized',
+            jsonb_build_object(
+                'principal_id', $4::text,
+                'tenant_id', $1::uuid,
+                'subject_id', $2::uuid
+            ),
+            $6, $7, $8, $9
+        )
+        "#,
+    )
+    .bind(write.tenant_id.0)
+    .bind(write.subject_id.0)
+    .bind(write.case_id.0)
+    .bind(write.principal_id)
+    .bind(write.operation_id)
+    .bind(write.request_fingerprint)
+    .bind(write.resource_episode_id.map(|id| id.0))
+    .bind(write.resource_fact_id.map(|id| id.0))
+    .bind(write.resource_revision_id.map(|id| id.0))
+    .execute(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO memory.outbox_intents (
+            tenant_id, subject_id, case_id, event_type,
+            resource_episode_id, resource_fact_id, resource_revision_id, payload
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            jsonb_strip_nulls(jsonb_build_object(
+                'schema_version', 1,
+                'tenant_id', $1::uuid,
+                'subject_id', $2::uuid,
+                'case_id', $3::uuid,
+                'episode_id', $5::uuid,
+                'fact_id', $6::uuid,
+                'revision_id', $7::uuid
+            ))
+        )
+        "#,
+    )
+    .bind(write.tenant_id.0)
+    .bind(write.subject_id.0)
+    .bind(write.case_id.0)
+    .bind(write.event_type)
+    .bind(write.resource_episode_id.map(|id| id.0))
+    .bind(write.resource_fact_id.map(|id| id.0))
+    .bind(write.resource_revision_id.map(|id| id.0))
+    .execute(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    Ok(())
+}
+
 async fn set_scope(
     transaction: &mut Transaction<'_, Postgres>,
     tenant_id: TenantId,
@@ -888,17 +985,17 @@ fn episode_from_row(row: &PgRow) -> Result<Episode, RepositoryError> {
         subject_id: SubjectId(row.try_get("subject_id").map_err(unexpected)?),
         case_id: CaseId(row.try_get("case_id").map_err(unexpected)?),
         episode_id: EpisodeId(row.try_get("episode_id").map_err(unexpected)?),
-        kind: row.try_get("kind").map_err(unexpected)?,
+        kind: text_value_from_row::<EpisodeKind>(row, "kind")?,
         observed_at: row.try_get("observed_at").map_err(unexpected)?,
         recorded_at: row.try_get("recorded_at").map_err(unexpected)?,
         writer_principal_id: PrincipalId(row.try_get("writer_principal_id").map_err(unexpected)?),
         provenance: Provenance {
-            source_type: row.try_get("source_type").map_err(unexpected)?,
+            source_type: text_value_from_row::<SourceType>(row, "source_type")?,
             source_uri: row.try_get("source_uri").map_err(unexpected)?,
             external_id: row.try_get("external_id").map_err(unexpected)?,
         },
-        sensitivity: row.try_get("sensitivity").map_err(unexpected)?,
-        retention_policy_id: row.try_get("retention_policy_id").map_err(unexpected)?,
+        sensitivity: text_value_from_row::<Sensitivity>(row, "sensitivity")?,
+        retention_policy_id: text_value_from_row::<RetentionPolicyId>(row, "retention_policy_id")?,
         schema_version: u32::try_from(schema_version).map_err(|error| {
             RepositoryError::Unexpected(format!("stored schema version is invalid: {error}"))
         })?,
