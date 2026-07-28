@@ -19,5 +19,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 palimpsest-conformance = { path = "../palimpsest-conformance" }
+reqwest.workspace = true
+serde_json.workspace = true
 sqlx.workspace = true
 uuid.workspace = true

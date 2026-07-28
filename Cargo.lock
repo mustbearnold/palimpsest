@@ -953,6 +953,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
  "uuid",
 ]
 
@@ -1003,6 +1004,8 @@ dependencies = [
  "palimpsest-domain",
  "palimpsest-http",
  "palimpsest-postgres",
+ "reqwest",
+ "serde_json",
  "sqlx",
  "tokio",
  "uuid",
