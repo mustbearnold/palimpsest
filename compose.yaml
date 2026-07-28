@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.5-pg18-trixie@sha256:9d2e61c7352b9e9f4798df5fd9a498f043f4cda1cdacc707de3d198650f4321e
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: palimpsest-bootstrap-local-only
+      POSTGRES_USER: palimpsest_bootstrap
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    ports:
+      - "127.0.0.1:${PALIMPSEST_POSTGRES_PORT:-5432}:5432"
+    stop_grace_period: 30s
+    volumes:
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - palimpsest-postgres-data:/var/lib/postgresql
+
+volumes:
+  palimpsest-postgres-data:
