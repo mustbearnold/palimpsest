@@ -672,6 +672,7 @@ components:
         case_id:
           type: string
           format: uuid
+          description: Fixed when the checkpoint lineage is created
         parent_revision_id:
           description: |
             `null` for initial creation. For an advance, the UUIDv7 identifier of
@@ -775,7 +776,6 @@ components:
       additionalProperties: false
       required:
         - observed_at
-        - external_reference
         - outcome_sha256
       properties:
         observed_at:
@@ -1334,11 +1334,12 @@ components:
         `idempotency-key-required`, `authentication-required`,
         `operation-forbidden`, `resource-not-found`, `fact-key-conflict`,
         `supersession-conflict`, `idempotency-in-progress`, `stale-fact`,
-        `checkpoint-parent-conflict`, `effect-key-conflict`,
-        `invalid-effect-transition`,
-        `stale-checkpoint`, `checkpoint-precondition-required`,
-        `invalid-valid-time`, `idempotency-key-reused`,
-        `future-recorded-time`, `fact-precondition-required`,
+        `checkpoint-parent-conflict`, `checkpoint-case-conflict`,
+        `effect-key-conflict`, `invalid-effect-transition`, `stale-checkpoint`,
+        `checkpoint-already-exists`, `checkpoint-precondition-required`,
+        `checkpoint-too-large`, `retention-policy-rejected`,
+        `invalid-valid-time`, `idempotency-key-reused`, `future-recorded-time`,
+        `fact-precondition-required`,
         `unsupported-media-type`, `rate-limit-exceeded`, `internal-error`, and
         `service-unavailable` under `https://palimpsest.dev/problems/`.
       required:
@@ -1431,7 +1432,7 @@ components:
     CheckpointConflict:
       description: |
         No mutation was committed. Stable types are
-        `checkpoint-parent-conflict`, `effect-key-conflict`,
+        `checkpoint-parent-conflict`, `checkpoint-case-conflict`, `effect-key-conflict`,
         `invalid-effect-transition`, and `idempotency-in-progress`. Parent
         conflict means the body does not name the head represented by the valid
         conditional header. Effect conflicts include preparing an existing

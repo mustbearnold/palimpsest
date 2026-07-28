@@ -36,6 +36,8 @@ pub enum RepositoryError {
     CheckpointPreconditionFailed,
     #[error("checkpoint parent does not name the current head")]
     CheckpointParentConflict,
+    #[error("checkpoint case does not match the existing lineage")]
+    CheckpointCaseConflict,
     #[error("checkpoint already exists")]
     CheckpointAlreadyExists,
     #[error("checkpoint has expired")]
@@ -158,12 +160,12 @@ pub enum ServiceError {
     InvalidValidTime(String),
     #[error("invalid request: {0}")]
     Invalid(String),
-    #[error("checkpoint precondition is required")]
-    CheckpointPreconditionRequired,
     #[error("checkpoint precondition failed")]
     CheckpointPreconditionFailed,
     #[error("checkpoint parent conflicts with the current head")]
     CheckpointParentConflict,
+    #[error("checkpoint case conflicts with the existing lineage")]
+    CheckpointCaseConflict,
     #[error("checkpoint already exists")]
     CheckpointAlreadyExists,
     #[error("checkpoint has expired")]
@@ -727,6 +729,7 @@ fn map_repository(error: RepositoryError) -> ServiceError {
         RepositoryError::FutureRecordedTime => ServiceError::FutureRecordedTime,
         RepositoryError::CheckpointPreconditionFailed => ServiceError::CheckpointPreconditionFailed,
         RepositoryError::CheckpointParentConflict => ServiceError::CheckpointParentConflict,
+        RepositoryError::CheckpointCaseConflict => ServiceError::CheckpointCaseConflict,
         RepositoryError::CheckpointAlreadyExists => ServiceError::CheckpointAlreadyExists,
         RepositoryError::CheckpointExpired => ServiceError::CheckpointExpired,
         RepositoryError::EffectKeyConflict => ServiceError::EffectKeyConflict,

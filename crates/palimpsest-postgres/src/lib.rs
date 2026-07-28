@@ -464,6 +464,9 @@ impl CheckpointRepository for PostgresMemoryRepository {
             reserve_idempotency(&mut transaction, idempotency_scope, &idempotency).await?
         {
             let view: CheckpointView = serde_json::from_value(response_body).map_err(unexpected)?;
+            if !checkpoint_revision_is_active(&mut transaction, &view).await? {
+                return Err(RepositoryError::CheckpointExpired);
+            }
             transaction.commit().await.map_err(unexpected)?;
             return Ok(CheckpointMutationOutcome {
                 view,
@@ -509,7 +512,7 @@ impl CheckpointRepository for PostgresMemoryRepository {
                     return Err(RepositoryError::CheckpointParentConflict);
                 }
                 if revision.case_id != head.case_id {
-                    return Err(RepositoryError::Conflict);
+                    return Err(RepositoryError::CheckpointCaseConflict);
                 }
                 let next_revision_number =
                     head.revision_number.checked_add(1).ok_or_else(|| {
@@ -700,6 +703,36 @@ impl CheckpointRepository for PostgresMemoryRepository {
         transaction.commit().await.map_err(unexpected)?;
         view.ok_or(RepositoryError::NotFound)
     }
+}
+
+async fn checkpoint_revision_is_active(
+    transaction: &mut Transaction<'_, Postgres>,
+    view: &CheckpointView,
+) -> Result<bool, RepositoryError> {
+    sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM memory.checkpoint_revisions
+            WHERE tenant_id = $1
+              AND subject_id = $2
+              AND agent_id = $3
+              AND thread_id = $4
+              AND checkpoint_id = $5
+              AND revision_id = $6
+              AND expires_at > clock_timestamp()
+        )
+        "#,
+    )
+    .bind(view.tenant_id.0)
+    .bind(view.subject_id.0)
+    .bind(view.agent_id.0)
+    .bind(view.thread_id.0)
+    .bind(view.checkpoint_id.0)
+    .bind(view.checkpoint_revision_id.0)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(unexpected)
 }
 
 impl PostgresMemoryRepository {

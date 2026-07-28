@@ -23,9 +23,9 @@ lost response can replay the exact committed outcome.
 
 Each accepted save writes a complete, independently resumable JSON snapshot as
 an immutable revision. Revisions form one linear parent chain per exact tenant,
-subject, agent, and thread scope. Public deltas, branching, history traversal,
-workflow scheduling, and provider execution are outside the first checkpoint
-interface.
+subject, agent, and thread scope; the case identifier is fixed when that lineage
+is created. Public deltas, branching, history traversal, workflow scheduling,
+and provider execution are outside the first checkpoint interface.
 
 External effects use an append-only `prepared` then `completed` lifecycle.
 Preparation creates a stable effect identifier before execution. The caller
@@ -59,6 +59,7 @@ to another tenant, subject, agent, or thread.
   external effect.
 - Framework adapters translate their native checkpoint state into the opaque
   JSON snapshot and never define Palimpsest scope, authority, or durability.
-- A black-box failure scenario must terminate after commit but before response,
-  restart against the same PostgreSQL database, and prove exact replay plus a
-  single externally applied effect.
+- Black-box failure scenarios must terminate after provider success but before
+  completion and after completion commit but before response. Both restart
+  against the same PostgreSQL database and prove stable-ID recovery, exact
+  replay, and a single externally applied effect.

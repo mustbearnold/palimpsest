@@ -16,11 +16,11 @@ use palimpsest_domain::{
     CreateFact, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace,
     FactView, PrincipalScope, Provenance, RetentionPolicyId, RevisionId, SaveCheckpoint,
     Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId, ValidTime, WritePolicy,
-    WritePolicyId, WritePolicyVersion,
+    WritePolicyId, WritePolicyVersion, parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub trait Authenticator: Send + Sync {
@@ -152,7 +152,7 @@ struct AsOfQuery {
 #[serde(deny_unknown_fields)]
 struct SaveCheckpointRequest {
     case_id: Uuid,
-    parent_revision_id: Option<Uuid>,
+    parent_revision_id: NullableUuid,
     state: Value,
     state_schema_version: u32,
     effect_transitions: Vec<EffectTransition>,
@@ -160,6 +160,9 @@ struct SaveCheckpointRequest {
     sensitivity: Sensitivity,
     retention_policy_id: RetentionPolicyId,
 }
+
+#[derive(Debug, Deserialize)]
+struct NullableUuid(Option<Uuid>);
 
 async fn save_checkpoint(
     State(state): State<AppState>,
@@ -187,7 +190,7 @@ async fn save_checkpoint(
                 agent_id,
                 thread_id,
                 case_id: CaseId(request.case_id),
-                parent_revision_id: request.parent_revision_id.map(CheckpointRevisionId),
+                parent_revision_id: request.parent_revision_id.0.map(CheckpointRevisionId),
                 state: request.state,
                 state_schema_version: request.state_schema_version,
                 effect_transitions: request.effect_transitions,
@@ -587,46 +590,13 @@ fn parse_uuid(field: &str, value: &str) -> Result<Uuid, Problem> {
 }
 
 fn parse_time(field: &str, value: &str) -> Result<OffsetDateTime, Problem> {
-    if !is_utc_microsecond_timestamp(value) {
-        return Err(Problem::bad_request(
-            "invalid_timestamp",
-            "Timestamp is invalid",
-            format!(
-                "{field} must be an RFC 3339 UTC timestamp ending in Z with at most six fractional digits"
-            ),
-        ));
-    }
-    OffsetDateTime::parse(value, &Rfc3339).map_err(|error| {
+    parse_utc_microsecond_timestamp(value).map_err(|error| {
         Problem::bad_request(
             "invalid_timestamp",
             "Timestamp is invalid",
-            format!("{field} must be RFC 3339: {error}"),
+            format!("{field}: {error}"),
         )
     })
-}
-
-fn is_utc_microsecond_timestamp(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    let fixed_digits = [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18];
-    let fixed_shape = bytes.len() >= 20
-        && fixed_digits
-            .into_iter()
-            .all(|index| bytes[index].is_ascii_digit())
-        && bytes[4] == b'-'
-        && bytes[7] == b'-'
-        && bytes[10] == b'T'
-        && bytes[13] == b':'
-        && bytes[16] == b':';
-    if !fixed_shape {
-        return false;
-    }
-    if bytes.len() == 20 {
-        return bytes[19] == b'Z';
-    }
-    (22..=27).contains(&bytes.len())
-        && bytes[19] == b'.'
-        && bytes[bytes.len() - 1] == b'Z'
-        && bytes[20..bytes.len() - 1].iter().all(u8::is_ascii_digit)
 }
 
 fn resource_response(
@@ -872,9 +842,6 @@ impl Problem {
                 "invalid_valid_time",
                 detail,
             ),
-            ServiceError::CheckpointPreconditionRequired => {
-                Self::checkpoint_precondition_required()
-            }
             ServiceError::CheckpointPreconditionFailed => Self::new(
                 "stale-checkpoint",
                 "Checkpoint precondition failed",
@@ -888,6 +855,13 @@ impl Problem {
                 StatusCode::CONFLICT,
                 "checkpoint_parent_conflict",
                 "parent_revision_id and If-Match must identify the current checkpoint head.",
+            ),
+            ServiceError::CheckpointCaseConflict => Self::new(
+                "checkpoint-case-conflict",
+                "Checkpoint case conflicts with the existing lineage",
+                StatusCode::CONFLICT,
+                "checkpoint_case_conflict",
+                "case_id is fixed when the checkpoint lineage is created.",
             ),
             ServiceError::CheckpointAlreadyExists => Self::new(
                 "checkpoint-already-exists",

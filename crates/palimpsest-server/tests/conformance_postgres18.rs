@@ -9,22 +9,23 @@ use axum::{
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     env,
     process::Stdio,
     str::FromStr,
     sync::{
-        Arc,
+        Arc, LazyLock, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
 
 use palimpsest_conformance::{
-    Target, creates_an_attributable_fact_revision, cross_scope_reads_fail_closed,
-    expires_only_the_targeted_checkpoint, reconstructs_both_temporal_axes,
-    records_and_reads_an_immutable_episode, rejects_cross_subject_idempotency_reuse,
-    rejects_invalid_domain_and_timestamp_inputs, saves_and_reads_a_resumable_checkpoint,
-    supersedes_the_fact_head,
+    Target, checkpoint_scopes_fail_closed, creates_an_attributable_fact_revision,
+    cross_scope_reads_fail_closed, expires_only_the_targeted_checkpoint,
+    reconstructs_both_temporal_axes, records_and_reads_an_immutable_episode,
+    rejects_cross_subject_idempotency_reuse, rejects_invalid_domain_and_timestamp_inputs,
+    saves_and_reads_a_resumable_checkpoint, supersedes_the_fact_head,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
 use palimpsest_http::StaticAuthenticator;
@@ -36,6 +37,9 @@ use tokio::{
 use uuid::Uuid;
 
 static PROVIDER_APPLICATIONS: AtomicUsize = AtomicUsize::new(0);
+static PROVIDER_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
+static PROVIDER_EFFECTS: LazyLock<Mutex<HashSet<Uuid>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 #[tokio::test]
 async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> {
@@ -148,6 +152,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             rejects_invalid_domain_and_timestamp_inputs(&scenario_target).await?;
             verify_governed_write_records(&pool, &scenario_target).await?;
             saves_and_reads_a_resumable_checkpoint(&scenario_target).await?;
+            checkpoint_scopes_fail_closed(&scenario_target).await?;
             expires_only_the_targeted_checkpoint(&scenario_target).await?;
             verify_checkpoint_governance(&pool, &scenario_target).await
         }
@@ -208,9 +213,16 @@ async fn crash_after_checkpoint_commit_child() -> Result<()> {
     Ok(())
 }
 
-async fn apply_mock_provider_effect(Path(_effect_id): Path<Uuid>) -> StatusCode {
-    PROVIDER_APPLICATIONS.fetch_add(1, Ordering::SeqCst);
-    StatusCode::CREATED
+async fn apply_mock_provider_effect(Path(effect_id): Path<Uuid>) -> StatusCode {
+    PROVIDER_ATTEMPTS.fetch_add(1, Ordering::SeqCst);
+    if PROVIDER_EFFECTS
+        .lock()
+        .expect("provider effect lock poisoned")
+        .insert(effect_id)
+    {
+        PROVIDER_APPLICATIONS.fetch_add(1, Ordering::SeqCst);
+    }
+    StatusCode::OK
 }
 
 async fn recovers_a_committed_effect_after_response_loss(
@@ -219,6 +231,11 @@ async fn recovers_a_committed_effect_after_response_loss(
     database_url: &str,
 ) -> Result<()> {
     PROVIDER_APPLICATIONS.store(0, Ordering::SeqCst);
+    PROVIDER_ATTEMPTS.store(0, Ordering::SeqCst);
+    PROVIDER_EFFECTS
+        .lock()
+        .expect("provider effect lock poisoned")
+        .clear();
 
     let provider_listener = TcpListener::bind("127.0.0.1:0").await?;
     let provider_address = provider_listener.local_addr()?;
@@ -322,8 +339,45 @@ async fn recovers_a_committed_effect_after_response_loss(
             .post(format!("http://{provider_address}/effects/{effect_id}"))
             .send()
             .await?;
-        ensure!(provider_response.status() == StatusCode::CREATED);
+        ensure!(provider_response.status() == StatusCode::OK);
+        ensure!(PROVIDER_ATTEMPTS.load(Ordering::SeqCst) == 1);
         ensure!(PROVIDER_APPLICATIONS.load(Ordering::SeqCst) == 1);
+
+        crash_server.kill().await?;
+        let _ = crash_server.wait().await?;
+        let recovery_address = reserve_local_address().await?;
+        let mut recovery_server = spawn_production_server(database_url, target, recovery_address)?;
+        wait_for_listener(recovery_address).await?;
+        let recovery_url = format!("http://{recovery_address}{checkpoint_path}");
+        let recovered_prepared: Value = client
+            .get(&recovery_url)
+            .bearer_auth(&target.bearer_token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        ensure!(recovered_prepared["checkpoint_revision_id"] == prepared_revision_id);
+        ensure!(recovered_prepared["effects"][0]["effect_id"] == effect_id);
+        ensure!(recovered_prepared["effects"][0]["status"] == "prepared");
+
+        let provider_retry = client
+            .post(format!("http://{provider_address}/effects/{effect_id}"))
+            .send()
+            .await?;
+        ensure!(provider_retry.status() == StatusCode::OK);
+        ensure!(PROVIDER_ATTEMPTS.load(Ordering::SeqCst) == 2);
+        ensure!(
+            PROVIDER_APPLICATIONS.load(Ordering::SeqCst) == 1,
+            "recovery retried the provider with the stable effect ID but applied it twice"
+        );
+        recovery_server.kill().await?;
+        let _ = recovery_server.wait().await?;
+
+        let completion_crash_address = reserve_local_address().await?;
+        let mut crash_server = spawn_crash_server(database_url, target, completion_crash_address)?;
+        wait_for_listener(completion_crash_address).await?;
+        let completion_url = format!("http://{completion_crash_address}{checkpoint_path}");
 
         let complete_body = json!({
             "case_id": case_id,
@@ -345,13 +399,13 @@ async fn recovers_a_committed_effect_after_response_loss(
         });
         let completion_task = tokio::spawn({
             let client = client.clone();
-            let fault_url = fault_url.clone();
+            let completion_url = completion_url.clone();
             let token = target.bearer_token.clone();
             let prepare_etag = prepare_etag.clone();
             let complete_body = complete_body.clone();
             async move {
                 client
-                    .put(fault_url)
+                    .put(completion_url)
                     .bearer_auth(token)
                     .header("Idempotency-Key", "checkpoint-run-321-complete")
                     .header(header::IF_MATCH, prepare_etag)
@@ -433,6 +487,7 @@ async fn recovers_a_committed_effect_after_response_loss(
                 PROVIDER_APPLICATIONS.load(Ordering::SeqCst) == 1,
                 "completed replay caused the external effect to be applied twice"
             );
+            ensure!(PROVIDER_ATTEMPTS.load(Ordering::SeqCst) == 2);
             verify_crash_recovery_records(pool, target, agent_id, thread_id).await
         }
         .await;

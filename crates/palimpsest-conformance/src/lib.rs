@@ -515,6 +515,49 @@ pub async fn saves_and_reads_a_resumable_checkpoint(target: &Target) -> Result<(
     )
     .await?;
 
+    for (idempotency_key, observed_at) in [
+        (
+            "checkpoint-run-301-invalid-receipt-offset",
+            "2026-07-29T14:30:00+13:00",
+        ),
+        (
+            "checkpoint-run-301-invalid-receipt-precision",
+            "2026-07-29T01:30:00.1234567Z",
+        ),
+    ] {
+        let invalid_receipt_response = client
+            .put(&checkpoint_url)
+            .bearer_auth(&target.bearer_token)
+            .header("Idempotency-Key", idempotency_key)
+            .header(header::IF_MATCH, &prepared_etag)
+            .json(&json!({
+                "case_id": case_id,
+                "parent_revision_id": prepared.checkpoint_revision_id,
+                "state": {"step": "must-not-complete"},
+                "state_schema_version": 1,
+                "effect_transitions": [{
+                    "type": "complete",
+                    "effect_id": prepared_effect.effect_id,
+                    "receipt": {
+                        "observed_at": observed_at,
+                        "external_reference": null,
+                        "outcome_sha256": "c".repeat(64)
+                    }
+                }],
+                "provenance": body["provenance"],
+                "sensitivity": "internal",
+                "retention_policy_id": "checkpoint-active-30d-v1"
+            }))
+            .send()
+            .await?;
+        assert_problem(
+            invalid_receipt_response,
+            StatusCode::BAD_REQUEST,
+            "invalid-request",
+        )
+        .await?;
+    }
+
     let receipt_digest = "a".repeat(64);
     let complete_body = json!({
         "case_id": case_id,
@@ -590,6 +633,30 @@ pub async fn saves_and_reads_a_resumable_checkpoint(target: &Target) -> Result<(
         "completion replay did not return the original committed representation"
     );
 
+    let wrong_case_response = client
+        .put(&checkpoint_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "checkpoint-run-301-wrong-case")
+        .header(header::IF_MATCH, &completed_etag)
+        .json(&json!({
+            "case_id": "019be000-0000-7000-8000-000000000399",
+            "parent_revision_id": completed.checkpoint_revision_id,
+            "state": {"step": "must-not-change-case"},
+            "state_schema_version": 1,
+            "effect_transitions": [],
+            "provenance": body["provenance"],
+            "sensitivity": "internal",
+            "retention_policy_id": "checkpoint-active-30d-v1"
+        }))
+        .send()
+        .await?;
+    assert_problem(
+        wrong_case_response,
+        StatusCode::CONFLICT,
+        "checkpoint-case-conflict",
+    )
+    .await?;
+
     let duplicate_prepare_response = client
         .put(&checkpoint_url)
         .bearer_auth(&target.bearer_token)
@@ -654,6 +721,35 @@ pub async fn saves_and_reads_a_resumable_checkpoint(target: &Target) -> Result<(
         missing_precondition_response,
         StatusCode::PRECONDITION_REQUIRED,
         "checkpoint-precondition-required",
+    )
+    .await?;
+
+    let missing_parent_url = format!(
+        "{}/v1/tenants/{}/subjects/{}/agents/019be000-0000-7000-8000-000000000352/threads/019be000-0000-7000-8000-000000000353/checkpoint",
+        target.base_url.trim_end_matches('/'),
+        target.tenant_id,
+        target.subject_id
+    );
+    let missing_parent_response = client
+        .put(missing_parent_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "checkpoint-run-301-missing-parent")
+        .header(header::IF_NONE_MATCH, "*")
+        .json(&json!({
+            "case_id": case_id,
+            "state": {"step": "must-not-persist"},
+            "state_schema_version": 1,
+            "effect_transitions": [],
+            "provenance": body["provenance"],
+            "sensitivity": "internal",
+            "retention_policy_id": "checkpoint-active-30d-v1"
+        }))
+        .send()
+        .await?;
+    assert_problem(
+        missing_parent_response,
+        StatusCode::BAD_REQUEST,
+        "invalid-request",
     )
     .await?;
 
@@ -770,21 +866,22 @@ pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()>
         target.tenant_id,
         target.subject_id
     );
+    let short_lived_body = json!({
+        "case_id": case_id,
+        "parent_revision_id": null,
+        "state": {"step": "short-lived"},
+        "state_schema_version": 1,
+        "effect_transitions": [],
+        "provenance": {"source_type": "conformance", "external_id": "checkpoint-run-311"},
+        "sensitivity": "internal",
+        "retention_policy_id": "checkpoint-test-1s-v1"
+    });
     let response = client
         .put(&checkpoint_url)
         .bearer_auth(&target.bearer_token)
         .header("Idempotency-Key", "checkpoint-run-311-create")
         .header(header::IF_NONE_MATCH, "*")
-        .json(&json!({
-            "case_id": case_id,
-            "parent_revision_id": null,
-            "state": {"step": "short-lived"},
-            "state_schema_version": 1,
-            "effect_transitions": [],
-            "provenance": {"source_type": "conformance", "external_id": "checkpoint-run-311"},
-            "sensitivity": "internal",
-            "retention_policy_id": "checkpoint-test-1s-v1"
-        }))
+        .json(&short_lived_body)
         .send()
         .await?;
     ensure!(
@@ -808,6 +905,21 @@ pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()>
     )
     .await?;
 
+    let expired_replay_response = client
+        .put(&checkpoint_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "checkpoint-run-311-create")
+        .header(header::IF_NONE_MATCH, "*")
+        .json(&short_lived_body)
+        .send()
+        .await?;
+    assert_problem(
+        expired_replay_response,
+        StatusCode::NOT_FOUND,
+        "resource-not-found",
+    )
+    .await?;
+
     let durable_checkpoint_url = format!(
         "{}/v1/tenants/{}/subjects/{}/agents/019be000-0000-7000-8000-000000000302/threads/019be000-0000-7000-8000-000000000303/checkpoint",
         target.base_url.trim_end_matches('/'),
@@ -823,6 +935,80 @@ pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()>
         durable_response.status() == StatusCode::OK,
         "expiring one checkpoint affected a sibling thread"
     );
+    Ok(())
+}
+
+pub async fn checkpoint_scopes_fail_closed(target: &Target) -> Result<()> {
+    let client = Client::new();
+    let agent_id = Uuid::parse_str("019be000-0000-7000-8000-000000000302")?;
+    let thread_id = Uuid::parse_str("019be000-0000-7000-8000-000000000303")?;
+    let fixtures = [
+        (
+            &target.principal_b_bearer_token,
+            target.principal_b_tenant_id,
+            target.principal_b_subject_id,
+            Uuid::parse_str("019be000-0000-7000-8000-000000000371")?,
+            "checkpoint-tenant-b-only",
+            "checkpoint-scope-tenant-b-create",
+        ),
+        (
+            &target.principal_c_bearer_token,
+            target.tenant_id,
+            target.principal_c_subject_id,
+            Uuid::parse_str("019be000-0000-7000-8000-000000000372")?,
+            "checkpoint-subject-c-only",
+            "checkpoint-scope-subject-c-create",
+        ),
+    ];
+
+    for (owner_token, tenant_id, subject_id, case_id, private_marker, key) in fixtures {
+        let checkpoint_url = format!(
+            "{}/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
+            target.base_url.trim_end_matches('/')
+        );
+        let create_response = client
+            .put(&checkpoint_url)
+            .bearer_auth(owner_token)
+            .header("Idempotency-Key", key)
+            .header(header::IF_NONE_MATCH, "*")
+            .json(&json!({
+                "case_id": case_id,
+                "parent_revision_id": null,
+                "state": {"private_marker": private_marker},
+                "state_schema_version": 1,
+                "effect_transitions": [],
+                "provenance": {"source_type": "conformance.scope-isolation"},
+                "sensitivity": "restricted",
+                "retention_policy_id": "checkpoint-active-30d-v1"
+            }))
+            .send()
+            .await?;
+        ensure!(create_response.status() == StatusCode::CREATED);
+
+        let owner_read = client
+            .get(&checkpoint_url)
+            .bearer_auth(owner_token)
+            .send()
+            .await?;
+        ensure!(owner_read.status() == StatusCode::OK);
+        let owner_checkpoint: Checkpoint = owner_read.json().await?;
+        ensure!(owner_checkpoint.state["private_marker"] == private_marker);
+
+        let hidden_response = client
+            .get(checkpoint_url)
+            .bearer_auth(&target.bearer_token)
+            .send()
+            .await?;
+        ensure!(hidden_response.status() == StatusCode::NOT_FOUND);
+        let hidden_problem: Value = hidden_response.json().await?;
+        ensure!(hidden_problem["type"] == "https://palimpsest.dev/problems/resource-not-found");
+        ensure!(!hidden_problem.to_string().contains(private_marker));
+        ensure!(
+            !hidden_problem
+                .to_string()
+                .contains(&owner_checkpoint.checkpoint_id.to_string())
+        );
+    }
     Ok(())
 }
 

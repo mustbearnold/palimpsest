@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 macro_rules! uuid_id {
@@ -124,10 +124,58 @@ pub enum EffectRecoveryMode {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EffectReceipt {
-    #[serde(with = "time::serde::rfc3339")]
+    #[serde(
+        serialize_with = "time::serde::rfc3339::serialize",
+        deserialize_with = "deserialize_utc_microsecond_timestamp"
+    )]
     pub observed_at: OffsetDateTime,
     pub external_reference: Option<ExternalEffectReference>,
     pub outcome_sha256: String,
+}
+
+pub fn parse_utc_microsecond_timestamp(value: &str) -> Result<OffsetDateTime, String> {
+    if !is_utc_microsecond_timestamp(value) {
+        return Err(
+            "timestamp must be RFC 3339 UTC ending in Z with at most six fractional digits"
+                .to_owned(),
+        );
+    }
+    OffsetDateTime::parse(value, &Rfc3339)
+        .map_err(|error| format!("timestamp must be RFC 3339: {error}"))
+}
+
+fn deserialize_utc_microsecond_timestamp<'de, D>(
+    deserializer: D,
+) -> Result<OffsetDateTime, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    parse_utc_microsecond_timestamp(&value).map_err(serde::de::Error::custom)
+}
+
+fn is_utc_microsecond_timestamp(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let fixed_digits = [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18];
+    let fixed_shape = bytes.len() >= 20
+        && fixed_digits
+            .into_iter()
+            .all(|index| bytes[index].is_ascii_digit())
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'T'
+        && bytes[13] == b':'
+        && bytes[16] == b':';
+    if !fixed_shape {
+        return false;
+    }
+    if bytes.len() == 20 {
+        return bytes[19] == b'Z';
+    }
+    (22..=27).contains(&bytes.len())
+        && bytes[19] == b'.'
+        && bytes[bytes.len() - 1] == b'Z'
+        && bytes[20..bytes.len() - 1].iter().all(u8::is_ascii_digit)
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
