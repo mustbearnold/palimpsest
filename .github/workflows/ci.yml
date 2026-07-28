@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Repository, Rust, and PostgreSQL gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.5-pg18-trixie@sha256:9d2e61c7352b9e9f4798df5fd9a498f043f4cda1cdacc707de3d198650f4321e
+        env:
+          POSTGRES_DB: palimpsest_ci
+          POSTGRES_PASSWORD: synthetic-ci-password
+          POSTGRES_USER: palimpsest_ci_bootstrap
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U palimpsest_ci_bootstrap -d palimpsest_ci"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+          --health-start-period 10s
+    env:
+      CARGO_TERM_COLOR: always
+      PALIMPSEST_MIGRATION_DATABASE_URL: postgresql://palimpsest_ci_bootstrap:synthetic-ci-password@127.0.0.1:5432/palimpsest_ci
+      PALIMPSEST_TEMPLATE_DATABASE_URL: postgresql://palimpsest_ci_bootstrap:synthetic-ci-password@127.0.0.1:5432/template1
+      PALIMPSEST_TEST_DATABASE_URL: postgresql://palimpsest_ci_runtime:synthetic-ci-runtime-password@127.0.0.1:5432/palimpsest_ci
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
+
+      - name: Verify repository contract
+        run: bash scripts/check-repo.sh
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint with warnings denied
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Apply migrations to PostgreSQL 18
+        run: |
+          for migration_file in migrations/*.sql; do
+            psql "$PALIMPSEST_MIGRATION_DATABASE_URL" --set ON_ERROR_STOP=1 --file "$migration_file"
+          done
+
+      - name: Verify PostgreSQL and pgvector versions
+        run: |
+          test "$(psql "$PALIMPSEST_MIGRATION_DATABASE_URL" --tuples-only --no-align --command "SHOW server_version_num")" = "180004"
+          test "$(psql "$PALIMPSEST_MIGRATION_DATABASE_URL" --tuples-only --no-align --command "SELECT extversion FROM pg_extension WHERE extname = 'vector'")" = "0.8.5"
+
+      - name: Create non-superuser conformance role
+        run: |
+          psql "$PALIMPSEST_MIGRATION_DATABASE_URL" --set ON_ERROR_STOP=1 --command "CREATE ROLE palimpsest_ci_runtime LOGIN PASSWORD 'synthetic-ci-runtime-password' CREATEDB NOSUPERUSER NOCREATEROLE NOINHERIT NOBYPASSRLS"
+          psql "$PALIMPSEST_TEMPLATE_DATABASE_URL" --set ON_ERROR_STOP=1 --command "CREATE EXTENSION vector WITH SCHEMA public"
+
+      - name: Run canonical SQLx migrations and PostgreSQL conformance
+        run: cargo test --locked --package palimpsest-server --test conformance_postgres18
+
+      - name: Run workspace tests
+        run: cargo test --locked --workspace

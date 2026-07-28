@@ -1,0 +1,16 @@
+[package]
+name = "palimpsest-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum.workspace = true
+palimpsest-application = { path = "../palimpsest-application" }
+palimpsest-domain = { path = "../palimpsest-domain" }
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+uuid.workspace = true
