@@ -5,6 +5,11 @@ Use these terms consistently in code, issues, tests, and documentation.
 | Term | Meaning |
 | --- | --- |
 | **MemoryService** | The public behavioral boundary for writing, reading, retrieving, superseding, exporting, and deleting memory. |
+| **Tenant** | The top-level administrative and isolation boundary that owns memory policy and contains subjects, principals, agents, cases, and threads. Records from different tenants never share an authorization or retrieval candidate set. |
+| **Subject** | The person, organization, system, or other entity that a memory is about or retained on behalf of. A subject is data scope, not necessarily the identity making a request. |
+| **Principal** | An authenticated human, service, or agent identity whose grants determine which scoped operations and memories are authorized. Request payloads cannot grant a principal authority. |
+| **Agent** | A software principal that reads or writes through MemoryService. An agent has no authority beyond the grants of its authenticated principal identity. |
+| **Case** | A tenant-scoped operational matter, such as a support request, that groups related threads, episodes, and revisions. Case membership organizes work but does not replace subject scope or principal authorization. |
 | **Thread** | One resumable sequence of agent interactions scoped by tenant, subject, and thread identifier. |
 | **Checkpoint** | A durable snapshot or delta that allows an interrupted thread to resume without replaying successful side effects. |
 | **Episode** | An immutable, timestamped observation or experience such as a message, tool result, action, or outcome. |
