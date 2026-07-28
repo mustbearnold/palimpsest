@@ -629,6 +629,9 @@ async fn verify_crash_recovery_records(
         .bind(target.subject_id.to_string())
         .execute(&mut *transaction)
         .await?;
+    sqlx::query("SELECT set_config('palimpsest.principal_id', 'principal-a', true)")
+        .execute(&mut *transaction)
+        .await?;
     let counts = sqlx::query(
         r#"
         SELECT
