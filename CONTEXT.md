@@ -16,6 +16,11 @@ Use these terms consistently in code, issues, tests, and documentation.
 | **Fact revision** | A versioned semantic claim derived from attributable evidence, with validity and confidence metadata. |
 | **Procedure revision** | A versioned rule, prompt, skill, or workflow that may be discovered semantically but is selected by exact policy. |
 | **Artifact reference** | Metadata and an integrity-checked pointer to a large object stored outside the relational database. |
+| **Export operation** | A durable, independently authorized operation that freezes an immutable membership manifest and materializes a versioned canonical-history package. It is not a legal-rights determination. |
+| **Deletion operation** | A durable, independently authorized workflow that fences a subject, purges configured live targets, verifies absence, and records a minimal content-free tombstone. |
+| **Subject lifecycle fence** | The monotonic subject-wide boundary that prevents new content leases during deletion and never returns to active. |
+| **Content lease** | A bounded, subject-scoped grant held by a content-producing response so deletion can drain or revoke in-flight disclosure before purge. It stores no response content. |
+| **Deletion tombstone** | Retention-governed, content-free evidence used for idempotency, restore suppression, and lifecycle audit; it never contains raw subject or memory identifiers or deleted payload digests. |
 | **Observed time** | When the event happened in the source domain. |
 | **Recorded time** | When Palimpsest committed the record. |
 | **Valid time** | The interval during which a fact or procedure is considered true or applicable. |

@@ -4,6 +4,17 @@ Status: accepted
 
 Date: 2026-07-29
 
+Amended by: ADR-0008 for authorized subject deletion
+
+ADR-0008 is the explicit policy migration anticipated by this decision's
+retention boundary. Outside an authorized subject-deletion workflow, version 1
+retrieval receipts and manifests remain immutable and retained indefinitely.
+After the subject-wide fence is durable, ADR-0008 requires the workflow to
+delete that subject's retrieval receipts and manifests rather than retain a
+private metadata shadow. A content-free deletion tombstone and aggregate
+negative-verification digest replace subject-specific retrieval audit evidence;
+individual historical retrieval details are intentionally no longer available.
+
 ## Context
 
 Palimpsest needs a first retrieval resource that finds exact identities and
@@ -115,10 +126,14 @@ behavior.
 - Existing nonstandard retention identifiers retain indefinite behavior during
   backfill. Assigning them a finite duration later requires an explicit policy
   migration and must not retroactively invent an earlier expiry.
-- Receipt and manifest rows are immutable and have indefinite retention in v1.
-  Deletion removes their ability to rehydrate content through governance state;
-  any later finite-retention policy requires an explicit migration rather than
-  an undocumented cleanup path.
+- Receipt and manifest rows are immutable and have indefinite retention in v1
+  except for the authorized subject-deletion workflow established by ADR-0008.
+  Before that workflow existed, deletion only removed their ability to rehydrate
+  content through governance state. ADR-0008 is the explicit migration that
+  deletes subject-scoped receipts and manifests after fencing and replaces their
+  audit role with a minimum content-free deletion tombstone. Any other
+  finite-retention policy still requires an explicit migration rather than an
+  undocumented cleanup path.
 - The regular conformance gate must run PostgreSQL 18 with pgvector 0.8.5 under
   a `NOSUPERUSER NOBYPASSRLS` role and prove isolation, expiry, deletion without
   resurrection, temporal selection, pagination, replay, and deterministic
