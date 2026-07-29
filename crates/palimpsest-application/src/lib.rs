@@ -685,7 +685,10 @@ impl MemoryService {
         );
         if !matches!(
             policy_id.as_str(),
-            "retrieval-lexical-v1" | "retrieval-hybrid-v1" | "retrieval-hybrid-temporal-v1"
+            "retrieval-lexical-v1"
+                | "retrieval-exact-vector-v1"
+                | "retrieval-hybrid-v1"
+                | "retrieval-hybrid-temporal-v1"
         ) {
             return Err(ServiceError::Unprocessable(
                 "policy_id is not supported".to_owned(),

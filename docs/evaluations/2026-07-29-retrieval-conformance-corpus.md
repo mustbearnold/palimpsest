@@ -1,6 +1,6 @@
 # Frozen retrieval conformance corpus and correctness report — 2026-07-29
 
-Status: implementation evidence complete; Standards and Spec re-reviews clean
+Status: implementation evidence refreshed; final Standards and Spec re-reviews pending
 
 ## Scope and attribution
 
@@ -22,9 +22,9 @@ latency, cost, scale, capacity, or readiness claim.
 | --- | --- |
 | Corpus | `6d5828d931e16164c0bedf19f09f85bc5dc8668c0762e7dc2e76160878d0d6f0` |
 | Manifest | `2f4a2950bd1187cd1fd603b787432aa2139289095b6c54a82aa5d626e6f2290b` |
-| Raw predictions and metrics | `ef7ad9648ba1e97a847e44e494b8e68173e64060c12c4248e1dccf828160aad1` |
+| Raw predictions and metrics | `3dbd41927c35e5d118f641b5908ed1d9c51c7feaeef690b9e035d8a20dd27a7f` |
 | `retrieval-lexical-v1` | `f3c4c3122e24924f201ad1054bd280e8795abd94e7e7f89dc934fa8749e2b3e5` |
-| Derived exact-vector baseline | `0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445` |
+| `retrieval-exact-vector-v1` | `29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb` |
 | `retrieval-hybrid-v1` | `41794a741674fccb729bec0bcddf3627d263c40462017e1c5aac8fd929d2ee15` |
 | `retrieval-hybrid-temporal-v1` | `75c4ec8029e57ce9f8442a860d74d7802597128997c2a2375ab9f6c578827413` |
 | Fixture embedder profile | `614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8` |
@@ -38,14 +38,15 @@ counts, baseline identities, fixture embedder, and projection schema.
 
 ## Baselines and results
 
-Every scenario is written and retrieved through HTTP. Exact/FTS, hybrid, and
-full-policy predictions come from their named durable receipt policies. The
-exact-vector-only baseline is deterministically derived from the public
-`vector_rank` evidence in the hybrid receipt; it is an evaluation view, not a
-new executable service policy. Every filtered scenario has at most two eligible
-revisions, below the immutable 50-candidate vector bound. The harness freezes
-the complete expected eligible set and rejects the baseline if any eligible
-revision is absent, so the derived top ten cannot be truncated by fusion.
+Every scenario is written and retrieved through HTTP, and all four baselines
+come from their named durable receipt policies. The test-only
+`retrieval-exact-vector-v1` policy retains exact identity and exact cosine-vector
+candidates while setting its lexical candidate limit to zero. It uses the same
+deterministic fixture profile and is not seeded by production migrations. Every
+filtered scenario has at most two eligible revisions, below the immutable
+50-candidate exact and vector bounds. The harness freezes the complete expected
+eligible set and rejects any executable baseline if an eligible revision is
+absent or any corpus-wide forbidden revision appears.
 
 The table reports only the 96 held-out gate cases. The committed artifact also
 records the 32 calibration cases and the all-corpus metrics separately; gate
@@ -65,8 +66,9 @@ and rebuilding every corpus search-document and embedding projection produced
 the same full-policy predictions and normalized response digests.
 
 Isolation/lifecycle cases cover same-case cross-tenant and cross-subject traps,
-restricted-sensitivity traps, deleted successors, and expired revisions. Zero
-forbidden revision IDs appeared in complete bounded candidate sets, API
+restricted-sensitivity traps, deleted successors, and expired revisions. Every
+baseline scans the complete frozen forbidden-ID set. Zero forbidden revision
+IDs appeared in complete bounded candidate sets, API
 responses, score explanations, durable receipt manifests, or induced generic
 provider-error responses. Existing non-bypass RLS conformance remains green.
 The service crates have no production logging calls, so there is currently no

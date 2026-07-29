@@ -161,7 +161,7 @@ struct PreparedFact {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ScenarioPrediction {
     pub scenario_id: String,
-    pub disposition: String,
+    pub disposition: PredictionDisposition,
     pub ranked_ids: Vec<String>,
     pub scores: BTreeMap<String, BTreeMap<String, String>>,
     pub policy_id: String,
@@ -173,6 +173,25 @@ pub struct ScenarioPrediction {
     pub candidate_set_complete: bool,
     pub provenance_complete: bool,
     pub forbidden_leaks: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PredictionDisposition {
+    Results,
+    Abstained,
+}
+
+impl TryFrom<&str> for PredictionDisposition {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        match value {
+            "results" => Ok(Self::Results),
+            "abstained" => Ok(Self::Abstained),
+            other => bail!("unsupported retrieval disposition {other}"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -402,12 +421,28 @@ pub async fn evaluate_frozen_corpus(
         .iter()
         .map(|(logical, revision)| (*revision, logical.clone()))
         .collect::<BTreeMap<_, _>>();
+    let forbidden_ids = corpus
+        .scenarios
+        .iter()
+        .flat_map(|scenario| &scenario.forbidden_ids)
+        .collect::<std::collections::BTreeSet<_>>();
     let lexical = evaluate_policy_once(
         target,
         corpus,
         prepared,
         &reverse_ids,
+        &forbidden_ids,
         "retrieval-lexical-v1",
+        0,
+    )
+    .await?;
+    let vector = evaluate_policy_once(
+        target,
+        corpus,
+        prepared,
+        &reverse_ids,
+        &forbidden_ids,
+        "retrieval-exact-vector-v1",
         0,
     )
     .await?;
@@ -416,19 +451,17 @@ pub async fn evaluate_frozen_corpus(
         corpus,
         prepared,
         &reverse_ids,
+        &forbidden_ids,
         "retrieval-hybrid-v1",
         0,
     )
     .await?;
-    let vector = hybrid
-        .iter()
-        .map(vector_only_prediction)
-        .collect::<Vec<_>>();
     let full = evaluate_policy_once(
         target,
         corpus,
         prepared,
         &reverse_ids,
+        &forbidden_ids,
         "retrieval-hybrid-temporal-v1",
         0,
     )
@@ -440,6 +473,7 @@ pub async fn evaluate_frozen_corpus(
             corpus,
             prepared,
             &reverse_ids,
+            &forbidden_ids,
             "retrieval-hybrid-temporal-v1",
             repetition,
         )
@@ -489,7 +523,6 @@ pub async fn evaluate_frozen_corpus(
     let complete_candidate_sets = baselines
         .iter()
         .flat_map(|baseline| &baseline.scenarios)
-        .filter(|prediction| prediction.policy_id != "retrieval-lexical-v1")
         .all(|prediction| prediction.candidate_set_complete);
     Ok(EvaluationArtifact {
         schema_version: "retrieval-evaluation-artifact-v1".to_owned(),
@@ -522,11 +555,17 @@ pub async fn evaluate_full_policy_once(
         .iter()
         .map(|(name, id)| (*id, name.clone()))
         .collect();
+    let forbidden_ids = corpus
+        .scenarios
+        .iter()
+        .flat_map(|scenario| &scenario.forbidden_ids)
+        .collect::<std::collections::BTreeSet<_>>();
     let scenarios = evaluate_policy_once(
         target,
         corpus,
         prepared,
         &reverse_ids,
+        &forbidden_ids,
         "retrieval-hybrid-temporal-v1",
         repetition,
     )
@@ -542,6 +581,7 @@ async fn evaluate_policy_once(
     corpus: &Corpus,
     prepared: &PreparedCorpus,
     reverse_ids: &BTreeMap<Uuid, String>,
+    forbidden_ids: &std::collections::BTreeSet<&String>,
     policy_id: &str,
     repetition: usize,
 ) -> Result<Vec<ScenarioPrediction>> {
@@ -553,6 +593,7 @@ async fn evaluate_policy_once(
                 scenario,
                 prepared,
                 reverse_ids,
+                forbidden_ids,
                 policy_id,
                 repetition,
             )
@@ -745,6 +786,7 @@ async fn request_prediction(
     scenario: &Scenario,
     prepared: &PreparedCorpus,
     reverse_ids: &BTreeMap<Uuid, String>,
+    forbidden_ids: &std::collections::BTreeSet<&String>,
     policy_id: &str,
     repetition: usize,
 ) -> Result<ScenarioPrediction> {
@@ -783,15 +825,14 @@ async fn request_prediction(
         response.status()
     );
     let raw = response.bytes().await?;
-    let forbidden_leaks = scenario
-        .forbidden_ids
+    let forbidden_leaks = forbidden_ids
         .iter()
         .filter_map(|logical| {
-            let revision = prepared.revisions.get(logical)?;
+            let revision = prepared.revisions.get(*logical)?;
             std::str::from_utf8(&raw)
                 .ok()?
                 .contains(&revision.to_string())
-                .then(|| logical.clone())
+                .then(|| (*logical).clone())
         })
         .collect::<Vec<_>>();
     let receipt: RetrievalReceipt = serde_json::from_slice(&raw)?;
@@ -829,20 +870,21 @@ fn prediction_from_receipt(
         scores.insert(logical, score_map(item));
         provenance_complete &= !item.evidence_episode_ids.is_empty();
     }
+    let actual = ranked_ids
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected = scenario
+        .expected_candidate_ids
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
     let candidate_set_complete = if receipt.policy.id == "retrieval-lexical-v1" {
-        true
+        actual.is_subset(&expected)
     } else {
-        let actual = ranked_ids
-            .iter()
-            .cloned()
-            .collect::<std::collections::BTreeSet<_>>();
-        let expected = scenario
-            .expected_candidate_ids
-            .iter()
-            .cloned()
-            .collect::<std::collections::BTreeSet<_>>();
         actual == expected
     };
+    let disposition = PredictionDisposition::try_from(receipt.status.as_str())?;
     let normalized_response_sha256 = sha256_bytes(&serde_json::to_vec(&json!({
         "disposition": receipt.status,
         "ranked_ids": ranked_ids,
@@ -858,7 +900,7 @@ fn prediction_from_receipt(
     }))?);
     Ok(ScenarioPrediction {
         scenario_id: scenario.id.clone(),
-        disposition: receipt.status,
+        disposition,
         ranked_ids,
         scores,
         policy_id: receipt.policy.id,
@@ -878,48 +920,6 @@ fn score_map(item: &RetrievalItem) -> BTreeMap<String, String> {
         .iter()
         .map(|score| (score.component.clone(), score.value.clone()))
         .collect()
-}
-
-fn vector_only_prediction(hybrid: &ScenarioPrediction) -> ScenarioPrediction {
-    let mut prediction = hybrid.clone();
-    prediction.policy_id = "derived-exact-vector-only-v1".to_owned();
-    prediction.policy_digest =
-        sha256_bytes(b"derived from retrieval-hybrid-v1 vector_rank; fixture evaluation only");
-    prediction.embedder_profile_digest = hybrid.embedder_profile_digest.clone();
-    prediction.projection_profile_digest = hybrid.projection_profile_digest.clone();
-    prediction.ranked_ids.sort_by_key(|id| {
-        prediction
-            .scores
-            .get(id)
-            .and_then(|scores| scores.get("vector_rank"))
-            .and_then(|rank| rank.parse::<u64>().ok())
-            .unwrap_or(u64::MAX)
-    });
-    prediction.scores.values_mut().for_each(|scores| {
-        scores.retain(|component, _| {
-            matches!(
-                component.as_str(),
-                "exact_identity_rank" | "vector_rank" | "vector_distance" | "vector_similarity"
-            )
-        });
-    });
-    prediction.normalized_response_sha256 = sha256_bytes(
-        &serde_json::to_vec(&json!({
-            "disposition": prediction.disposition,
-            "ranked_ids": prediction.ranked_ids,
-            "scores": prediction.scores,
-            "policy": {
-                "id": prediction.policy_id,
-                "version": prediction.policy_version,
-                "digest": prediction.policy_digest,
-            },
-            "embedder_profile_digest": prediction.embedder_profile_digest,
-            "projection_profile_digest": prediction.projection_profile_digest,
-            "provenance_complete": prediction.provenance_complete,
-        }))
-        .expect("serializing a derived prediction cannot fail"),
-    );
-    prediction
 }
 
 fn calculate_metrics(
@@ -962,8 +962,10 @@ fn calculate_metrics(
             temporal_hits.push(first_relevant_rank == Some(1));
         }
         if scenario.expected_disposition == ExpectedDisposition::Abstained {
-            abstention_hits
-                .push(prediction.disposition == "abstained" && prediction.ranked_ids.is_empty());
+            abstention_hits.push(
+                prediction.disposition == PredictionDisposition::Abstained
+                    && prediction.ranked_ids.is_empty(),
+            );
         }
         if !scenario.relevant_ids.is_empty() {
             let hits = prediction
@@ -1038,6 +1040,21 @@ fn sha256_bytes(bytes: &[u8]) -> String {
 pub fn enforce_issue_22_gates(artifact: &EvaluationArtifact) -> Result<()> {
     let metric = &artifact.full_policy_metrics;
     ensure!(metric.forbidden_leaks == 0);
+    ensure!(
+        artifact
+            .baseline_metrics
+            .values()
+            .all(|metrics| metrics.calibration.forbidden_leaks == 0
+                && metrics.gate.forbidden_leaks == 0
+                && metrics.all.forbidden_leaks == 0)
+    );
+    ensure!(
+        artifact.baselines.iter().all(|baseline| baseline
+            .scenarios
+            .iter()
+            .all(|prediction| prediction.forbidden_leaks.is_empty()
+                && prediction.candidate_set_complete))
+    );
     ensure!(metric.exact_name_hit_at_1 == "1.000000");
     ensure!(metric.temporal_selection == "1.000000");
     ensure!(metric.abstention_correctness == "1.000000");

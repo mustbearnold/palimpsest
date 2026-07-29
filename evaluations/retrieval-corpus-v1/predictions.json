@@ -3448,23 +3448,33 @@
           ],
           "scores": {
             "exact-name-001-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-001-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "45cd289c225085ef3dd0e39f83508ed7cec82e8e70ad7a5b4f94665bd10fc275",
+          "normalized_response_sha256": "d01d624390c3e7877fd1d46579ea435fd5f360838c4c647fc89e0164c6eca517",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3478,23 +3488,33 @@
           ],
           "scores": {
             "exact-name-002-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-002-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "e96ce945bcc5ce7f792df74351fc54ff9f52f1ec2e9c15c5df0d750a42654ccf",
+          "normalized_response_sha256": "41ebc4f257719c3cdbbb15a6ee85c31342cfb289c2febc0f7ba8816e15f3d187",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3508,23 +3528,33 @@
           ],
           "scores": {
             "exact-name-003-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-003-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "1158fdcbfc45c9ac871ce14346e21fc339900b1eec75b85a88e79ccf851bb5ec",
+          "normalized_response_sha256": "d9c9aebb0004fac098d58573a018eeb50c084257901769de19153357dfe8816e",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3538,23 +3568,33 @@
           ],
           "scores": {
             "exact-name-004-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-004-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f4c4bb2bb41d8771da178b064a6274467b2436588ed411056a9d10acf7a73452",
+          "normalized_response_sha256": "db0853327838ea545cd795b8eda3bee8ff145236695c7c8ede247cded342238d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3568,23 +3608,33 @@
           ],
           "scores": {
             "exact-name-005-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-005-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "e06e950a55044ec593fd2385aacfeb8aee96963ec67898068d3a5ddd83d0e422",
+          "normalized_response_sha256": "e2404e6d7ea6304d087f1df6a349c2b4f620713c427d07d77ddc9e2e99ff797f",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3598,23 +3648,33 @@
           ],
           "scores": {
             "exact-name-006-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-006-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "429811cac457adeacdc2175e5bb4f19b7d0fa969451c99a70dadb0c245211ffc",
+          "normalized_response_sha256": "724013da522ee01a644ce09580f0102fef812413080128ecee0f416286aa76fc",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3628,23 +3688,33 @@
           ],
           "scores": {
             "exact-name-007-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-007-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7981e578e99586ffe0f1ce66e41eb43742ca920e2cfed3d0c747e122f01f9194",
+          "normalized_response_sha256": "572fb31b7332f555a8b06ae943500db0a7d5ce91938eec37a5ec9d9f5988c95d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3658,23 +3728,33 @@
           ],
           "scores": {
             "exact-name-008-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-008-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "5b44d33b83ab23c47e55a3526faccda406fd776f1412e61ba5fb12d556bdd647",
+          "normalized_response_sha256": "aa1e47b14c2630a5cf235cf1599603f3d1f62ae901bd1f4a237c2f56cd777621",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3688,23 +3768,33 @@
           ],
           "scores": {
             "exact-name-009-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-009-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "bbc79a5a1b1baac84813bebd1a8c8e32ad86807fef716f52fb1c4e6e28c7f2c9",
+          "normalized_response_sha256": "9a1d28ab0fe6b9455cbe9548a233026e4bdb294d081a2001a10afa04e98e2946",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3718,23 +3808,33 @@
           ],
           "scores": {
             "exact-name-010-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-010-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "538db2e138221f17e704202467516382a120d811381515591a8ddaad8402fa0c",
+          "normalized_response_sha256": "78a7de5f2c2e7ca1220fbf14f6b650ded7dba5cf899268d493157b076a4b5001",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3748,23 +3848,33 @@
           ],
           "scores": {
             "exact-name-011-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-011-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "e2fe1849a3fa110e211ce3fc5357890a842b470d4f6c317de26523af1a58941e",
+          "normalized_response_sha256": "337221108d69e243218611ca346f061041c99b4bfd70e3c5510354555a07a516",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3778,23 +3888,33 @@
           ],
           "scores": {
             "exact-name-012-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-012-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "40feb869f4d9087670f9442d23831bd2ce879d506055e255f9e710d7c8a758a8",
+          "normalized_response_sha256": "f6569d47c51a0e090eba572d4fba10ef99e49a10b05298448afdd1bf402ff251",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3808,23 +3928,33 @@
           ],
           "scores": {
             "exact-name-013-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-013-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "d0328393c5500b9a6a1141a1879e3966e5e5449346afd79c27f1793fbc9a8562",
+          "normalized_response_sha256": "073faf5b603b01048ab287478c8f71c0aed867c7d679adb955252fed7ac29369",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3838,23 +3968,33 @@
           ],
           "scores": {
             "exact-name-014-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-014-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "0b22fbc9dcf843e3d56cf022f1c83b7d9a0af8792fe7ca998edf8b34121d5743",
+          "normalized_response_sha256": "4ae0fd3ebca116097facc2d958ccb5b13d632586d0b56600eacffd307c639462",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3868,23 +4008,33 @@
           ],
           "scores": {
             "exact-name-015-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-015-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "4ec0946147e0a21540d6d457781bfd1699f83e4c692f1efbf3e2b43adb1e7f07",
+          "normalized_response_sha256": "dc42a900a0c700d714bb61ad1f47e6b2eb3717bd64bcb41e34c65c7ace20c46f",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3898,23 +4048,33 @@
           ],
           "scores": {
             "exact-name-016-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-016-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "85a19bf7ee8a96859e14cacd12e7c0e42c87c8fda49fa0497259929b5b0f9c44",
+          "normalized_response_sha256": "4fb90e13dd41a5ef16cb5ab8bc4bac35412bb55b38ddcfd5c74892f7b870b8a8",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3928,23 +4088,33 @@
           ],
           "scores": {
             "exact-name-017-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-017-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "09921bf03a5428c18ba989f4efe07f62fe56a8f75499cc9c3aa793118e025f1f",
+          "normalized_response_sha256": "e340568b55d26a3d1f21a39d4d2e615b58d2e97f8c1d27b7a418425f0d53be4c",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3958,23 +4128,33 @@
           ],
           "scores": {
             "exact-name-018-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-018-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "2168b4ab4abf1fb09f356055ed6bb7d0b03b8b645558c0cda857f0b506919cc0",
+          "normalized_response_sha256": "d7d73d4411c4afd65d5107f90907127a4b7ac55e0921b4b4eba74e0f10fe2a78",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -3988,23 +4168,33 @@
           ],
           "scores": {
             "exact-name-019-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-019-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "9ddf28932c382f25dacdfd11aa4601416bfad92d52be301ed88d1136bf83d379",
+          "normalized_response_sha256": "05e9b9c20e9aa225a61e60902cf4b79dcda9918a428a4698bf31b0a2fd840c34",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4018,23 +4208,33 @@
           ],
           "scores": {
             "exact-name-020-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-020-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "72cfaaf8104463260715b87674a93c147f6623a55a48da765dc07b70db3edf73",
+          "normalized_response_sha256": "0d95206708e566cdd8ae90f455dd013c48c8a6de6bdc967c119e3846aa6bbdae",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4048,23 +4248,33 @@
           ],
           "scores": {
             "exact-name-021-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-021-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "6b91e236414a5a3b16562f4fb507fb79c396cfd0f4698ef114752d214cce6808",
+          "normalized_response_sha256": "94473dfaafcaad2263b8ce75d1030206034b798c5c53c74b1ee83bfa94b57eab",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4078,23 +4288,33 @@
           ],
           "scores": {
             "exact-name-022-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-022-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f2b8b815b884cf5546a99c3dfb2d260c1e88640c06404618116073506419c310",
+          "normalized_response_sha256": "1da572f1c4a623fabbcb70e3d49f2dfc10816708af784f4f3b0a82b08cef546a",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4108,23 +4328,33 @@
           ],
           "scores": {
             "exact-name-023-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-023-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "b5fe6b7cd33c7d9ec770b66efbd07398a8b7e757e34cb9ac322ce6d7cf4dbcd1",
+          "normalized_response_sha256": "5b587fbc147a680f4f8c5c0811aeabfd8c453a5fc3733318407b42255a045cd4",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4138,23 +4368,33 @@
           ],
           "scores": {
             "exact-name-024-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "exact-name-024-relevant": {
               "exact_identity_rank": "1",
+              "exact_rank": "1",
+              "exact_rrf": "0.016393442623",
+              "final_rank": "1",
+              "final_score": "0.032786885246",
+              "fused_score": "0.032786885246",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "9c0f66a6bb5fb02b6543d3cb8add14b17bdf8c4ae342633bf00edd9009d9a8a6",
+          "normalized_response_sha256": "3909672120b483272d4432e3c1c85354fd381eb4de7e7be8d6f808065dd8a88d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4167,17 +4407,21 @@
           ],
           "scores": {
             "temporal-contradiction-001-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "ff006cbfec32ae5be7d1cb190bdb33ef9531bab741ed36ccfa231744d3ed2860",
+          "normalized_response_sha256": "4baa03f6bab0e2e24275b0cf53465d1f7ab4d75375310ffbe86f767b0be5e8d5",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4191,22 +4435,30 @@
           ],
           "scores": {
             "temporal-contradiction-002-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-002-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "4bc5133d43181c7be3bdd3280e443d192513645d8185df3939f51a5ead85227f",
+          "normalized_response_sha256": "d5eaf0015e7c66fc6d497cf7b4ced02a59beec9f0f950350ec3ccc5d5e23d5a7",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4219,17 +4471,21 @@
           ],
           "scores": {
             "temporal-contradiction-003-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "d02d2ac8addf1841a353adde1ee6dc0be9c80ddc279d2a51d9de3ff3855b88f6",
+          "normalized_response_sha256": "150f7be4cb4216ca4c32e80b7895e7206df5a4a3ddfff46ae456eda92e5e8d46",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4243,22 +4499,30 @@
           ],
           "scores": {
             "temporal-contradiction-004-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-004-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "6d51e03ffe4952bf8ca42bb61c5500ad435662c53a826205301bf158884959de",
+          "normalized_response_sha256": "ff10e0bcceff8c0c55b0116c9e648bda665b88fb16cd3851895cca957f098818",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4271,17 +4535,21 @@
           ],
           "scores": {
             "temporal-contradiction-005-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "c28de6622586f6f3fe9ed60b18d8fb868581756dbeb6f21eca74fd8005335dbd",
+          "normalized_response_sha256": "bf428cc1b57912757a01a5b8d6a10741ed662c89e22f0813e4dd93065968fc05",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4295,22 +4563,30 @@
           ],
           "scores": {
             "temporal-contradiction-006-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-006-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8e2cdc7d940b3775b329743bd42575a94cb451dc4c2443cc6495c1e9ba689c12",
+          "normalized_response_sha256": "b3f03553b3d49abd3a35b5307da92f0d5d85925575878d797ece2772e80189d7",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4323,17 +4599,21 @@
           ],
           "scores": {
             "temporal-contradiction-007-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "eb3b7e1fca2d6ea45a95848a1858555293ba34c942a9bc30fe2e160c284526e1",
+          "normalized_response_sha256": "6301cccac2c6eab6df0fcc04411b40bdb1246bfdfcc2397cae227b07913c693d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4347,22 +4627,30 @@
           ],
           "scores": {
             "temporal-contradiction-008-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-008-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f8084cc6ed396d3a270871c97cffddb4d7bf3c6564a568bb014dbae5834eee2f",
+          "normalized_response_sha256": "bb7421583d91e0a6b1a557097ab575f32b154ccc53f588dc68bce2fa7261b1e1",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4375,17 +4663,21 @@
           ],
           "scores": {
             "temporal-contradiction-009-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "837059c234055ac95673c33e78f9e0b883f1eec25c201cb736ba514126ea0184",
+          "normalized_response_sha256": "9dada1386d9ccae3e9366f3e92cdd3cb5f8a72c70892709e7b2d42e1f6400205",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4399,22 +4691,30 @@
           ],
           "scores": {
             "temporal-contradiction-010-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-010-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "e32a8269a1b96eff2192ca6996e8a6fd2245513f32604527456f9f2ec9a61c9e",
+          "normalized_response_sha256": "66df0dd758c78b6ec70e52e88e05d86bf69a5c35ed5bd29b3f4213aa0df42c0d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4427,17 +4727,21 @@
           ],
           "scores": {
             "temporal-contradiction-011-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f72ee73c9275c60dab325a110503a12b1d151c78bf81bed60114e0f955f902a9",
+          "normalized_response_sha256": "ff43e3d2ccd61008a9c2732326ea8311b7ea3c8037da3ec8cc0889554cb7d47b",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4451,22 +4755,30 @@
           ],
           "scores": {
             "temporal-contradiction-012-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-012-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "77c573521c6b33846afe08207bdbc2812b6837650f787f1cee776b960f57d35b",
+          "normalized_response_sha256": "c375119126804c7438e4b9d6b30c50c504b0c44e096a7ca460dfdaf0ec33908e",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4479,17 +4791,21 @@
           ],
           "scores": {
             "temporal-contradiction-013-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "add973fbb26da73c7d334e0e1998b39978934f7518d6a1cce7b712e45af5d2c4",
+          "normalized_response_sha256": "52fc1d50afb803ac99987453f8b2203acfc18241321a9bf70854b7bc81123118",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4503,22 +4819,30 @@
           ],
           "scores": {
             "temporal-contradiction-014-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-014-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "afb365ed157c362e202c5a67b1ca3820c752b0d49815535c8569bd8a6b5a923e",
+          "normalized_response_sha256": "496059225631f9255dd3e18aa74e7118f0d66f7b0fd8942ca50bdcebfa5fcbc9",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4531,17 +4855,21 @@
           ],
           "scores": {
             "temporal-contradiction-015-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "67cd20baf495e22aeb7a50cc16dabb3359d4a4aa916d11a07aa108d84efe7754",
+          "normalized_response_sha256": "492c2ecfa4c2072fb48b4962de585d4122f557bc5cc57417d58f78cb700371fd",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4555,22 +4883,30 @@
           ],
           "scores": {
             "temporal-contradiction-016-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-016-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "5a2b6708ba297d52528628377fbf0271bb6cec4d0a447e73226a4ba067f99847",
+          "normalized_response_sha256": "989fca75d8062a32e44c6ac68b51c303ab4a24e4218fca78f81787c9221da60d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4583,17 +4919,21 @@
           ],
           "scores": {
             "temporal-contradiction-017-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "4ece1012822a6d2bfa7f8b4cea33beaa090927cab73c3c5df37163fc3ff9e044",
+          "normalized_response_sha256": "4b68fdde47df861b9ba271c29c027be0766005d4d2ca4c9c5502dc7145791cf2",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4607,22 +4947,30 @@
           ],
           "scores": {
             "temporal-contradiction-018-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-018-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "0de3b51db5c9a49fa5d4d60d322dca153c73f9e8bfcebe48ef60e60c54b6e4cf",
+          "normalized_response_sha256": "fd178e50632e9ff88f7930b9c66e14b065e2b52808a3730e61db0880aea47e04",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4635,17 +4983,21 @@
           ],
           "scores": {
             "temporal-contradiction-019-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "5bb0d3e990afbb038896f2b2f9b097b75573fa4dfa85acdaa2b916d791cc50ff",
+          "normalized_response_sha256": "f41bd083cd00b4581273a89404e3ffe371f3a821560bc0feca09cc7d61834507",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4659,22 +5011,30 @@
           ],
           "scores": {
             "temporal-contradiction-020-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-020-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "52f471f56070a8b9c95e8311aecfd9950186a44b877ccc26aa179b3895631f08",
+          "normalized_response_sha256": "c33d5febbef5189119ec6ab882f445d071898ff9383be45e2031e1de34a2e212",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4687,17 +5047,21 @@
           ],
           "scores": {
             "temporal-contradiction-021-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "c284b0157b15b15840d80c7c17fec5b7c7ccd3000a54f4e08846fc765f87af12",
+          "normalized_response_sha256": "711b6b2b5187a7a336d6325e6940030031e0171e342cdeb169523eade6aef3bd",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4711,22 +5075,30 @@
           ],
           "scores": {
             "temporal-contradiction-022-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-022-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "effa2e0e9d52a5c019080531b942d37d0d92c2935e2bae79aa6a51e264602072",
+          "normalized_response_sha256": "de6ec8bf9afd35dc2ab97822df74a3f9991139e165b40405e2bf04b65df717eb",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4739,17 +5111,21 @@
           ],
           "scores": {
             "temporal-contradiction-023-root": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.199999988079",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "0.800000011921"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "cf5865854e9b713f70ef956f9ed415b0e725947e2e579e5df29787f21cc7bc36",
+          "normalized_response_sha256": "87a9be563babdfed65851b70a06bb2ce0ce63407e2dad3cc84ab9ef7b849f44f",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4763,22 +5139,30 @@
           ],
           "scores": {
             "temporal-contradiction-024-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "1.000000000000",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.000000000000"
             },
             "temporal-contradiction-024-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "62bca90689f159f5c84afb74a5c1d0c0a1faffe25819118c99bc4632d91dba02",
+          "normalized_response_sha256": "fe82f7e2d8756cc515dda398b53abdb1b75ae7795bc134ca3b383e11d9c8cfe8",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4792,22 +5176,30 @@
           ],
           "scores": {
             "stale-distractor-001-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-001-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "77b5887a7e18fd1e6c155b15f966c885813985175655c477da9f02f495088af7",
+          "normalized_response_sha256": "9087655f69241ca3757ad92b92a4714a0b3237731cd340362c3d7d5c841aceea",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4821,22 +5213,30 @@
           ],
           "scores": {
             "stale-distractor-002-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-002-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "249b893fc76e6d4042ad2c80475230115de506bdc2dc4b82d4816fdcdfae5f53",
+          "normalized_response_sha256": "25e2d152b53e4efc13ec83f9f6d4a60404e8420e2e774e50ad7b797e24b7251c",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4850,22 +5250,30 @@
           ],
           "scores": {
             "stale-distractor-003-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-003-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "330e0184955007fe269f1a1c2d35ec0b53607b9d561a662f4f073625a286355c",
+          "normalized_response_sha256": "afe139fef4e17ebd7e56c04fe1830c279609f373c0df94fc481e4eb09dc02ca2",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4879,22 +5287,30 @@
           ],
           "scores": {
             "stale-distractor-004-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-004-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8c44f4562f7791fbf3201203783ec632ae6ac7c8e619cd32c087a4524ece8ffb",
+          "normalized_response_sha256": "e50a65ab8b007cb55215728efb40af8650efff9c6fb5227fa708910d1aea9d48",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4908,22 +5324,30 @@
           ],
           "scores": {
             "stale-distractor-005-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-005-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "e8e6e9a56df906c5596d3a6449df77b5b306a293d8ab1999ba9b240b558fb22a",
+          "normalized_response_sha256": "bdc6e53fc5a86c91947ee987157e57accd0b690d8d43af5fc6b5759581a3a3dd",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4937,22 +5361,30 @@
           ],
           "scores": {
             "stale-distractor-006-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-006-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "2004e3c4725a16a9500ac997d7cae50e66a0251504b1b779775226f57235c44f",
+          "normalized_response_sha256": "11e9286844f7b377b2d364e02aef738d508ff0b89ce5196faa302f6a724f25bb",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4966,22 +5398,30 @@
           ],
           "scores": {
             "stale-distractor-007-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-007-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "873a639f987b28b5dd8c51451c05089c251f0cbd909226259a1ceac676646898",
+          "normalized_response_sha256": "cae86cee9715a5e90a6060f9a269a2c10a283704bfb6b86bf60626107a2ad526",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -4995,22 +5435,30 @@
           ],
           "scores": {
             "stale-distractor-008-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-008-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "d71ba8b4b7ec905fb98d0ccacd53292eccd11ef203a22f5630e7122871e44579",
+          "normalized_response_sha256": "9874ca821be48ee8ff5b7b18b73a5bbaf4a5a61cc738da16bec455c7fa8118a3",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5024,22 +5472,30 @@
           ],
           "scores": {
             "stale-distractor-009-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-009-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "050b908f2967a35f329484918cbea35f876b4de88309b0d0f02f633b02c7016f",
+          "normalized_response_sha256": "b4191991d8f7632490d6e81b9558247609b539c348213e8757a7682f10b3562a",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5053,22 +5509,30 @@
           ],
           "scores": {
             "stale-distractor-010-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-010-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "12a9524d06095fbe74ce975f35c26f2effa2cbc5e36ef0c85f76a4b1b29e7ce0",
+          "normalized_response_sha256": "79ccf8ce153aa9379f96cbbd8fc5c6a63a322206d2e1fc90994a68b5c49fa8a7",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5082,22 +5546,30 @@
           ],
           "scores": {
             "stale-distractor-011-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-011-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "a622897844fbf7deb49ce25c3b990d5b7f773403bb4ae912c753955f479f9d73",
+          "normalized_response_sha256": "9edc67fd66fe254ed2403bf2ae91d57ae844ceae0ced3c8d93cd75c5bd12f00b",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5111,22 +5583,30 @@
           ],
           "scores": {
             "stale-distractor-012-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-012-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "0b77da2dee0bc43c157a031e155700cdcc150814e07a574aeb87b71fe9fd21e8",
+          "normalized_response_sha256": "ae71fd4ac5cf085c796bbc554604b8e5254bb10484d9ea695aa5f7fcdc503f69",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5140,22 +5620,30 @@
           ],
           "scores": {
             "stale-distractor-013-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-013-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "ab31f57de61e69cd15e278f5d6428bc46dcc848ad18b8cbb3dd16925144f4018",
+          "normalized_response_sha256": "5576a9baf60f1f6b86fe91e349debf159b661484545e7e976e01576bba8dde16",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5169,22 +5657,30 @@
           ],
           "scores": {
             "stale-distractor-014-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-014-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "5ca997206cb79bc1645f90fa1415d59c56b5ddf81ff7a6d8a8a65a86ed7ded6a",
+          "normalized_response_sha256": "48e0a1c2c305195331f6f9a0455eb0558e1b68a8ade9f7c8e5af9337223351b3",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5198,22 +5694,30 @@
           ],
           "scores": {
             "stale-distractor-015-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-015-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "db8962f2bb17ce526cb5781d2dd0468b9e63872db892cde2ffc5417b080ca65a",
+          "normalized_response_sha256": "ca2209d2c4720f7a8119bb923dc427f0c7cdaea9044c9ae86c3e16a98f40a380",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5227,22 +5731,30 @@
           ],
           "scores": {
             "stale-distractor-016-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stale-distractor-016-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "9c044aea8a871343e4c1c3107b0a2f2d7c7f82de619ccad545a64b511260c694",
+          "normalized_response_sha256": "097beb600653f6f44147f66eb99c450ad9c58b361cd472a2ad1f4b83e59ba1fe",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5256,22 +5768,30 @@
           ],
           "scores": {
             "stable-versus-decaying-001-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-001-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "10425b5036d26c99238fb41b2a681553f85ef704041de949e3afe8a98da41964",
+          "normalized_response_sha256": "91f26c6d0cb40a03885fac1ec9b812634afad343cbbff740863737ac2588c3d5",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5285,22 +5805,30 @@
           ],
           "scores": {
             "stable-versus-decaying-002-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-002-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "5d55cdd9877e9607c678df96f7fbf41deffef72e424b60398059aa2472e765b8",
+          "normalized_response_sha256": "f7511b5b3d720a7633e84664c1e601f18404661adbfd109bd2485b49be99505f",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5314,22 +5842,30 @@
           ],
           "scores": {
             "stable-versus-decaying-003-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-003-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "13d80d6e8e8b04e6677024db2acd7bf941440d6cebd735955da172e9a1d71c4d",
+          "normalized_response_sha256": "6488c04c62fbd4a60386fc47a47c5a8c295d051c66fd2c7d6b9a8b519b45b375",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5343,22 +5879,30 @@
           ],
           "scores": {
             "stable-versus-decaying-004-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-004-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "377a75ee5a9e3b3ec7df1aad913fafbb8bce7e45bd88954c1c91b28a920658ef",
+          "normalized_response_sha256": "d05138d4b114f33e66fe755d29a6346016127a74d7193b9ebd093514a11eed2d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5372,22 +5916,30 @@
           ],
           "scores": {
             "stable-versus-decaying-005-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-005-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f96a2c3b081ad8badf17b0050f53ba0292e28e9bca65623fde16a6ae5066e797",
+          "normalized_response_sha256": "84a88c47ae648ace70f1ab15a82c2ee0258125739278050c73fb62f2d61bfe48",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5401,22 +5953,30 @@
           ],
           "scores": {
             "stable-versus-decaying-006-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-006-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "caf0a54375cf6d8295947383ffb57067081f02cb9b48d9cffbde5c38a7a5e8ba",
+          "normalized_response_sha256": "3ac12108555ea95cbf31c0a79dd70fccd4e6fb5fa547e0e2f62342a62b56c429",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5430,22 +5990,30 @@
           ],
           "scores": {
             "stable-versus-decaying-007-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-007-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "b999072e622ce5e8872226ff456926fcadcc27bc43afe358e3acd29bc3363534",
+          "normalized_response_sha256": "fb28877da0fdf01bfacec64ae6ba150ed2a05e84005af0cdad47d70406eb81f5",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5459,22 +6027,30 @@
           ],
           "scores": {
             "stable-versus-decaying-008-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-008-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "2c7beaf3615097aa444e8774f2040ebb91af59e80c5341999c64cb66fcee59c5",
+          "normalized_response_sha256": "c8d32fbffe90c62540c5ac6dd7acf33e8ab61002d858e6ac124ef97f45d788ed",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5488,22 +6064,30 @@
           ],
           "scores": {
             "stable-versus-decaying-009-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-009-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "ced53651e867049367c18fe1e1f10b9fa7e8fddb13201d6f8509ba602c6fe77d",
+          "normalized_response_sha256": "e6cf48a2786b1d6b793f394b540e42d180013ac71c687c7fc00ac2f520255a01",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5517,22 +6101,30 @@
           ],
           "scores": {
             "stable-versus-decaying-010-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-010-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "028c9ac24cb85e78e6a5f222786a4fc1c1227851728948caa3bb73133e59f0a9",
+          "normalized_response_sha256": "fddabf968870a1e5bd212ac97a02d109db598a3dbf7d65d23cc96ef604406706",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5546,22 +6138,30 @@
           ],
           "scores": {
             "stable-versus-decaying-011-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-011-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "af831ab9fd94b14d0730efa322601cd61e3ac19166312f35575a41f381104e04",
+          "normalized_response_sha256": "9852183311cce183e6b27a206d9d3afae4785a23066b0d817993cbb2b3c04622",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5575,22 +6175,30 @@
           ],
           "scores": {
             "stable-versus-decaying-012-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-012-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "bf723d34e88e92a605619f0865136786e5941088afbdb1bc2b72b1650bc7420d",
+          "normalized_response_sha256": "2db73521b840a4f246b9ae998b52989158a57876aa514b4cdf99bd3ae0a3f2ec",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5604,22 +6212,30 @@
           ],
           "scores": {
             "stable-versus-decaying-013-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-013-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8c0e2b25c3cba809d44ee56feb1efd0abf56264959b84f4e515d077d47247423",
+          "normalized_response_sha256": "b5d3fc08c8c60360ed56204343d16cd17d9fe439f3b3e11ba0c7c40290ae9164",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5633,22 +6249,30 @@
           ],
           "scores": {
             "stable-versus-decaying-014-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-014-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "d791330e1e55659451e181065e40211a8fe28006dc2115e0f165cff0af91c74a",
+          "normalized_response_sha256": "612e89be82b817bb07dabd8f6b96767dd44d6234cf8e15f5cbc123dc9757b550",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5662,22 +6286,30 @@
           ],
           "scores": {
             "stable-versus-decaying-015-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-015-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "6f208b8a6267e2afe5f98c733e7035161fa30a2171aecc226925736c796b01a6",
+          "normalized_response_sha256": "6db02ac6a614e8e9d8fd750ea533ffdb00bf8fae6d3759b7b59c2b8042bdd681",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5691,22 +6323,30 @@
           ],
           "scores": {
             "stable-versus-decaying-016-distractor": {
+              "final_rank": "2",
+              "final_score": "0.016129032258",
+              "fused_score": "0.016129032258",
               "vector_distance": "0.199999988079",
               "vector_rank": "2",
+              "vector_rrf": "0.016129032258",
               "vector_similarity": "0.800000011921"
             },
             "stable-versus-decaying-016-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "a32d05519acec0387c2490486f07680b4dfe04323585bb355e9b1fa40d133975",
+          "normalized_response_sha256": "2cd1d5ad332cfc87472c4c3d158685514a434e2043992e1fb8bc791cbbfc4c95",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5716,12 +6356,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5731,12 +6371,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5746,12 +6386,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5761,12 +6401,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5776,12 +6416,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5791,12 +6431,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5806,12 +6446,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5821,12 +6461,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5836,12 +6476,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5851,12 +6491,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5866,12 +6506,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5881,12 +6521,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5896,12 +6536,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5911,12 +6551,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5926,12 +6566,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5941,12 +6581,12 @@
           "disposition": "abstained",
           "ranked_ids": [],
           "scores": {},
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7503fd753b4ecabbaab5d8169adc0c722258cdd2bd6f20961aadfb961d0bb3dd",
+          "normalized_response_sha256": "29b551116cf2be83a0f35f7bdf07cc882b96b95851ba3d509bd8fef92776afef",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5959,17 +6599,21 @@
           ],
           "scores": {
             "isolation-lifecycle-001-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "666f6a48989462fe01571fa2d5de23d86dacc7b77db0cbceff648df72671e48b",
+          "normalized_response_sha256": "0f9e50a00408a0210c8839cb1ff3fe4935ea375f18046fac9650cc61a24770ea",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -5982,17 +6626,21 @@
           ],
           "scores": {
             "isolation-lifecycle-002-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "203ad140e5b2192fca7bc4421e2886986813a14820364b981f16349baef3a54c",
+          "normalized_response_sha256": "3ecc3fd5ba2e71d178631b9b2045f8c9441742eb40bf6024edd80a711610f8f8",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6005,17 +6653,21 @@
           ],
           "scores": {
             "isolation-lifecycle-003-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "9e98a73699a74ca94118394794bc9eced937b66a02a0bc24ac79f25fb4c4c409",
+          "normalized_response_sha256": "a4175d1e621e5c9699a3afdb1a47657ed8237d96b26d67082ec96c3a0fe33a3e",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6028,17 +6680,21 @@
           ],
           "scores": {
             "isolation-lifecycle-004-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "9008bb2e6ea453438d3580e51e36a5d54d4362a387c231d78a306e5f0e5583ba",
+          "normalized_response_sha256": "71e21d70537adf71ed2aa6b98c7b68cb7a90d74fa01b318060689752aae2a871",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6051,17 +6707,21 @@
           ],
           "scores": {
             "isolation-lifecycle-005-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "ef32fb26a4c4bcc990be1d161fa4c86eb7540e474023c6009c0364569843e3b3",
+          "normalized_response_sha256": "5750d9e8bcb4ff6d2280344601024bcfa837ef9d3f359ea1062d51b079c370c7",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6074,17 +6734,21 @@
           ],
           "scores": {
             "isolation-lifecycle-006-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "fa37ccbfc837154f656c051fc3f89fcf99fc2c8b99697f8f41c4921ca5f23733",
+          "normalized_response_sha256": "b61941e6c8223d12dd632e2875d73e31358cedc61583b75d754e646c2626ac98",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6097,17 +6761,21 @@
           ],
           "scores": {
             "isolation-lifecycle-007-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8a98f0f1fb2fa3ad73fa2acca9bb1c1409d256ea2ccf6d00f3158a898bb1e2be",
+          "normalized_response_sha256": "05d3b6ce4e8ad48cb18d662193f56ceccdca25448dcbfa5da75d7d2dc13a049c",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6120,17 +6788,21 @@
           ],
           "scores": {
             "isolation-lifecycle-008-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f2759b8249dda2a786b2287a8b8de11e70be3056b701f437ce41a426681d40ae",
+          "normalized_response_sha256": "c73880dce02c644412c4102bd513c70a807412c0addd4efa3e3fd4b9a7fe0467",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6143,17 +6815,21 @@
           ],
           "scores": {
             "isolation-lifecycle-009-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "d08f3d59761c81f11dfb5ec7d556ab53813db062514ecefae30ee369c1ea3f5f",
+          "normalized_response_sha256": "2c1207aa1f382e266d764dc3b18179a9cf87e4ec20529a1c214af4837d449d36",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6166,17 +6842,21 @@
           ],
           "scores": {
             "isolation-lifecycle-010-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "05a2480159bed1e3b8676b3fc9014c2b4eaeea0988703f13bc80fb1ea31f0094",
+          "normalized_response_sha256": "a9766cc2f8d6d63d2be2472e34833b7907f870c7007b154676e0c86fc0da4bb9",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6189,17 +6869,21 @@
           ],
           "scores": {
             "isolation-lifecycle-011-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "c903b588d8aa77b1b56b88b8783839f9ce990c374a7575167ff5c7911b1ddd36",
+          "normalized_response_sha256": "a7c7e4a267144cfea15c07dd7a34f5d5868c756c6c784f4f02ec383dc28ddb4b",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6212,17 +6896,21 @@
           ],
           "scores": {
             "isolation-lifecycle-012-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "9fe4f0590c2164edfe10d85e191321c1c28f4ef02036f0213c742a69ce9f7068",
+          "normalized_response_sha256": "2147678c042cf25c5defe5ae361b65e6e5871ff202f465bb39314904fe480e17",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6235,17 +6923,21 @@
           ],
           "scores": {
             "isolation-lifecycle-013-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "b440dee026f95650c435a7840b353ee422fa357dbeee2fe7d699ac4d2fa29f15",
+          "normalized_response_sha256": "542cd523b11e73b200e7ec0d06b70737b619cbe96d9b8d52d740bfded243b1e0",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6258,17 +6950,21 @@
           ],
           "scores": {
             "isolation-lifecycle-014-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "1f689f9ad9e1c78fae48809e5a3896f16f71d198b999feda6ed85f0b73aca77f",
+          "normalized_response_sha256": "6a9f10c67b8c51bb7c1ca30ba725b103793507a26a31556536a391afe499414d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6281,17 +6977,21 @@
           ],
           "scores": {
             "isolation-lifecycle-015-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "470f8f41627fe8246a51a6ca8670d4924b221ad1be2da29cf5b3070fa8b21dee",
+          "normalized_response_sha256": "a0057b9884840d0a2ec0dabc925a27ac5047bcc2cf5356c4c840f39cffe89c1b",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6304,17 +7004,21 @@
           ],
           "scores": {
             "isolation-lifecycle-016-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "a720f82c0e6060cbaa032e0a13b64c452035ea119852502664dd455903788e85",
+          "normalized_response_sha256": "b143210b77b902ceb067481d580f9eb36c1b87a426b14dbf381b7c41f65d3e09",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6327,17 +7031,21 @@
           ],
           "scores": {
             "isolation-lifecycle-017-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "28976a3c4609957a7460885b33d07c62e0926e0d142cef9f3ec579d752c4bce4",
+          "normalized_response_sha256": "0be8ff5922744ccf6d182d64afe6a7b9c7c5a197e13e67b3f3120676917c7d81",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6350,17 +7058,21 @@
           ],
           "scores": {
             "isolation-lifecycle-018-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "c237ce112cc494253fe23f800164f42090f09e79014be7ea5404105eab526704",
+          "normalized_response_sha256": "6396d712cc309c05eae10db0b330029900211c41b22e5c33b79e905a5a7fb579",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6373,17 +7085,21 @@
           ],
           "scores": {
             "isolation-lifecycle-019-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "c6262d11e2f4891863f6a5eb1474e8060bb2c901014727c7a68d4c0a823db2f3",
+          "normalized_response_sha256": "fae5d3e712f31b1fa7c1c205acb3ee92145e7a8ffc0e7cf0eedc48a6ad66d264",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6396,17 +7112,21 @@
           ],
           "scores": {
             "isolation-lifecycle-020-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "f14a7aba0c880484ef0f40b7a4950bc8cfed3e11a6f7fe9e65d4a961a68abce3",
+          "normalized_response_sha256": "afeda60671c902cd3cdfe86c046e522001716c60ee2cf13e8b6496d1a29caa55",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6419,17 +7139,21 @@
           ],
           "scores": {
             "isolation-lifecycle-021-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "a9f5fb08e15aed7c88fc6ccdd9b7b614acd73a6dd047b1aa87cb3a9e0890f164",
+          "normalized_response_sha256": "07c22d56ee5f6e21544c58817a68ef4acb225b22847797ac36247f2876f4e33d",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6442,17 +7166,21 @@
           ],
           "scores": {
             "isolation-lifecycle-022-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "392f8bf1cb5bfa4a705d3bed8bd9aa3fac191208687323ff6b0234e311d3c750",
+          "normalized_response_sha256": "e3a334c5e2ed9e06f96826014eff1cf6e433a831a44307149297a24ff3d1c798",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6465,17 +7193,21 @@
           ],
           "scores": {
             "isolation-lifecycle-023-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8cde917ce166360a3a9e4525422cd348572894429ff68470e690f78f8658818c",
+          "normalized_response_sha256": "3e33462ba9cc1dcdf82a48e48796d28459aed9f4a154e0c133f0246d29db7166",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6488,17 +7220,21 @@
           ],
           "scores": {
             "isolation-lifecycle-024-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "eb535216a16efddf17f2d128cda94c256395613f27faa09b6435a91dd916cf21",
+          "normalized_response_sha256": "ee8a36bdab5763f233b3138e6b03376b146a90025baa572a8831ab071a5a8a31",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6511,17 +7247,21 @@
           ],
           "scores": {
             "isolation-lifecycle-025-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "44c21d16a5e4263eb580ead53ff16ddf8e6380de3ab0bb18efe4fe3ddfb6ea72",
+          "normalized_response_sha256": "f8d5c453a0af63104a23ea2c3a277c35799a4dc99c39953bbfb8bbe41cef0037",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6534,17 +7274,21 @@
           ],
           "scores": {
             "isolation-lifecycle-026-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "861b771589ad3f4d141534d7415face5d1e3b55f9d00312a7b8b5ee2565ab953",
+          "normalized_response_sha256": "c7d34e56457159cb3070d43e6a88a5b2dfda903d825f8a682d5e0294430b6d4a",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6557,17 +7301,21 @@
           ],
           "scores": {
             "isolation-lifecycle-027-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "7e9c0dea27cbf37699e77bf7a5e49aff549ee228512f39e81ae731cf5b782e67",
+          "normalized_response_sha256": "10717195e2743ecf70afea968a08150de7c8f0d07fbde5d89421700cb5744ce4",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6580,17 +7328,21 @@
           ],
           "scores": {
             "isolation-lifecycle-028-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8f1bf257841434823c66ab441c2c0ba54db4ccd33b1d13c6cd7b0ba3ad66d786",
+          "normalized_response_sha256": "6a5031635b2fb032cd1ebfb6c61a7ef41f3b0556dc7290aa96f4e218e30262f3",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6603,17 +7355,21 @@
           ],
           "scores": {
             "isolation-lifecycle-029-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "8ca30fe147301d2dff4bb48a7d1aa266ec158941093ab38612e875edb2fae884",
+          "normalized_response_sha256": "a7045d9505d11dcf720ae7fa6ad714e705742b1a5714d75af4139cbc5fdd78dc",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6626,17 +7382,21 @@
           ],
           "scores": {
             "isolation-lifecycle-030-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "51a49eba1884a2d260b0ad482a44b5a161cec2eeda216a76c0bb0344523b2d5f",
+          "normalized_response_sha256": "266fb9ccd514bb9045d63d1cc294e919ef2695a3adbd5f77b92ce4995c046f2a",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6649,17 +7409,21 @@
           ],
           "scores": {
             "isolation-lifecycle-031-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "584e3a63230f88e88777206b5b6c28ab8a7d398628c5a334cc07366d5e3bc17e",
+          "normalized_response_sha256": "fea5c107a86e0e91e8d5df6202712605f3342ab2de9cafffc4ccc8b6bfbffaf3",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []
@@ -6672,17 +7436,21 @@
           ],
           "scores": {
             "isolation-lifecycle-032-relevant": {
+              "final_rank": "1",
+              "final_score": "0.016393442623",
+              "fused_score": "0.016393442623",
               "vector_distance": "0.000000000000",
               "vector_rank": "1",
+              "vector_rrf": "0.016393442623",
               "vector_similarity": "1.000000000000"
             }
           },
-          "policy_id": "derived-exact-vector-only-v1",
+          "policy_id": "retrieval-exact-vector-v1",
           "policy_version": "1",
-          "policy_digest": "0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445",
+          "policy_digest": "29d421b0359f2e61e7227da06aa9bcbc68f64037ed8d7291d2955561c07eb4bb",
           "embedder_profile_digest": "614857cc2fbb32d55af9d786a1c0384f307d34d189e653d3764d01f35309e7b8",
           "projection_profile_digest": "06ddaa5f69f3b5ff160ba54dc7cafd912fd5593d510241100642788266b1cad9",
-          "normalized_response_sha256": "112eb3198ed6b74dfafb8da87517aea96ab43280e9e1ea153295374ececc9fb8",
+          "normalized_response_sha256": "eee00f239ae127436496a0e90d95d0352461096f71616ba32c373fc0faf503c7",
           "candidate_set_complete": true,
           "provenance_complete": true,
           "forbidden_leaks": []

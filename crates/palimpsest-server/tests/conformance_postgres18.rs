@@ -10,7 +10,7 @@ use axum::{
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     env,
     process::Stdio,
     str::FromStr,
@@ -752,6 +752,48 @@ async fn install_deterministic_hybrid_fixture(pool: &PgPool) -> Result<()> {
     )
     .execute(pool)
     .await?;
+    sqlx::query(
+        r#"
+        WITH plan AS (
+            SELECT
+                embedding_profile_id,
+                embedding_profile_version,
+                embedding_profile_sha256,
+                embedding_projection_profile_id,
+                embedding_projection_profile_version,
+                embedding_projection_profile_sha256,
+                jsonb_set(
+                    policy_document,
+                    '{candidate_limits,lexical}',
+                    '0'::jsonb
+                ) AS document
+            FROM memory.retrieval_policies
+            WHERE policy_id = 'retrieval-hybrid-v1'
+              AND policy_version = '1'
+        )
+        INSERT INTO memory.retrieval_policies (
+            policy_id, policy_version, policy_document, policy_sha256,
+            schema_version, retrieval_mode,
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256
+        )
+        SELECT
+            'retrieval-exact-vector-v1', '1', document,
+            encode(sha256(convert_to(document::text, 'UTF8')), 'hex'),
+            1, 'hybrid',
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256
+        FROM plan
+        "#,
+    )
+    .execute(pool)
+    .await?;
     install_temporal_metadata_fixture(pool).await?;
     install_temporal_retrieval_policy(pool).await?;
     Ok(())
@@ -1032,7 +1074,7 @@ async fn runs_hybrid_retrieval_conformance(
         )
         .await?;
         corpus_evaluation.surface_coverage.error_responses_checked = true;
-        rebuild_corpus_projections(migration_pool, &coordinator, &prepared_corpus).await?;
+        rebuild_corpus_projections(pool, &coordinator, target, &prepared_corpus).await?;
         let rebuilt =
             evaluate_full_policy_once(&scenario_target, &corpus, &prepared_corpus, 10).await?;
         corpus_evaluation.rebuild_identical = rebuilt == corpus_evaluation.baselines[3];
@@ -1273,72 +1315,78 @@ async fn verify_corpus_manifests_exclude_forbidden(
 async fn rebuild_corpus_projections(
     pool: &PgPool,
     coordinator: &EmbeddingProjectionCoordinator,
+    target: &Target,
     prepared: &PreparedCorpus,
 ) -> Result<()> {
-    let revision_ids = prepared
-        .projections
-        .iter()
-        .map(|projection| projection.revision_id)
-        .collect::<Vec<_>>();
-    sqlx::query(
-        r#"
-        DELETE FROM memory.fact_revision_embedding_projections
-        WHERE revision_id = ANY($1::uuid[])
-        "#,
-    )
-    .bind(&revision_ids)
-    .execute(pool)
-    .await?;
-    sqlx::query(
-        r#"
-        DELETE FROM memory.fact_revision_search_documents
-        WHERE revision_id = ANY($1::uuid[])
-        "#,
-    )
-    .bind(&revision_ids)
-    .execute(pool)
-    .await?;
-    let rebuilt_search = sqlx::query(
-        r#"
-        INSERT INTO memory.fact_revision_search_documents (
-            tenant_id, subject_id, case_id, fact_id, revision_id,
-            projection_schema_version, projection_schema_sha256,
-            source_content_sha256, projection_sha256, search_vector
+    let mut scopes = BTreeMap::<(Uuid, Uuid), Vec<Uuid>>::new();
+    for projection in &prepared.projections {
+        scopes
+            .entry((projection.tenant_id, projection.subject_id))
+            .or_default()
+            .push(projection.revision_id);
+    }
+    for ((tenant_id, subject_id), revision_ids) in scopes {
+        let scoped_target = Target {
+            tenant_id,
+            subject_id,
+            ..target.clone()
+        };
+        let mut transaction = pool.begin().await?;
+        set_retrieval_test_scope(&mut transaction, &scoped_target).await?;
+        sqlx::query(
+            r#"
+            DELETE FROM memory.fact_revision_embedding_projections
+            WHERE revision_id = ANY($1::uuid[])
+            "#,
         )
-        SELECT revision.tenant_id, revision.subject_id, revision.case_id,
-            revision.fact_id, revision.revision_id,
-            projection.projection_schema_version, projection.projection_sha256,
-            revision.content_sha256,
-            memory.fact_projection_sha256_v1(
-                fact.namespace, fact.fact_key, revision.value
-            ),
-            memory.fact_search_vector_v1(
-                fact.namespace, fact.fact_key, revision.value
+        .bind(&revision_ids)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            r#"
+            DELETE FROM memory.fact_revision_search_documents
+            WHERE revision_id = ANY($1::uuid[])
+            "#,
+        )
+        .bind(&revision_ids)
+        .execute(&mut *transaction)
+        .await?;
+        let rebuilt_search = sqlx::query(
+            r#"
+            INSERT INTO memory.fact_revision_search_documents (
+                tenant_id, subject_id, case_id, fact_id, revision_id,
+                projection_schema_version, projection_schema_sha256,
+                source_content_sha256, projection_sha256, search_vector
             )
-        FROM memory.fact_revisions AS revision
-        JOIN memory.facts AS fact
-          ON fact.tenant_id = revision.tenant_id
-         AND fact.subject_id = revision.subject_id
-         AND fact.case_id = revision.case_id
-         AND fact.fact_id = revision.fact_id
-        CROSS JOIN memory.search_projection_schemas AS projection
-        WHERE revision.revision_id = ANY($1::uuid[])
-          AND projection.projection_schema_version = 1
-        "#,
-    )
-    .bind(&revision_ids)
-    .execute(pool)
-    .await?;
-    ensure!(
-        rebuilt_search.rows_affected() == revision_ids.len() as u64,
-        "corpus search-projection rebuild was incomplete"
-    );
-    let scopes = prepared
-        .projections
-        .iter()
-        .map(|projection| (projection.tenant_id, projection.subject_id))
-        .collect::<HashSet<_>>();
-    for (tenant_id, subject_id) in scopes {
+            SELECT revision.tenant_id, revision.subject_id, revision.case_id,
+                revision.fact_id, revision.revision_id,
+                projection.projection_schema_version, projection.projection_sha256,
+                revision.content_sha256,
+                memory.fact_projection_sha256_v1(
+                    fact.namespace, fact.fact_key, revision.value
+                ),
+                memory.fact_search_vector_v1(
+                    fact.namespace, fact.fact_key, revision.value
+                )
+            FROM memory.fact_revisions AS revision
+            JOIN memory.facts AS fact
+              ON fact.tenant_id = revision.tenant_id
+             AND fact.subject_id = revision.subject_id
+             AND fact.case_id = revision.case_id
+             AND fact.fact_id = revision.fact_id
+            CROSS JOIN memory.search_projection_schemas AS projection
+            WHERE revision.revision_id = ANY($1::uuid[])
+              AND projection.projection_schema_version = 1
+            "#,
+        )
+        .bind(&revision_ids)
+        .execute(&mut *transaction)
+        .await?;
+        ensure!(
+            rebuilt_search.rows_affected() == revision_ids.len() as u64,
+            "corpus search-projection rebuild was incomplete"
+        );
+        transaction.commit().await?;
         let rebuilt = coordinator
             .rebuild_pending(TenantId(tenant_id), SubjectId(subject_id), 1_000)
             .await?;

@@ -539,6 +539,7 @@ fn hybrid_policy_plan(
             })
     }
 
+    let policy_id: String = required_column(row, "policy_id")?;
     let scoring_mode: String = required_column(row, "scoring_mode")?;
     let temporal_scoring = match scoring_mode.as_str() {
         "channel-only" => false,
@@ -675,8 +676,13 @@ fn hybrid_policy_plan(
     } else {
         true
     };
+    let lexical_limit_supported = if policy_id == "retrieval-exact-vector-v1" {
+        !temporal_scoring && plan.lexical_candidate_limit == 0
+    } else {
+        (1..=50).contains(&plan.lexical_candidate_limit)
+    };
     if !(1..=50).contains(&plan.exact_candidate_limit)
-        || !(1..=50).contains(&plan.lexical_candidate_limit)
+        || !lexical_limit_supported
         || !(1..=50).contains(&plan.vector_candidate_limit)
         || !(1..=50).contains(&plan.manifest_limit)
         || plan.fts_rank_normalization != 32
