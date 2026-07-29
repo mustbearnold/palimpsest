@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use async_trait::async_trait;
 use axum::{
     Router,
@@ -10,7 +10,7 @@ use axum::{
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     env,
     process::Stdio,
     str::FromStr,
@@ -23,6 +23,10 @@ use std::{
 
 use palimpsest_application::{
     EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse,
+};
+use palimpsest_conformance::retrieval_evaluation::{
+    LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
+    evaluate_full_policy_once, load_frozen_corpus, prepare_frozen_corpus, write_or_verify_artifact,
 };
 use palimpsest_conformance::{
     HybridFusionFixture, RetrievalIsolationFixture, RetrievalLifecycleFixture, Target,
@@ -231,6 +235,9 @@ impl EmbeddingProvider for DeterministicEmbeddingProvider {
 
 fn fixture_embedding(task: &EmbeddingTask, content: &str) -> Vec<f32> {
     if matches!(task, EmbeddingTask::Query) {
+        if content.contains("palimpsest-") {
+            return vec![1.0, 0.0, 0.0, 0.0];
+        }
         assert!(
             matches!(
                 content,
@@ -239,6 +246,17 @@ fn fixture_embedding(task: &EmbeddingTask, content: &str) -> Vec<f32> {
             "unexpected conformance query embedding input"
         );
         return vec![1.0, 0.0, 0.0, 0.0];
+    }
+    if content.contains("embedding_fixture_role") {
+        if content.contains("\"relevant\"") || content.contains("\"trap\"") {
+            return vec![1.0, 0.0, 0.0, 0.0];
+        }
+        if content.contains("\"near\"") {
+            return vec![0.8, 0.6, 0.0, 0.0];
+        }
+        if content.contains("\"distractor\"") {
+            return vec![0.0, 1.0, 0.0, 0.0];
+        }
     }
     for (marker, vector) in [
         ("vector_fixture_forbidden_4d", [1.0, 0.0, 0.0, 0.0]),
@@ -734,6 +752,48 @@ async fn install_deterministic_hybrid_fixture(pool: &PgPool) -> Result<()> {
     )
     .execute(pool)
     .await?;
+    sqlx::query(
+        r#"
+        WITH plan AS (
+            SELECT
+                embedding_profile_id,
+                embedding_profile_version,
+                embedding_profile_sha256,
+                embedding_projection_profile_id,
+                embedding_projection_profile_version,
+                embedding_projection_profile_sha256,
+                jsonb_set(
+                    policy_document,
+                    '{candidate_limits,lexical}',
+                    '0'::jsonb
+                ) AS document
+            FROM memory.retrieval_policies
+            WHERE policy_id = 'retrieval-hybrid-v1'
+              AND policy_version = '1'
+        )
+        INSERT INTO memory.retrieval_policies (
+            policy_id, policy_version, policy_document, policy_sha256,
+            schema_version, retrieval_mode,
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256
+        )
+        SELECT
+            'retrieval-exact-vector-v1', '1', document,
+            encode(sha256(convert_to(document::text, 'UTF8')), 'hex'),
+            1, 'hybrid',
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256
+        FROM plan
+        "#,
+    )
+    .execute(pool)
+    .await?;
     install_temporal_metadata_fixture(pool).await?;
     install_temporal_retrieval_policy(pool).await?;
     Ok(())
@@ -982,6 +1042,8 @@ async fn runs_hybrid_retrieval_conformance(
     let scenario = async {
         let fixture = creates_hybrid_fusion_fixture(&scenario_target).await?;
         let temporal_fixture = creates_temporal_retrieval_fixture(&scenario_target).await?;
+        let corpus = load_frozen_corpus()?;
+        let prepared_corpus = prepare_frozen_corpus(&scenario_target, &corpus).await?;
         let coordinator = EmbeddingProjectionCoordinator::new(pool.clone(), provider_port.clone());
         let initial = coordinator
             .rebuild_pending(
@@ -996,6 +1058,28 @@ async fn runs_hybrid_retrieval_conformance(
         verify_embedding_projection_rows(pool, target, &fixture).await?;
         verify_no_ann_indexes(pool).await?;
         exercise_concurrent_projection_claim(pool, target, &fixture).await?;
+
+        apply_corpus_lifecycle(pool, target, &prepared_corpus).await?;
+        tokio::time::sleep(Duration::from_millis(1_100)).await;
+        let mut corpus_evaluation =
+            evaluate_frozen_corpus(&scenario_target, &corpus, &prepared_corpus, 10).await?;
+        verify_corpus_manifests_exclude_forbidden(migration_pool, &corpus, &prepared_corpus)
+            .await?;
+        corpus_evaluation.surface_coverage.durable_manifests_checked = true;
+        verify_corpus_error_surface_redaction(
+            &scenario_target,
+            &corpus,
+            &prepared_corpus,
+            &provider,
+        )
+        .await?;
+        corpus_evaluation.surface_coverage.error_responses_checked = true;
+        rebuild_corpus_projections(pool, &coordinator, target, &prepared_corpus).await?;
+        let rebuilt =
+            evaluate_full_policy_once(&scenario_target, &corpus, &prepared_corpus, 10).await?;
+        corpus_evaluation.rebuild_identical = rebuilt == corpus_evaluation.baselines[3];
+        write_or_verify_artifact(&corpus_evaluation)?;
+        enforce_issue_22_gates(&corpus_evaluation)?;
 
         let replay_fixture =
             creates_deterministic_hybrid_fusion_receipts(&scenario_target, &fixture).await?;
@@ -1118,6 +1202,197 @@ async fn runs_hybrid_retrieval_conformance(
     let _ = restart_server.kill().await;
     let _ = restart_server.wait().await;
     restart_result
+}
+
+async fn apply_corpus_lifecycle(
+    pool: &PgPool,
+    target: &Target,
+    prepared: &PreparedCorpus,
+) -> Result<()> {
+    for mutation in &prepared.lifecycle {
+        ensure!(
+            mutation.tenant_id == target.tenant_id && mutation.subject_id == target.subject_id,
+            "corpus lifecycle mutation escaped the primary test scope"
+        );
+        match mutation.lifecycle {
+            LifecycleFixture::Deleted => {
+                let mut transaction = pool.begin().await?;
+                set_retrieval_test_scope(&mut transaction, target).await?;
+                transition_revision_to_deleted(&mut transaction, target, mutation.revision_id)
+                    .await?;
+                transaction.commit().await?;
+            }
+            LifecycleFixture::Expired => {}
+            LifecycleFixture::Active => bail!("active corpus fact requested a lifecycle mutation"),
+        }
+    }
+    Ok(())
+}
+
+async fn verify_corpus_error_surface_redaction(
+    target: &Target,
+    corpus: &palimpsest_conformance::retrieval_evaluation::Corpus,
+    prepared: &PreparedCorpus,
+    provider: &DeterministicEmbeddingProvider,
+) -> Result<()> {
+    let scenario = corpus
+        .scenarios
+        .iter()
+        .find(|scenario| !scenario.forbidden_ids.is_empty())
+        .context("corpus has no forbidden-ID error probe")?;
+    provider.set_mode(EmbeddingFixtureMode::Unavailable);
+    let response = Client::new()
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/retrievals",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "corpus-forbidden-error-redaction")
+        .json(&json!({
+            "query": scenario.query,
+            "perspective": {"kind": "current"},
+            "page_size": 10,
+            "policy_id": "retrieval-hybrid-temporal-v1",
+            "filters": {"case_ids": [scenario.case_id]}
+        }))
+        .send()
+        .await;
+    provider.set_mode(EmbeddingFixtureMode::Valid);
+    let response = response?;
+    ensure!(response.status() == StatusCode::SERVICE_UNAVAILABLE);
+    let raw = response.text().await?;
+    for logical_id in corpus
+        .scenarios
+        .iter()
+        .flat_map(|scenario| &scenario.forbidden_ids)
+    {
+        let revision_id = prepared
+            .revisions
+            .get(logical_id)
+            .context("missing forbidden revision for error probe")?;
+        ensure!(!raw.contains(logical_id));
+        ensure!(!raw.contains(&revision_id.to_string()));
+    }
+    Ok(())
+}
+
+async fn verify_corpus_manifests_exclude_forbidden(
+    pool: &PgPool,
+    corpus: &palimpsest_conformance::retrieval_evaluation::Corpus,
+    prepared: &PreparedCorpus,
+) -> Result<()> {
+    let forbidden = corpus
+        .scenarios
+        .iter()
+        .flat_map(|scenario| scenario.forbidden_ids.iter())
+        .map(|logical| {
+            prepared
+                .revisions
+                .get(logical)
+                .copied()
+                .with_context(|| format!("missing forbidden corpus revision {logical}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let leaked: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM memory.retrieval_manifest_items
+        WHERE revision_id = ANY($1::uuid[])
+        "#,
+    )
+    .bind(&forbidden)
+    .fetch_one(pool)
+    .await?;
+    ensure!(
+        leaked == 0,
+        "forbidden corpus revisions entered durable manifests"
+    );
+    Ok(())
+}
+
+async fn rebuild_corpus_projections(
+    pool: &PgPool,
+    coordinator: &EmbeddingProjectionCoordinator,
+    target: &Target,
+    prepared: &PreparedCorpus,
+) -> Result<()> {
+    let mut scopes = BTreeMap::<(Uuid, Uuid), Vec<Uuid>>::new();
+    for projection in &prepared.projections {
+        scopes
+            .entry((projection.tenant_id, projection.subject_id))
+            .or_default()
+            .push(projection.revision_id);
+    }
+    for ((tenant_id, subject_id), revision_ids) in scopes {
+        let scoped_target = Target {
+            tenant_id,
+            subject_id,
+            ..target.clone()
+        };
+        let mut transaction = pool.begin().await?;
+        set_retrieval_test_scope(&mut transaction, &scoped_target).await?;
+        sqlx::query(
+            r#"
+            DELETE FROM memory.fact_revision_embedding_projections
+            WHERE revision_id = ANY($1::uuid[])
+            "#,
+        )
+        .bind(&revision_ids)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            r#"
+            DELETE FROM memory.fact_revision_search_documents
+            WHERE revision_id = ANY($1::uuid[])
+            "#,
+        )
+        .bind(&revision_ids)
+        .execute(&mut *transaction)
+        .await?;
+        let rebuilt_search = sqlx::query(
+            r#"
+            INSERT INTO memory.fact_revision_search_documents (
+                tenant_id, subject_id, case_id, fact_id, revision_id,
+                projection_schema_version, projection_schema_sha256,
+                source_content_sha256, projection_sha256, search_vector
+            )
+            SELECT revision.tenant_id, revision.subject_id, revision.case_id,
+                revision.fact_id, revision.revision_id,
+                projection.projection_schema_version, projection.projection_sha256,
+                revision.content_sha256,
+                memory.fact_projection_sha256_v1(
+                    fact.namespace, fact.fact_key, revision.value
+                ),
+                memory.fact_search_vector_v1(
+                    fact.namespace, fact.fact_key, revision.value
+                )
+            FROM memory.fact_revisions AS revision
+            JOIN memory.facts AS fact
+              ON fact.tenant_id = revision.tenant_id
+             AND fact.subject_id = revision.subject_id
+             AND fact.case_id = revision.case_id
+             AND fact.fact_id = revision.fact_id
+            CROSS JOIN memory.search_projection_schemas AS projection
+            WHERE revision.revision_id = ANY($1::uuid[])
+              AND projection.projection_schema_version = 1
+            "#,
+        )
+        .bind(&revision_ids)
+        .execute(&mut *transaction)
+        .await?;
+        ensure!(
+            rebuilt_search.rows_affected() == revision_ids.len() as u64,
+            "corpus search-projection rebuild was incomplete"
+        );
+        transaction.commit().await?;
+        let rebuilt = coordinator
+            .rebuild_pending(TenantId(tenant_id), SubjectId(subject_id), 1_000)
+            .await?;
+        ensure!(rebuilt.failed == 0, "corpus projection rebuild failed");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Eq, PartialEq)]

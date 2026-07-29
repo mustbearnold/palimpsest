@@ -1322,6 +1322,10 @@ components:
             Optional immutable server policy to pin for this receipt. Omission
             selects the lexical default. `retrieval-hybrid-v1` opts into exact,
             lexical, and exact-vector fusion with its existing semantics.
+            `retrieval-exact-vector-v1` is a test-only exact-identity plus
+            exact-vector ablation policy; production migrations do not seed it,
+            so it remains unavailable unless migration authority explicitly
+            registers a conformance fixture.
             `retrieval-hybrid-temporal-v1` opts into the separately versioned
             trusted recency, confidence, and importance factors. Callers cannot
             supply factor metadata or ranking controls.

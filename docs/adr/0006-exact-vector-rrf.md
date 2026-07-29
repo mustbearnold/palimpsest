@@ -56,6 +56,14 @@ registers a production profile. PostgreSQL conformance may register a test-only
 authority. That fixture is mechanics and isolation evidence, not a production
 provider or semantic-quality claim.
 
+Retrieval evaluation may also register the test-only
+`retrieval-exact-vector-v1` ablation policy against that same fixture profile.
+It retains the exact-identity and exact-cosine channels while setting the
+lexical candidate limit to zero. The policy is accepted at the HTTP seam only
+to execute attributable black-box conformance baselines; it is not seeded by
+production migrations and remains unavailable without migration-authority
+fixture registration.
+
 Embedding projections are derived rows keyed by fact revision plus immutable
 embedding and document-projection profiles. The typmod-less `vector` column lets
 future profiles use different dimensions without rewriting a global
