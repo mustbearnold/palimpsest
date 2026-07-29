@@ -20,9 +20,9 @@ latency, cost, scale, capacity, or readiness claim.
 
 | Artifact or policy | SHA-256 |
 | --- | --- |
-| Corpus | `7c066db8c7eb082ed13feaf3738bb11a291dda11162266731f687dbd8c523635` |
-| Manifest | `37171e992ce9f3631c5fda35f10589f53df455453837a7e67505b6c0d384bcb4` |
-| Raw predictions and metrics | `ab3917a37c8aaed5262f5ae7db7d13c4afc3433c991aea3985a1af45bb56112a` |
+| Corpus | `6d5828d931e16164c0bedf19f09f85bc5dc8668c0762e7dc2e76160878d0d6f0` |
+| Manifest | `2f4a2950bd1187cd1fd603b787432aa2139289095b6c54a82aa5d626e6f2290b` |
+| Raw predictions and metrics | `ef7ad9648ba1e97a847e44e494b8e68173e64060c12c4248e1dccf828160aad1` |
 | `retrieval-lexical-v1` | `f3c4c3122e24924f201ad1054bd280e8795abd94e7e7f89dc934fa8749e2b3e5` |
 | Derived exact-vector baseline | `0f3eaed073171c310861d80ab936eab576c76031f7b6ffbf8b8ba3aef9d5f445` |
 | `retrieval-hybrid-v1` | `41794a741674fccb729bec0bcddf3627d263c40462017e1c5aac8fd929d2ee15` |
@@ -42,7 +42,14 @@ Every scenario is written and retrieved through HTTP. Exact/FTS, hybrid, and
 full-policy predictions come from their named durable receipt policies. The
 exact-vector-only baseline is deterministically derived from the public
 `vector_rank` evidence in the hybrid receipt; it is an evaluation view, not a
-new executable service policy.
+new executable service policy. Every filtered scenario has at most two eligible
+revisions, below the immutable 50-candidate vector bound. The harness freezes
+the complete expected eligible set and rejects the baseline if any eligible
+revision is absent, so the derived top ten cannot be truncated by fusion.
+
+The table reports only the 96 held-out gate cases. The committed artifact also
+records the 32 calibration cases and the all-corpus metrics separately; gate
+enforcement never combines calibration and held-out judgments.
 
 | Baseline | Exact Hit@1 | Temporal selection | Recall@10 overall | Recall@10 temporal/update | nDCG@10 | MRR@10 | Abstention | Forbidden leaks |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -53,15 +60,17 @@ new executable service policy.
 
 All returned items carried provenance and immutable policy metadata. Ten
 independent full-policy runs produced identical dispositions, logical order,
-fixed scores, and policy/profile digests. Deleting and rebuilding every corpus
-embedding projection produced the same full-policy predictions.
+fixed scores, normalized response digests, and policy/profile digests. Deleting
+and rebuilding every corpus search-document and embedding projection produced
+the same full-policy predictions and normalized response digests.
 
 Isolation/lifecycle cases cover same-case cross-tenant and cross-subject traps,
 restricted-sensitivity traps, deleted successors, and expired revisions. Zero
-forbidden revision IDs appeared in API responses, score explanations, or
-durable receipt manifests. Existing conformance also retains generic error
-redaction, non-bypass RLS, and private-payload logging constraints; this report
-does not claim an observability backend that the repository does not yet ship.
+forbidden revision IDs appeared in complete bounded candidate sets, API
+responses, score explanations, durable receipt manifests, or induced generic
+provider-error responses. Existing non-bypass RLS conformance remains green.
+The service crates have no production logging calls, so there is currently no
+runtime log payload surface; adding one requires a captured private-marker gate.
 
 ## Hard gates
 

@@ -34,22 +34,23 @@ pub struct Scenario {
     pub category: String,
     pub split: String,
     pub query: String,
-    pub expected_disposition: String,
+    pub expected_disposition: ExpectedDisposition,
     pub relevant_ids: Vec<String>,
     pub forbidden_ids: Vec<String>,
+    pub expected_candidate_ids: Vec<String>,
     pub case_id: String,
-    pub perspective: String,
+    pub perspective: PerspectiveFixture,
     pub facts: Vec<FactFixture>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FactFixture {
     pub id: String,
-    pub scope: String,
+    pub scope: FixtureScope,
     pub namespace: String,
     pub key: String,
     pub text: String,
-    pub vector: String,
+    pub embedding_fixture_role: EmbeddingFixtureRole,
     pub sensitivity: String,
     pub retention_policy_id: String,
     pub observed_at: String,
@@ -57,7 +58,47 @@ pub struct FactFixture {
     pub write_policy_id: String,
     pub confidence: f64,
     pub supersedes: Option<String>,
-    pub lifecycle: String,
+    pub lifecycle: LifecycleFixture,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExpectedDisposition {
+    Results,
+    Abstained,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PerspectiveFixture {
+    Fixed,
+    BeforeSuccessor,
+    AfterSuccessor,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FixtureScope {
+    Primary,
+    SecondarySubject,
+    SecondaryTenant,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EmbeddingFixtureRole {
+    Relevant,
+    Near,
+    Distractor,
+    Trap,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LifecycleFixture {
+    Active,
+    Deleted,
+    Expired,
 }
 
 #[derive(Clone, Debug)]
@@ -82,7 +123,7 @@ pub struct LifecycleMutation {
     pub case_id: Uuid,
     pub fact_id: Uuid,
     pub revision_id: Uuid,
-    pub lifecycle: String,
+    pub lifecycle: LifecycleFixture,
 }
 
 #[derive(Clone, Debug)]
@@ -110,6 +151,8 @@ pub struct ScenarioPrediction {
     pub policy_digest: String,
     pub embedder_profile_digest: Option<String>,
     pub projection_profile_digest: Option<String>,
+    pub normalized_response_sha256: String,
+    pub candidate_set_complete: bool,
     pub provenance_complete: bool,
     pub forbidden_leaks: Vec<String>,
 }
@@ -134,16 +177,33 @@ pub struct Metrics {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct MetricsBySplit {
+    pub calibration: Metrics,
+    pub gate: Metrics,
+    pub all: Metrics,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SurfaceCoverage {
+    pub complete_candidate_sets: bool,
+    pub responses_and_explanations_checked: bool,
+    pub durable_manifests_checked: bool,
+    pub error_responses_checked: bool,
+    pub service_log_surface: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct EvaluationArtifact {
     pub schema_version: String,
     pub corpus_version: String,
     pub corpus_sha256: String,
     pub baselines: Vec<BaselinePredictions>,
-    pub baseline_metrics: BTreeMap<String, Metrics>,
+    pub baseline_metrics: BTreeMap<String, MetricsBySplit>,
     pub full_policy_metrics: Metrics,
     pub repeated_runs: usize,
     pub repetitions_identical: bool,
     pub rebuild_identical: bool,
+    pub surface_coverage: SurfaceCoverage,
 }
 
 pub fn load_frozen_corpus() -> Result<Corpus> {
@@ -198,16 +258,8 @@ fn validate_corpus(corpus: &Corpus) -> Result<()> {
             .entry(scenario.split.as_str())
             .or_insert(0usize) += 1;
         ensure!(matches!(scenario.split.as_str(), "calibration" | "gate"));
-        ensure!(matches!(
-            scenario.expected_disposition.as_str(),
-            "results" | "abstained"
-        ));
         ensure!(!scenario.query.is_empty());
         ensure!(Uuid::parse_str(&scenario.case_id).is_ok());
-        ensure!(matches!(
-            scenario.perspective.as_str(),
-            "fixed" | "before-successor" | "after-successor"
-        ));
         ensure!(
             scenario
                 .relevant_ids
@@ -225,21 +277,10 @@ fn validate_corpus(corpus: &Corpus) -> Result<()> {
                 .relevant_ids
                 .iter()
                 .chain(&scenario.forbidden_ids)
+                .chain(&scenario.expected_candidate_ids)
                 .all(|id| fact_ids.contains(id.as_str()))
         );
         for fact in &scenario.facts {
-            ensure!(matches!(
-                fact.scope.as_str(),
-                "primary" | "secondary-subject" | "secondary-tenant"
-            ));
-            ensure!(matches!(
-                fact.vector.as_str(),
-                "relevant" | "near" | "distractor" | "trap"
-            ));
-            ensure!(matches!(
-                fact.lifecycle.as_str(),
-                "active" | "deleted" | "expired"
-            ));
             ensure!(!fact.retention_policy_id.is_empty());
             ensure!((0.0..=1.0).contains(&fact.confidence));
             if let Some(root) = &fact.supersedes {
@@ -274,7 +315,7 @@ pub async fn prepare_frozen_corpus(target: &Target, corpus: &Corpus) -> Result<P
         let mut before_successor = None;
         let mut after_setup = None;
         for fixture in &scenario.facts {
-            let scoped_target = scoped_target(target, &fixture.scope);
+            let scoped_target = scoped_target(target, fixture.scope);
             let view = create_corpus_fact(
                 &client,
                 &scoped_target,
@@ -288,7 +329,7 @@ pub async fn prepare_frozen_corpus(target: &Target, corpus: &Corpus) -> Result<P
                 .as_ref()
                 .context("corpus fact response omitted its effective revision")?;
             if fixture.supersedes.is_none()
-                && scenario.perspective == "before-successor"
+                && scenario.perspective == PerspectiveFixture::BeforeSuccessor
                 && before_successor.is_none()
             {
                 before_successor = Some(revision.recorded_at.clone());
@@ -308,7 +349,7 @@ pub async fn prepare_frozen_corpus(target: &Target, corpus: &Corpus) -> Result<P
                 subject_id: scoped_target.subject_id,
                 revision_id: revision.revision_id,
             });
-            if fixture.lifecycle != "active" {
+            if fixture.lifecycle != LifecycleFixture::Active {
                 lifecycle.push(LifecycleMutation {
                     logical_id: fixture.id.clone(),
                     tenant_id: scoped_target.tenant_id,
@@ -316,7 +357,7 @@ pub async fn prepare_frozen_corpus(target: &Target, corpus: &Corpus) -> Result<P
                     case_id: view.case_id,
                     fact_id: view.fact_id,
                     revision_id: revision.revision_id,
-                    lifecycle: fixture.lifecycle.clone(),
+                    lifecycle: fixture.lifecycle,
                 });
             }
         }
@@ -348,56 +389,49 @@ pub async fn evaluate_frozen_corpus(
         .iter()
         .map(|(logical, revision)| (*revision, logical.clone()))
         .collect::<BTreeMap<_, _>>();
-    let mut lexical = Vec::with_capacity(corpus.scenarios.len());
-    let mut vector = Vec::with_capacity(corpus.scenarios.len());
-    let mut hybrid = Vec::with_capacity(corpus.scenarios.len());
-    let mut full = Vec::with_capacity(corpus.scenarios.len());
+    let lexical = evaluate_policy_once(
+        target,
+        corpus,
+        prepared,
+        &reverse_ids,
+        "retrieval-lexical-v1",
+        0,
+    )
+    .await?;
+    let hybrid = evaluate_policy_once(
+        target,
+        corpus,
+        prepared,
+        &reverse_ids,
+        "retrieval-hybrid-v1",
+        0,
+    )
+    .await?;
+    let vector = hybrid
+        .iter()
+        .map(vector_only_prediction)
+        .collect::<Vec<_>>();
+    let full = evaluate_policy_once(
+        target,
+        corpus,
+        prepared,
+        &reverse_ids,
+        "retrieval-hybrid-temporal-v1",
+        0,
+    )
+    .await?;
     let mut repetitions_identical = true;
-    for scenario in &corpus.scenarios {
-        lexical.push(
-            request_prediction(
-                target,
-                scenario,
-                prepared,
-                &reverse_ids,
-                "retrieval-lexical-v1",
-                0,
-            )
-            .await?,
-        );
-        let hybrid_prediction = request_prediction(
+    for repetition in 1..repetitions {
+        let repeated = evaluate_policy_once(
             target,
-            scenario,
-            prepared,
-            &reverse_ids,
-            "retrieval-hybrid-v1",
-            0,
-        )
-        .await?;
-        vector.push(vector_only_prediction(&hybrid_prediction));
-        hybrid.push(hybrid_prediction);
-        let first = request_prediction(
-            target,
-            scenario,
+            corpus,
             prepared,
             &reverse_ids,
             "retrieval-hybrid-temporal-v1",
-            0,
+            repetition,
         )
         .await?;
-        for repetition in 1..repetitions {
-            let repeated = request_prediction(
-                target,
-                scenario,
-                prepared,
-                &reverse_ids,
-                "retrieval-hybrid-temporal-v1",
-                repetition,
-            )
-            .await?;
-            repetitions_identical &= repeated == first;
-        }
-        full.push(first);
+        repetitions_identical &= repeated == full;
     }
     let baselines = vec![
         BaselinePredictions {
@@ -422,14 +456,28 @@ pub async fn evaluate_frozen_corpus(
         .map(|baseline| {
             Ok((
                 baseline.baseline.clone(),
-                calculate_metrics(corpus, &baseline.scenarios)?,
+                MetricsBySplit {
+                    calibration: calculate_metrics(
+                        corpus,
+                        &baseline.scenarios,
+                        Some("calibration"),
+                    )?,
+                    gate: calculate_metrics(corpus, &baseline.scenarios, Some("gate"))?,
+                    all: calculate_metrics(corpus, &baseline.scenarios, None)?,
+                },
             ))
         })
         .collect::<Result<BTreeMap<_, _>>>()?;
     let metrics = baseline_metrics
         .get("full-policy")
         .context("full-policy metrics are missing")?
+        .gate
         .clone();
+    let complete_candidate_sets = baselines
+        .iter()
+        .flat_map(|baseline| &baseline.scenarios)
+        .filter(|prediction| prediction.policy_id != "retrieval-lexical-v1")
+        .all(|prediction| prediction.candidate_set_complete);
     Ok(EvaluationArtifact {
         schema_version: "retrieval-evaluation-artifact-v1".to_owned(),
         corpus_version: corpus.version.clone(),
@@ -440,6 +488,13 @@ pub async fn evaluate_frozen_corpus(
         repeated_runs: repetitions,
         repetitions_identical,
         rebuild_identical: false,
+        surface_coverage: SurfaceCoverage {
+            complete_candidate_sets,
+            responses_and_explanations_checked: true,
+            durable_manifests_checked: false,
+            error_responses_checked: false,
+            service_log_surface: "none-no-production-logging-calls".to_owned(),
+        },
     })
 }
 
@@ -454,24 +509,44 @@ pub async fn evaluate_full_policy_once(
         .iter()
         .map(|(name, id)| (*id, name.clone()))
         .collect();
-    let mut scenarios = Vec::with_capacity(corpus.scenarios.len());
+    let scenarios = evaluate_policy_once(
+        target,
+        corpus,
+        prepared,
+        &reverse_ids,
+        "retrieval-hybrid-temporal-v1",
+        repetition,
+    )
+    .await?;
+    Ok(BaselinePredictions {
+        baseline: "full-policy".to_owned(),
+        scenarios,
+    })
+}
+
+async fn evaluate_policy_once(
+    target: &Target,
+    corpus: &Corpus,
+    prepared: &PreparedCorpus,
+    reverse_ids: &BTreeMap<Uuid, String>,
+    policy_id: &str,
+    repetition: usize,
+) -> Result<Vec<ScenarioPrediction>> {
+    let mut predictions = Vec::with_capacity(corpus.scenarios.len());
     for scenario in &corpus.scenarios {
-        scenarios.push(
+        predictions.push(
             request_prediction(
                 target,
                 scenario,
                 prepared,
-                &reverse_ids,
-                "retrieval-hybrid-temporal-v1",
+                reverse_ids,
+                policy_id,
                 repetition,
             )
             .await?,
         );
     }
-    Ok(BaselinePredictions {
-        baseline: "full-policy".to_owned(),
-        scenarios,
-    })
+    Ok(predictions)
 }
 
 pub fn write_or_verify_artifact(artifact: &EvaluationArtifact) -> Result<()> {
@@ -504,8 +579,44 @@ pub fn verify_frozen_artifact() -> Result<EvaluationArtifact> {
     for baseline in &artifact.baselines {
         ensure!(baseline.scenarios.len() == EXPECTED_SCENARIO_COUNT);
     }
+    verify_no_production_log_surface()?;
     enforce_issue_22_gates(&artifact)?;
     Ok(artifact)
+}
+
+fn verify_no_production_log_surface() -> Result<()> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for relative in [
+        "crates/palimpsest-application/Cargo.toml",
+        "crates/palimpsest-application/src/lib.rs",
+        "crates/palimpsest-domain/Cargo.toml",
+        "crates/palimpsest-domain/src/lib.rs",
+        "crates/palimpsest-http/Cargo.toml",
+        "crates/palimpsest-http/src/lib.rs",
+        "crates/palimpsest-postgres/Cargo.toml",
+        "crates/palimpsest-postgres/src/lib.rs",
+        "crates/palimpsest-server/Cargo.toml",
+        "crates/palimpsest-server/src/lib.rs",
+        "crates/palimpsest-server/src/main.rs",
+    ] {
+        let path = root.join(relative);
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("read production surface {}", path.display()))?;
+        for logging_marker in [
+            "tracing::",
+            "log::",
+            "println!",
+            "eprintln!",
+            "tracing =",
+            "log =",
+        ] {
+            ensure!(
+                !source.contains(logging_marker),
+                "production logging marker {logging_marker} requires a captured privacy gate"
+            );
+        }
+    }
+    Ok(())
 }
 
 async fn create_corpus_fact(
@@ -543,7 +654,11 @@ async fn create_corpus_fact(
     );
     let episode: Episode = episode_response.json().await?;
     let body = json!({
-        "value": {"text": fixture.text, "corpus_vector": fixture.vector, "logical_id": fixture.id},
+        "value": {
+            "text": fixture.text,
+            "embedding_fixture_role": fixture.embedding_fixture_role,
+            "logical_id": fixture.id
+        },
         "observed_at": fixture.observed_at,
         "valid_time": {"from": fixture.valid_from, "until": null},
         "evidence_episode_ids": [episode.episode_id],
@@ -596,20 +711,19 @@ async fn create_corpus_fact(
     response.json().await.map_err(Into::into)
 }
 
-fn scoped_target(target: &Target, scope: &str) -> Target {
+fn scoped_target(target: &Target, scope: FixtureScope) -> Target {
     match scope {
-        "primary" => target.clone(),
-        "secondary-subject" => Target {
+        FixtureScope::Primary => target.clone(),
+        FixtureScope::SecondarySubject => Target {
             subject_id: target.principal_a_secondary_subject_id,
             ..target.clone()
         },
-        "secondary-tenant" => Target {
+        FixtureScope::SecondaryTenant => Target {
             bearer_token: target.principal_b_bearer_token.clone(),
             tenant_id: target.principal_b_tenant_id,
             subject_id: target.principal_b_subject_id,
             ..target.clone()
         },
-        _ => unreachable!("validated corpus scope"),
     }
 }
 
@@ -625,7 +739,7 @@ async fn request_prediction(
         .recorded_cutoffs
         .get(&scenario.id)
         .context("missing scenario cutoffs")?;
-    let recorded_at = if scenario.perspective == "before-successor" {
+    let recorded_at = if scenario.perspective == PerspectiveFixture::BeforeSuccessor {
         cutoffs
             .before_successor
             .as_ref()
@@ -702,6 +816,33 @@ fn prediction_from_receipt(
         scores.insert(logical, score_map(item));
         provenance_complete &= !item.evidence_episode_ids.is_empty();
     }
+    let candidate_set_complete = if receipt.policy.id == "retrieval-lexical-v1" {
+        true
+    } else {
+        let actual = ranked_ids
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = scenario
+            .expected_candidate_ids
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        actual == expected
+    };
+    let normalized_response_sha256 = sha256_bytes(&serde_json::to_vec(&json!({
+        "disposition": receipt.status,
+        "ranked_ids": ranked_ids,
+        "scores": scores,
+        "policy": {
+            "id": receipt.policy.id,
+            "version": receipt.policy.version,
+            "digest": receipt.policy.digest,
+        },
+        "embedder_profile_digest": embedder_profile_digest,
+        "projection_profile_digest": projection_profile_digest,
+        "provenance_complete": provenance_complete,
+    }))?);
     Ok(ScenarioPrediction {
         scenario_id: scenario.id.clone(),
         disposition: receipt.status,
@@ -712,6 +853,8 @@ fn prediction_from_receipt(
         policy_digest: receipt.policy.digest,
         embedder_profile_digest,
         projection_profile_digest,
+        normalized_response_sha256,
+        candidate_set_complete,
         provenance_complete,
         forbidden_leaks,
     })
@@ -739,10 +882,38 @@ fn vector_only_prediction(hybrid: &ScenarioPrediction) -> ScenarioPrediction {
             .and_then(|rank| rank.parse::<u64>().ok())
             .unwrap_or(u64::MAX)
     });
+    prediction.scores.values_mut().for_each(|scores| {
+        scores.retain(|component, _| {
+            matches!(
+                component.as_str(),
+                "exact_identity_rank" | "vector_rank" | "vector_distance" | "vector_similarity"
+            )
+        });
+    });
+    prediction.normalized_response_sha256 = sha256_bytes(
+        &serde_json::to_vec(&json!({
+            "disposition": prediction.disposition,
+            "ranked_ids": prediction.ranked_ids,
+            "scores": prediction.scores,
+            "policy": {
+                "id": prediction.policy_id,
+                "version": prediction.policy_version,
+                "digest": prediction.policy_digest,
+            },
+            "embedder_profile_digest": prediction.embedder_profile_digest,
+            "projection_profile_digest": prediction.projection_profile_digest,
+            "provenance_complete": prediction.provenance_complete,
+        }))
+        .expect("serializing a derived prediction cannot fail"),
+    );
     prediction
 }
 
-fn calculate_metrics(corpus: &Corpus, predictions: &[ScenarioPrediction]) -> Result<Metrics> {
+fn calculate_metrics(
+    corpus: &Corpus,
+    predictions: &[ScenarioPrediction],
+    split: Option<&str>,
+) -> Result<Metrics> {
     ensure!(corpus.scenarios.len() == predictions.len());
     let by_id = predictions
         .iter()
@@ -758,6 +929,9 @@ fn calculate_metrics(corpus: &Corpus, predictions: &[ScenarioPrediction]) -> Res
     let mut provenance = Vec::new();
     let mut forbidden_leaks = 0;
     for scenario in &corpus.scenarios {
+        if split.is_some_and(|split| scenario.split != split) {
+            continue;
+        }
         let prediction = by_id
             .get(scenario.id.as_str())
             .context("missing scenario prediction")?;
@@ -774,7 +948,7 @@ fn calculate_metrics(corpus: &Corpus, predictions: &[ScenarioPrediction]) -> Res
         if scenario.category == "temporal-contradiction" {
             temporal_hits.push(first_relevant_rank == Some(1));
         }
-        if scenario.expected_disposition == "abstained" {
+        if scenario.expected_disposition == ExpectedDisposition::Abstained {
             abstention_hits
                 .push(prediction.disposition == "abstained" && prediction.ranked_ids.is_empty());
         }
@@ -857,6 +1031,11 @@ pub fn enforce_issue_22_gates(artifact: &EvaluationArtifact) -> Result<()> {
     ensure!(metric.recall_at_10_temporal_update.parse::<f64>()? >= 0.85);
     ensure!(artifact.repeated_runs >= 10 && artifact.repetitions_identical);
     ensure!(artifact.rebuild_identical);
+    ensure!(artifact.surface_coverage.complete_candidate_sets);
+    ensure!(artifact.surface_coverage.responses_and_explanations_checked);
+    ensure!(artifact.surface_coverage.durable_manifests_checked);
+    ensure!(artifact.surface_coverage.error_responses_checked);
+    ensure!(artifact.surface_coverage.service_log_surface == "none-no-production-logging-calls");
     if artifact.baselines.len() != 4 {
         bail!("all four baselines are required");
     }

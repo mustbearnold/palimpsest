@@ -3,10 +3,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000001",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-001-relevant",
+        "exact-name-001-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-001-relevant",
           "key": "palimpsest-exact-name-001",
           "lifecycle": "active",
@@ -18,11 +23,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-001-distractor",
           "key": "other-001",
           "lifecycle": "active",
@@ -34,7 +39,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-001 palimpsest-exact-name-001",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -50,10 +54,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000002",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-002-relevant",
+        "exact-name-002-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-002-relevant",
           "key": "palimpsest-exact-name-002",
           "lifecycle": "active",
@@ -65,11 +74,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-002-distractor",
           "key": "other-002",
           "lifecycle": "active",
@@ -81,7 +90,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-002 palimpsest-exact-name-002",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -97,10 +105,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000003",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-003-relevant",
+        "exact-name-003-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-003-relevant",
           "key": "palimpsest-exact-name-003",
           "lifecycle": "active",
@@ -112,11 +125,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-003-distractor",
           "key": "other-003",
           "lifecycle": "active",
@@ -128,7 +141,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-003 palimpsest-exact-name-003",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -144,10 +156,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000004",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-004-relevant",
+        "exact-name-004-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-004-relevant",
           "key": "palimpsest-exact-name-004",
           "lifecycle": "active",
@@ -159,11 +176,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-004-distractor",
           "key": "other-004",
           "lifecycle": "active",
@@ -175,7 +192,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-004 palimpsest-exact-name-004",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -191,10 +207,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000005",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-005-relevant",
+        "exact-name-005-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-005-relevant",
           "key": "palimpsest-exact-name-005",
           "lifecycle": "active",
@@ -206,11 +227,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-005-distractor",
           "key": "other-005",
           "lifecycle": "active",
@@ -222,7 +243,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-005 palimpsest-exact-name-005",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -238,10 +258,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000006",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-006-relevant",
+        "exact-name-006-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-006-relevant",
           "key": "palimpsest-exact-name-006",
           "lifecycle": "active",
@@ -253,11 +278,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-006-distractor",
           "key": "other-006",
           "lifecycle": "active",
@@ -269,7 +294,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-006 palimpsest-exact-name-006",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -285,10 +309,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000007",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-007-relevant",
+        "exact-name-007-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-007-relevant",
           "key": "palimpsest-exact-name-007",
           "lifecycle": "active",
@@ -300,11 +329,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-007-distractor",
           "key": "other-007",
           "lifecycle": "active",
@@ -316,7 +345,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-007 palimpsest-exact-name-007",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -332,10 +360,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000008",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-008-relevant",
+        "exact-name-008-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-008-relevant",
           "key": "palimpsest-exact-name-008",
           "lifecycle": "active",
@@ -347,11 +380,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-008-distractor",
           "key": "other-008",
           "lifecycle": "active",
@@ -363,7 +396,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-008 palimpsest-exact-name-008",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -379,10 +411,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000009",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-009-relevant",
+        "exact-name-009-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-009-relevant",
           "key": "palimpsest-exact-name-009",
           "lifecycle": "active",
@@ -394,11 +431,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-009-distractor",
           "key": "other-009",
           "lifecycle": "active",
@@ -410,7 +447,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-009 palimpsest-exact-name-009",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -426,10 +462,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000000a",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-010-relevant",
+        "exact-name-010-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-010-relevant",
           "key": "palimpsest-exact-name-010",
           "lifecycle": "active",
@@ -441,11 +482,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-010-distractor",
           "key": "other-010",
           "lifecycle": "active",
@@ -457,7 +498,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-010 palimpsest-exact-name-010",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -473,10 +513,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000000b",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-011-relevant",
+        "exact-name-011-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-011-relevant",
           "key": "palimpsest-exact-name-011",
           "lifecycle": "active",
@@ -488,11 +533,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-011-distractor",
           "key": "other-011",
           "lifecycle": "active",
@@ -504,7 +549,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-011 palimpsest-exact-name-011",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -520,10 +564,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000000c",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-012-relevant",
+        "exact-name-012-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-012-relevant",
           "key": "palimpsest-exact-name-012",
           "lifecycle": "active",
@@ -535,11 +584,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-012-distractor",
           "key": "other-012",
           "lifecycle": "active",
@@ -551,7 +600,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-012 palimpsest-exact-name-012",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -567,10 +615,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000000d",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-013-relevant",
+        "exact-name-013-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-013-relevant",
           "key": "palimpsest-exact-name-013",
           "lifecycle": "active",
@@ -582,11 +635,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-013-distractor",
           "key": "other-013",
           "lifecycle": "active",
@@ -598,7 +651,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-013 palimpsest-exact-name-013",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -614,10 +666,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000000e",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-014-relevant",
+        "exact-name-014-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-014-relevant",
           "key": "palimpsest-exact-name-014",
           "lifecycle": "active",
@@ -629,11 +686,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-014-distractor",
           "key": "other-014",
           "lifecycle": "active",
@@ -645,7 +702,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-014 palimpsest-exact-name-014",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -661,10 +717,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000000f",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-015-relevant",
+        "exact-name-015-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-015-relevant",
           "key": "palimpsest-exact-name-015",
           "lifecycle": "active",
@@ -676,11 +737,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-015-distractor",
           "key": "other-015",
           "lifecycle": "active",
@@ -692,7 +753,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-015 palimpsest-exact-name-015",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -708,10 +768,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000010",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-016-relevant",
+        "exact-name-016-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-016-relevant",
           "key": "palimpsest-exact-name-016",
           "lifecycle": "active",
@@ -723,11 +788,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-016-distractor",
           "key": "other-016",
           "lifecycle": "active",
@@ -739,7 +804,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-016 palimpsest-exact-name-016",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -755,10 +819,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000011",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-017-relevant",
+        "exact-name-017-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-017-relevant",
           "key": "palimpsest-exact-name-017",
           "lifecycle": "active",
@@ -770,11 +839,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-017-distractor",
           "key": "other-017",
           "lifecycle": "active",
@@ -786,7 +855,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-017 palimpsest-exact-name-017",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -802,10 +870,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000012",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-018-relevant",
+        "exact-name-018-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-018-relevant",
           "key": "palimpsest-exact-name-018",
           "lifecycle": "active",
@@ -817,11 +890,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-018-distractor",
           "key": "other-018",
           "lifecycle": "active",
@@ -833,7 +906,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-018 palimpsest-exact-name-018",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -849,10 +921,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000013",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-019-relevant",
+        "exact-name-019-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-019-relevant",
           "key": "palimpsest-exact-name-019",
           "lifecycle": "active",
@@ -864,11 +941,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-019-distractor",
           "key": "other-019",
           "lifecycle": "active",
@@ -880,7 +957,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-019 palimpsest-exact-name-019",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -896,10 +972,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000014",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-020-relevant",
+        "exact-name-020-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-020-relevant",
           "key": "palimpsest-exact-name-020",
           "lifecycle": "active",
@@ -911,11 +992,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-020-distractor",
           "key": "other-020",
           "lifecycle": "active",
@@ -927,7 +1008,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-020 palimpsest-exact-name-020",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -943,10 +1023,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000015",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-021-relevant",
+        "exact-name-021-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-021-relevant",
           "key": "palimpsest-exact-name-021",
           "lifecycle": "active",
@@ -958,11 +1043,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-021-distractor",
           "key": "other-021",
           "lifecycle": "active",
@@ -974,7 +1059,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-021 palimpsest-exact-name-021",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -990,10 +1074,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000016",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-022-relevant",
+        "exact-name-022-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-022-relevant",
           "key": "palimpsest-exact-name-022",
           "lifecycle": "active",
@@ -1005,11 +1094,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-022-distractor",
           "key": "other-022",
           "lifecycle": "active",
@@ -1021,7 +1110,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-022 palimpsest-exact-name-022",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -1037,10 +1125,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000017",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-023-relevant",
+        "exact-name-023-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-023-relevant",
           "key": "palimpsest-exact-name-023",
           "lifecycle": "active",
@@ -1052,11 +1145,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-023-distractor",
           "key": "other-023",
           "lifecycle": "active",
@@ -1068,7 +1161,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-023 palimpsest-exact-name-023",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -1084,10 +1176,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000018",
       "category": "exact-name",
+      "expected_candidate_ids": [
+        "exact-name-024-relevant",
+        "exact-name-024-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "exact-name-024-relevant",
           "key": "palimpsest-exact-name-024",
           "lifecycle": "active",
@@ -1099,11 +1196,11 @@
           "supersedes": null,
           "text": "canonical identity",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "exact-name-024-distractor",
           "key": "other-024",
           "lifecycle": "active",
@@ -1115,7 +1212,6 @@
           "supersedes": null,
           "text": "palimpsest-exact-name-024 palimpsest-exact-name-024",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -1131,10 +1227,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000019",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-001-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-001-root",
           "key": "state-001",
           "lifecycle": "active",
@@ -1146,11 +1246,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-001 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-001-relevant",
           "key": "state-001",
           "lifecycle": "active",
@@ -1162,11 +1262,11 @@
           "supersedes": "temporal-contradiction-001-root",
           "text": "palimpsest-temporal-contradiction-001 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-001-distractor",
           "key": "stale-001",
           "lifecycle": "active",
@@ -1178,7 +1278,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-001 palimpsest-temporal-contradiction-001",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1194,10 +1293,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000001a",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-002-relevant",
+        "temporal-contradiction-002-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-002-root",
           "key": "state-002",
           "lifecycle": "active",
@@ -1209,11 +1313,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-002 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-002-relevant",
           "key": "state-002",
           "lifecycle": "active",
@@ -1225,11 +1329,11 @@
           "supersedes": "temporal-contradiction-002-root",
           "text": "palimpsest-temporal-contradiction-002 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-002-distractor",
           "key": "stale-002",
           "lifecycle": "active",
@@ -1241,7 +1345,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-002 palimpsest-temporal-contradiction-002",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1257,10 +1360,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000001b",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-003-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-003-root",
           "key": "state-003",
           "lifecycle": "active",
@@ -1272,11 +1379,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-003 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-003-relevant",
           "key": "state-003",
           "lifecycle": "active",
@@ -1288,11 +1395,11 @@
           "supersedes": "temporal-contradiction-003-root",
           "text": "palimpsest-temporal-contradiction-003 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-003-distractor",
           "key": "stale-003",
           "lifecycle": "active",
@@ -1304,7 +1411,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-003 palimpsest-temporal-contradiction-003",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1320,10 +1426,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000001c",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-004-relevant",
+        "temporal-contradiction-004-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-004-root",
           "key": "state-004",
           "lifecycle": "active",
@@ -1335,11 +1446,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-004 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-004-relevant",
           "key": "state-004",
           "lifecycle": "active",
@@ -1351,11 +1462,11 @@
           "supersedes": "temporal-contradiction-004-root",
           "text": "palimpsest-temporal-contradiction-004 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-004-distractor",
           "key": "stale-004",
           "lifecycle": "active",
@@ -1367,7 +1478,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-004 palimpsest-temporal-contradiction-004",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1383,10 +1493,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000001d",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-005-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-005-root",
           "key": "state-005",
           "lifecycle": "active",
@@ -1398,11 +1512,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-005 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-005-relevant",
           "key": "state-005",
           "lifecycle": "active",
@@ -1414,11 +1528,11 @@
           "supersedes": "temporal-contradiction-005-root",
           "text": "palimpsest-temporal-contradiction-005 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-005-distractor",
           "key": "stale-005",
           "lifecycle": "active",
@@ -1430,7 +1544,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-005 palimpsest-temporal-contradiction-005",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1446,10 +1559,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000001e",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-006-relevant",
+        "temporal-contradiction-006-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-006-root",
           "key": "state-006",
           "lifecycle": "active",
@@ -1461,11 +1579,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-006 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-006-relevant",
           "key": "state-006",
           "lifecycle": "active",
@@ -1477,11 +1595,11 @@
           "supersedes": "temporal-contradiction-006-root",
           "text": "palimpsest-temporal-contradiction-006 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-006-distractor",
           "key": "stale-006",
           "lifecycle": "active",
@@ -1493,7 +1611,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-006 palimpsest-temporal-contradiction-006",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1509,10 +1626,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000001f",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-007-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-007-root",
           "key": "state-007",
           "lifecycle": "active",
@@ -1524,11 +1645,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-007 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-007-relevant",
           "key": "state-007",
           "lifecycle": "active",
@@ -1540,11 +1661,11 @@
           "supersedes": "temporal-contradiction-007-root",
           "text": "palimpsest-temporal-contradiction-007 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-007-distractor",
           "key": "stale-007",
           "lifecycle": "active",
@@ -1556,7 +1677,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-007 palimpsest-temporal-contradiction-007",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1572,10 +1692,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000020",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-008-relevant",
+        "temporal-contradiction-008-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-008-root",
           "key": "state-008",
           "lifecycle": "active",
@@ -1587,11 +1712,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-008 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-008-relevant",
           "key": "state-008",
           "lifecycle": "active",
@@ -1603,11 +1728,11 @@
           "supersedes": "temporal-contradiction-008-root",
           "text": "palimpsest-temporal-contradiction-008 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-008-distractor",
           "key": "stale-008",
           "lifecycle": "active",
@@ -1619,7 +1744,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-008 palimpsest-temporal-contradiction-008",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1635,10 +1759,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000021",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-009-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-009-root",
           "key": "state-009",
           "lifecycle": "active",
@@ -1650,11 +1778,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-009 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-009-relevant",
           "key": "state-009",
           "lifecycle": "active",
@@ -1666,11 +1794,11 @@
           "supersedes": "temporal-contradiction-009-root",
           "text": "palimpsest-temporal-contradiction-009 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-009-distractor",
           "key": "stale-009",
           "lifecycle": "active",
@@ -1682,7 +1810,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-009 palimpsest-temporal-contradiction-009",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1698,10 +1825,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000022",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-010-relevant",
+        "temporal-contradiction-010-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-010-root",
           "key": "state-010",
           "lifecycle": "active",
@@ -1713,11 +1845,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-010 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-010-relevant",
           "key": "state-010",
           "lifecycle": "active",
@@ -1729,11 +1861,11 @@
           "supersedes": "temporal-contradiction-010-root",
           "text": "palimpsest-temporal-contradiction-010 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-010-distractor",
           "key": "stale-010",
           "lifecycle": "active",
@@ -1745,7 +1877,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-010 palimpsest-temporal-contradiction-010",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1761,10 +1892,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000023",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-011-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-011-root",
           "key": "state-011",
           "lifecycle": "active",
@@ -1776,11 +1911,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-011 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-011-relevant",
           "key": "state-011",
           "lifecycle": "active",
@@ -1792,11 +1927,11 @@
           "supersedes": "temporal-contradiction-011-root",
           "text": "palimpsest-temporal-contradiction-011 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-011-distractor",
           "key": "stale-011",
           "lifecycle": "active",
@@ -1808,7 +1943,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-011 palimpsest-temporal-contradiction-011",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1824,10 +1958,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000024",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-012-relevant",
+        "temporal-contradiction-012-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-012-root",
           "key": "state-012",
           "lifecycle": "active",
@@ -1839,11 +1978,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-012 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-012-relevant",
           "key": "state-012",
           "lifecycle": "active",
@@ -1855,11 +1994,11 @@
           "supersedes": "temporal-contradiction-012-root",
           "text": "palimpsest-temporal-contradiction-012 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-012-distractor",
           "key": "stale-012",
           "lifecycle": "active",
@@ -1871,7 +2010,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-012 palimpsest-temporal-contradiction-012",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1887,10 +2025,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000025",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-013-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-013-root",
           "key": "state-013",
           "lifecycle": "active",
@@ -1902,11 +2044,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-013 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-013-relevant",
           "key": "state-013",
           "lifecycle": "active",
@@ -1918,11 +2060,11 @@
           "supersedes": "temporal-contradiction-013-root",
           "text": "palimpsest-temporal-contradiction-013 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-013-distractor",
           "key": "stale-013",
           "lifecycle": "active",
@@ -1934,7 +2076,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-013 palimpsest-temporal-contradiction-013",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -1950,10 +2091,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000026",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-014-relevant",
+        "temporal-contradiction-014-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-014-root",
           "key": "state-014",
           "lifecycle": "active",
@@ -1965,11 +2111,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-014 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-014-relevant",
           "key": "state-014",
           "lifecycle": "active",
@@ -1981,11 +2127,11 @@
           "supersedes": "temporal-contradiction-014-root",
           "text": "palimpsest-temporal-contradiction-014 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-014-distractor",
           "key": "stale-014",
           "lifecycle": "active",
@@ -1997,7 +2143,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-014 palimpsest-temporal-contradiction-014",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2013,10 +2158,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000027",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-015-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-015-root",
           "key": "state-015",
           "lifecycle": "active",
@@ -2028,11 +2177,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-015 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-015-relevant",
           "key": "state-015",
           "lifecycle": "active",
@@ -2044,11 +2193,11 @@
           "supersedes": "temporal-contradiction-015-root",
           "text": "palimpsest-temporal-contradiction-015 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-015-distractor",
           "key": "stale-015",
           "lifecycle": "active",
@@ -2060,7 +2209,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-015 palimpsest-temporal-contradiction-015",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2076,10 +2224,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000028",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-016-relevant",
+        "temporal-contradiction-016-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-016-root",
           "key": "state-016",
           "lifecycle": "active",
@@ -2091,11 +2244,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-016 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-016-relevant",
           "key": "state-016",
           "lifecycle": "active",
@@ -2107,11 +2260,11 @@
           "supersedes": "temporal-contradiction-016-root",
           "text": "palimpsest-temporal-contradiction-016 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-016-distractor",
           "key": "stale-016",
           "lifecycle": "active",
@@ -2123,7 +2276,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-016 palimpsest-temporal-contradiction-016",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2139,10 +2291,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000029",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-017-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-017-root",
           "key": "state-017",
           "lifecycle": "active",
@@ -2154,11 +2310,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-017 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-017-relevant",
           "key": "state-017",
           "lifecycle": "active",
@@ -2170,11 +2326,11 @@
           "supersedes": "temporal-contradiction-017-root",
           "text": "palimpsest-temporal-contradiction-017 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-017-distractor",
           "key": "stale-017",
           "lifecycle": "active",
@@ -2186,7 +2342,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-017 palimpsest-temporal-contradiction-017",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2202,10 +2357,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000002a",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-018-relevant",
+        "temporal-contradiction-018-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-018-root",
           "key": "state-018",
           "lifecycle": "active",
@@ -2217,11 +2377,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-018 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-018-relevant",
           "key": "state-018",
           "lifecycle": "active",
@@ -2233,11 +2393,11 @@
           "supersedes": "temporal-contradiction-018-root",
           "text": "palimpsest-temporal-contradiction-018 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-018-distractor",
           "key": "stale-018",
           "lifecycle": "active",
@@ -2249,7 +2409,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-018 palimpsest-temporal-contradiction-018",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2265,10 +2424,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000002b",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-019-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-019-root",
           "key": "state-019",
           "lifecycle": "active",
@@ -2280,11 +2443,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-019 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-019-relevant",
           "key": "state-019",
           "lifecycle": "active",
@@ -2296,11 +2459,11 @@
           "supersedes": "temporal-contradiction-019-root",
           "text": "palimpsest-temporal-contradiction-019 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-019-distractor",
           "key": "stale-019",
           "lifecycle": "active",
@@ -2312,7 +2475,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-019 palimpsest-temporal-contradiction-019",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2328,10 +2490,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000002c",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-020-relevant",
+        "temporal-contradiction-020-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-020-root",
           "key": "state-020",
           "lifecycle": "active",
@@ -2343,11 +2510,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-020 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-020-relevant",
           "key": "state-020",
           "lifecycle": "active",
@@ -2359,11 +2526,11 @@
           "supersedes": "temporal-contradiction-020-root",
           "text": "palimpsest-temporal-contradiction-020 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-020-distractor",
           "key": "stale-020",
           "lifecycle": "active",
@@ -2375,7 +2542,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-020 palimpsest-temporal-contradiction-020",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2391,10 +2557,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000002d",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-021-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-021-root",
           "key": "state-021",
           "lifecycle": "active",
@@ -2406,11 +2576,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-021 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-021-relevant",
           "key": "state-021",
           "lifecycle": "active",
@@ -2422,11 +2592,11 @@
           "supersedes": "temporal-contradiction-021-root",
           "text": "palimpsest-temporal-contradiction-021 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-021-distractor",
           "key": "stale-021",
           "lifecycle": "active",
@@ -2438,7 +2608,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-021 palimpsest-temporal-contradiction-021",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2454,10 +2623,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000002e",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-022-relevant",
+        "temporal-contradiction-022-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-022-root",
           "key": "state-022",
           "lifecycle": "active",
@@ -2469,11 +2643,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-022 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-022-relevant",
           "key": "state-022",
           "lifecycle": "active",
@@ -2485,11 +2659,11 @@
           "supersedes": "temporal-contradiction-022-root",
           "text": "palimpsest-temporal-contradiction-022 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-022-distractor",
           "key": "stale-022",
           "lifecycle": "active",
@@ -2501,7 +2675,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-022 palimpsest-temporal-contradiction-022",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2517,10 +2690,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000002f",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-023-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-023-root",
           "key": "state-023",
           "lifecycle": "active",
@@ -2532,11 +2709,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-023 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-023-relevant",
           "key": "state-023",
           "lifecycle": "active",
@@ -2548,11 +2725,11 @@
           "supersedes": "temporal-contradiction-023-root",
           "text": "palimpsest-temporal-contradiction-023 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-023-distractor",
           "key": "stale-023",
           "lifecycle": "active",
@@ -2564,7 +2741,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-023 palimpsest-temporal-contradiction-023",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2580,10 +2756,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000030",
       "category": "temporal-contradiction",
+      "expected_candidate_ids": [
+        "temporal-contradiction-024-relevant",
+        "temporal-contradiction-024-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 0.9,
+          "embedding_fixture_role": "near",
           "id": "temporal-contradiction-024-root",
           "key": "state-024",
           "lifecycle": "active",
@@ -2595,11 +2776,11 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-024 earlier evidence",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "temporal-contradiction-024-relevant",
           "key": "state-024",
           "lifecycle": "active",
@@ -2611,11 +2792,11 @@
           "supersedes": "temporal-contradiction-024-root",
           "text": "palimpsest-temporal-contradiction-024 corrected evidence",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "distractor",
           "id": "temporal-contradiction-024-distractor",
           "key": "stale-024",
           "lifecycle": "active",
@@ -2627,7 +2808,6 @@
           "supersedes": null,
           "text": "palimpsest-temporal-contradiction-024 palimpsest-temporal-contradiction-024",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "distractor",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2643,10 +2823,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000031",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-001-relevant",
+        "stale-distractor-001-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-001-relevant",
           "key": "recent-001",
           "lifecycle": "active",
@@ -2658,11 +2843,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-001 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-001-distractor",
           "key": "stale-001",
           "lifecycle": "active",
@@ -2674,7 +2859,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-001 palimpsest-stale-distractor-001 palimpsest-stale-distractor-001",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2690,10 +2874,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000032",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-002-relevant",
+        "stale-distractor-002-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-002-relevant",
           "key": "recent-002",
           "lifecycle": "active",
@@ -2705,11 +2894,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-002 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-002-distractor",
           "key": "stale-002",
           "lifecycle": "active",
@@ -2721,7 +2910,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-002 palimpsest-stale-distractor-002 palimpsest-stale-distractor-002",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2737,10 +2925,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000033",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-003-relevant",
+        "stale-distractor-003-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-003-relevant",
           "key": "recent-003",
           "lifecycle": "active",
@@ -2752,11 +2945,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-003 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-003-distractor",
           "key": "stale-003",
           "lifecycle": "active",
@@ -2768,7 +2961,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-003 palimpsest-stale-distractor-003 palimpsest-stale-distractor-003",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2784,10 +2976,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000034",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-004-relevant",
+        "stale-distractor-004-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-004-relevant",
           "key": "recent-004",
           "lifecycle": "active",
@@ -2799,11 +2996,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-004 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-004-distractor",
           "key": "stale-004",
           "lifecycle": "active",
@@ -2815,7 +3012,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-004 palimpsest-stale-distractor-004 palimpsest-stale-distractor-004",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2831,10 +3027,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000035",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-005-relevant",
+        "stale-distractor-005-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-005-relevant",
           "key": "recent-005",
           "lifecycle": "active",
@@ -2846,11 +3047,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-005 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-005-distractor",
           "key": "stale-005",
           "lifecycle": "active",
@@ -2862,7 +3063,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-005 palimpsest-stale-distractor-005 palimpsest-stale-distractor-005",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2878,10 +3078,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000036",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-006-relevant",
+        "stale-distractor-006-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-006-relevant",
           "key": "recent-006",
           "lifecycle": "active",
@@ -2893,11 +3098,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-006 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-006-distractor",
           "key": "stale-006",
           "lifecycle": "active",
@@ -2909,7 +3114,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-006 palimpsest-stale-distractor-006 palimpsest-stale-distractor-006",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2925,10 +3129,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000037",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-007-relevant",
+        "stale-distractor-007-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-007-relevant",
           "key": "recent-007",
           "lifecycle": "active",
@@ -2940,11 +3149,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-007 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-007-distractor",
           "key": "stale-007",
           "lifecycle": "active",
@@ -2956,7 +3165,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-007 palimpsest-stale-distractor-007 palimpsest-stale-distractor-007",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -2972,10 +3180,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000038",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-008-relevant",
+        "stale-distractor-008-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-008-relevant",
           "key": "recent-008",
           "lifecycle": "active",
@@ -2987,11 +3200,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-008 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-008-distractor",
           "key": "stale-008",
           "lifecycle": "active",
@@ -3003,7 +3216,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-008 palimpsest-stale-distractor-008 palimpsest-stale-distractor-008",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3019,10 +3231,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000039",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-009-relevant",
+        "stale-distractor-009-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-009-relevant",
           "key": "recent-009",
           "lifecycle": "active",
@@ -3034,11 +3251,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-009 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-009-distractor",
           "key": "stale-009",
           "lifecycle": "active",
@@ -3050,7 +3267,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-009 palimpsest-stale-distractor-009 palimpsest-stale-distractor-009",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3066,10 +3282,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000003a",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-010-relevant",
+        "stale-distractor-010-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-010-relevant",
           "key": "recent-010",
           "lifecycle": "active",
@@ -3081,11 +3302,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-010 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-010-distractor",
           "key": "stale-010",
           "lifecycle": "active",
@@ -3097,7 +3318,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-010 palimpsest-stale-distractor-010 palimpsest-stale-distractor-010",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3113,10 +3333,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000003b",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-011-relevant",
+        "stale-distractor-011-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-011-relevant",
           "key": "recent-011",
           "lifecycle": "active",
@@ -3128,11 +3353,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-011 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-011-distractor",
           "key": "stale-011",
           "lifecycle": "active",
@@ -3144,7 +3369,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-011 palimpsest-stale-distractor-011 palimpsest-stale-distractor-011",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3160,10 +3384,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000003c",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-012-relevant",
+        "stale-distractor-012-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-012-relevant",
           "key": "recent-012",
           "lifecycle": "active",
@@ -3175,11 +3404,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-012 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-012-distractor",
           "key": "stale-012",
           "lifecycle": "active",
@@ -3191,7 +3420,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-012 palimpsest-stale-distractor-012 palimpsest-stale-distractor-012",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3207,10 +3435,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000003d",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-013-relevant",
+        "stale-distractor-013-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-013-relevant",
           "key": "recent-013",
           "lifecycle": "active",
@@ -3222,11 +3455,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-013 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-013-distractor",
           "key": "stale-013",
           "lifecycle": "active",
@@ -3238,7 +3471,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-013 palimpsest-stale-distractor-013 palimpsest-stale-distractor-013",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3254,10 +3486,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000003e",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-014-relevant",
+        "stale-distractor-014-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-014-relevant",
           "key": "recent-014",
           "lifecycle": "active",
@@ -3269,11 +3506,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-014 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-014-distractor",
           "key": "stale-014",
           "lifecycle": "active",
@@ -3285,7 +3522,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-014 palimpsest-stale-distractor-014 palimpsest-stale-distractor-014",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3301,10 +3537,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000003f",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-015-relevant",
+        "stale-distractor-015-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-015-relevant",
           "key": "recent-015",
           "lifecycle": "active",
@@ -3316,11 +3557,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-015 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-015-distractor",
           "key": "stale-015",
           "lifecycle": "active",
@@ -3332,7 +3573,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-015 palimpsest-stale-distractor-015 palimpsest-stale-distractor-015",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3348,10 +3588,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000040",
       "category": "stale-distractor",
+      "expected_candidate_ids": [
+        "stale-distractor-016-relevant",
+        "stale-distractor-016-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stale-distractor-016-relevant",
           "key": "recent-016",
           "lifecycle": "active",
@@ -3363,11 +3608,11 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-016 current",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-active-case-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stale-distractor-016-distractor",
           "key": "stale-016",
           "lifecycle": "active",
@@ -3379,7 +3624,6 @@
           "supersedes": null,
           "text": "palimpsest-stale-distractor-016 palimpsest-stale-distractor-016 palimpsest-stale-distractor-016",
           "valid_from": "2026-04-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3395,10 +3639,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000041",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-001-relevant",
+        "stable-versus-decaying-001-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-001-relevant",
           "key": "stable-001",
           "lifecycle": "active",
@@ -3410,11 +3659,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-001 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-001-distractor",
           "key": "active-001",
           "lifecycle": "active",
@@ -3426,7 +3675,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-001 palimpsest-stable-versus-decaying-001",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3442,10 +3690,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000042",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-002-relevant",
+        "stable-versus-decaying-002-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-002-relevant",
           "key": "stable-002",
           "lifecycle": "active",
@@ -3457,11 +3710,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-002 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-002-distractor",
           "key": "active-002",
           "lifecycle": "active",
@@ -3473,7 +3726,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-002 palimpsest-stable-versus-decaying-002",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3489,10 +3741,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000043",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-003-relevant",
+        "stable-versus-decaying-003-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-003-relevant",
           "key": "stable-003",
           "lifecycle": "active",
@@ -3504,11 +3761,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-003 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-003-distractor",
           "key": "active-003",
           "lifecycle": "active",
@@ -3520,7 +3777,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-003 palimpsest-stable-versus-decaying-003",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3536,10 +3792,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000044",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-004-relevant",
+        "stable-versus-decaying-004-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-004-relevant",
           "key": "stable-004",
           "lifecycle": "active",
@@ -3551,11 +3812,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-004 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-004-distractor",
           "key": "active-004",
           "lifecycle": "active",
@@ -3567,7 +3828,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-004 palimpsest-stable-versus-decaying-004",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3583,10 +3843,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000045",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-005-relevant",
+        "stable-versus-decaying-005-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-005-relevant",
           "key": "stable-005",
           "lifecycle": "active",
@@ -3598,11 +3863,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-005 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-005-distractor",
           "key": "active-005",
           "lifecycle": "active",
@@ -3614,7 +3879,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-005 palimpsest-stable-versus-decaying-005",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3630,10 +3894,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000046",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-006-relevant",
+        "stable-versus-decaying-006-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-006-relevant",
           "key": "stable-006",
           "lifecycle": "active",
@@ -3645,11 +3914,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-006 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-006-distractor",
           "key": "active-006",
           "lifecycle": "active",
@@ -3661,7 +3930,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-006 palimpsest-stable-versus-decaying-006",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3677,10 +3945,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000047",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-007-relevant",
+        "stable-versus-decaying-007-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-007-relevant",
           "key": "stable-007",
           "lifecycle": "active",
@@ -3692,11 +3965,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-007 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-007-distractor",
           "key": "active-007",
           "lifecycle": "active",
@@ -3708,7 +3981,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-007 palimpsest-stable-versus-decaying-007",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3724,10 +3996,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000048",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-008-relevant",
+        "stable-versus-decaying-008-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-008-relevant",
           "key": "stable-008",
           "lifecycle": "active",
@@ -3739,11 +4016,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-008 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-008-distractor",
           "key": "active-008",
           "lifecycle": "active",
@@ -3755,7 +4032,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-008 palimpsest-stable-versus-decaying-008",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3771,10 +4047,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000049",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-009-relevant",
+        "stable-versus-decaying-009-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-009-relevant",
           "key": "stable-009",
           "lifecycle": "active",
@@ -3786,11 +4067,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-009 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-009-distractor",
           "key": "active-009",
           "lifecycle": "active",
@@ -3802,7 +4083,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-009 palimpsest-stable-versus-decaying-009",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3818,10 +4098,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000004a",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-010-relevant",
+        "stable-versus-decaying-010-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-010-relevant",
           "key": "stable-010",
           "lifecycle": "active",
@@ -3833,11 +4118,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-010 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-010-distractor",
           "key": "active-010",
           "lifecycle": "active",
@@ -3849,7 +4134,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-010 palimpsest-stable-versus-decaying-010",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3865,10 +4149,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000004b",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-011-relevant",
+        "stable-versus-decaying-011-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-011-relevant",
           "key": "stable-011",
           "lifecycle": "active",
@@ -3880,11 +4169,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-011 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-011-distractor",
           "key": "active-011",
           "lifecycle": "active",
@@ -3896,7 +4185,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-011 palimpsest-stable-versus-decaying-011",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3912,10 +4200,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000004c",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-012-relevant",
+        "stable-versus-decaying-012-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-012-relevant",
           "key": "stable-012",
           "lifecycle": "active",
@@ -3927,11 +4220,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-012 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-012-distractor",
           "key": "active-012",
           "lifecycle": "active",
@@ -3943,7 +4236,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-012 palimpsest-stable-versus-decaying-012",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -3959,10 +4251,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000004d",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-013-relevant",
+        "stable-versus-decaying-013-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-013-relevant",
           "key": "stable-013",
           "lifecycle": "active",
@@ -3974,11 +4271,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-013 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-013-distractor",
           "key": "active-013",
           "lifecycle": "active",
@@ -3990,7 +4287,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-013 palimpsest-stable-versus-decaying-013",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -4006,10 +4302,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000004e",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-014-relevant",
+        "stable-versus-decaying-014-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-014-relevant",
           "key": "stable-014",
           "lifecycle": "active",
@@ -4021,11 +4322,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-014 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-014-distractor",
           "key": "active-014",
           "lifecycle": "active",
@@ -4037,7 +4338,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-014 palimpsest-stable-versus-decaying-014",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -4053,10 +4353,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000004f",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-015-relevant",
+        "stable-versus-decaying-015-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-015-relevant",
           "key": "stable-015",
           "lifecycle": "active",
@@ -4068,11 +4373,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-015 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-015-distractor",
           "key": "active-015",
           "lifecycle": "active",
@@ -4084,7 +4389,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-015 palimpsest-stable-versus-decaying-015",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -4100,10 +4404,15 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000050",
       "category": "stable-versus-decaying",
+      "expected_candidate_ids": [
+        "stable-versus-decaying-016-relevant",
+        "stable-versus-decaying-016-distractor"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "stable-versus-decaying-016-relevant",
           "key": "stable-016",
           "lifecycle": "active",
@@ -4115,11 +4424,11 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-016 durable",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "near",
           "id": "stable-versus-decaying-016-distractor",
           "key": "active-016",
           "lifecycle": "active",
@@ -4131,7 +4440,6 @@
           "supersedes": null,
           "text": "palimpsest-stable-versus-decaying-016 palimpsest-stable-versus-decaying-016",
           "valid_from": "2026-03-01T00:00:00Z",
-          "vector": "near",
           "write_policy_id": "temporal-active-case-evidence"
         }
       ],
@@ -4147,10 +4455,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000051",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-001-trap",
           "key": "conflict-001",
           "lifecycle": "active",
@@ -4162,7 +4472,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-001 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4178,10 +4487,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000052",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-002-trap",
           "key": "conflict-002",
           "lifecycle": "active",
@@ -4193,7 +4504,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-002 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4209,10 +4519,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000053",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-003-trap",
           "key": "conflict-003",
           "lifecycle": "active",
@@ -4224,7 +4536,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-003 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4240,10 +4551,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000054",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-004-trap",
           "key": "conflict-004",
           "lifecycle": "active",
@@ -4255,7 +4568,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-004 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4271,10 +4583,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000055",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-005-trap",
           "key": "conflict-005",
           "lifecycle": "active",
@@ -4286,7 +4600,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-005 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4302,10 +4615,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000056",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-006-trap",
           "key": "conflict-006",
           "lifecycle": "active",
@@ -4317,7 +4632,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-006 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4333,10 +4647,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000057",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-007-trap",
           "key": "conflict-007",
           "lifecycle": "active",
@@ -4348,7 +4664,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-007 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4364,10 +4679,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000058",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-008-trap",
           "key": "conflict-008",
           "lifecycle": "active",
@@ -4379,7 +4696,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-008 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4395,10 +4711,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000059",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-009-trap",
           "key": "conflict-009",
           "lifecycle": "active",
@@ -4410,7 +4728,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-009 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4426,10 +4743,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000005a",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-010-trap",
           "key": "conflict-010",
           "lifecycle": "active",
@@ -4441,7 +4760,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-010 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4457,10 +4775,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000005b",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-011-trap",
           "key": "conflict-011",
           "lifecycle": "active",
@@ -4472,7 +4792,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-011 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4488,10 +4807,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000005c",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-012-trap",
           "key": "conflict-012",
           "lifecycle": "active",
@@ -4503,7 +4824,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-012 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4519,10 +4839,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000005d",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-013-trap",
           "key": "conflict-013",
           "lifecycle": "active",
@@ -4534,7 +4856,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-013 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4550,10 +4871,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000005e",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-014-trap",
           "key": "conflict-014",
           "lifecycle": "active",
@@ -4565,7 +4888,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-014 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4581,10 +4903,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000005f",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-015-trap",
           "key": "conflict-015",
           "lifecycle": "active",
@@ -4596,7 +4920,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-015 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4612,10 +4935,12 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000060",
       "category": "abstention-conflict-ready",
+      "expected_candidate_ids": [],
       "expected_disposition": "abstained",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "abstention-conflict-ready-016-trap",
           "key": "conflict-016",
           "lifecycle": "active",
@@ -4627,7 +4952,6 @@
           "supersedes": null,
           "text": "palimpsest-abstention-conflict-ready-016 unresolved alternatives",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4643,10 +4967,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000061",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-001-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-001-relevant",
           "key": "allowed-001",
           "lifecycle": "active",
@@ -4658,11 +4986,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-001 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-001-trap",
           "key": "trap-001",
           "lifecycle": "active",
@@ -4674,7 +5002,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-001 palimpsest-isolation-lifecycle-001 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4692,10 +5019,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000062",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-002-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-002-relevant",
           "key": "allowed-002",
           "lifecycle": "active",
@@ -4707,11 +5038,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-002 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-002-trap",
           "key": "trap-002",
           "lifecycle": "active",
@@ -4723,7 +5054,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-002 palimpsest-isolation-lifecycle-002 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4741,10 +5071,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000063",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-003-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-003-relevant",
           "key": "allowed-003",
           "lifecycle": "active",
@@ -4756,11 +5090,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-003 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-003-trap",
           "key": "trap-003",
           "lifecycle": "active",
@@ -4772,7 +5106,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-003 palimpsest-isolation-lifecycle-003 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4790,10 +5123,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000064",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-004-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-004-relevant",
           "key": "allowed-004",
           "lifecycle": "active",
@@ -4805,11 +5142,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-004 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-004-trap",
           "key": "trap-004",
           "lifecycle": "active",
@@ -4821,7 +5158,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-004 palimpsest-isolation-lifecycle-004 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4839,10 +5175,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000065",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-005-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-005-relevant",
           "key": "allowed-005",
           "lifecycle": "active",
@@ -4854,11 +5194,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-005 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-005-trap",
           "key": "trap-005",
           "lifecycle": "active",
@@ -4870,7 +5210,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-005 palimpsest-isolation-lifecycle-005 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4888,10 +5227,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000066",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-006-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-006-relevant",
           "key": "allowed-006",
           "lifecycle": "active",
@@ -4903,11 +5246,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-006 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-006-trap",
           "key": "trap-006",
           "lifecycle": "active",
@@ -4919,7 +5262,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-006 palimpsest-isolation-lifecycle-006 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4937,10 +5279,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000067",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-007-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-007-relevant",
           "key": "allowed-007",
           "lifecycle": "active",
@@ -4952,11 +5298,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-007 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-007-trap",
           "key": "trap-007",
           "lifecycle": "active",
@@ -4968,7 +5314,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-007 palimpsest-isolation-lifecycle-007 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -4986,10 +5331,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000068",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-008-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-008-relevant",
           "key": "allowed-008",
           "lifecycle": "active",
@@ -5001,11 +5350,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-008 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-008-trap",
           "key": "trap-008",
           "lifecycle": "active",
@@ -5017,7 +5366,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-008 palimpsest-isolation-lifecycle-008 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5035,10 +5383,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000069",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-009-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-009-relevant",
           "key": "allowed-009",
           "lifecycle": "active",
@@ -5050,11 +5402,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-009 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-009-trap",
           "key": "trap-009",
           "lifecycle": "active",
@@ -5066,7 +5418,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-009 palimpsest-isolation-lifecycle-009 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5084,10 +5435,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000006a",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-010-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-010-relevant",
           "key": "allowed-010",
           "lifecycle": "active",
@@ -5099,11 +5454,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-010 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-010-trap",
           "key": "trap-010",
           "lifecycle": "active",
@@ -5115,7 +5470,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-010 palimpsest-isolation-lifecycle-010 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5133,10 +5487,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000006b",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-011-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-011-relevant",
           "key": "allowed-011",
           "lifecycle": "active",
@@ -5148,11 +5506,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-011 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-011-trap",
           "key": "trap-011",
           "lifecycle": "active",
@@ -5164,7 +5522,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-011 palimpsest-isolation-lifecycle-011 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5182,10 +5539,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000006c",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-012-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-012-relevant",
           "key": "allowed-012",
           "lifecycle": "active",
@@ -5197,11 +5558,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-012 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-012-trap",
           "key": "trap-012",
           "lifecycle": "active",
@@ -5213,7 +5574,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-012 palimpsest-isolation-lifecycle-012 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5231,10 +5591,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000006d",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-013-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-013-relevant",
           "key": "allowed-013",
           "lifecycle": "active",
@@ -5246,11 +5610,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-013 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-013-trap",
           "key": "trap-013",
           "lifecycle": "active",
@@ -5262,7 +5626,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-013 palimpsest-isolation-lifecycle-013 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5280,10 +5643,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000006e",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-014-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-014-relevant",
           "key": "allowed-014",
           "lifecycle": "active",
@@ -5295,11 +5662,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-014 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-014-trap",
           "key": "trap-014",
           "lifecycle": "active",
@@ -5311,7 +5678,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-014 palimpsest-isolation-lifecycle-014 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5329,10 +5695,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000006f",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-015-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-015-relevant",
           "key": "allowed-015",
           "lifecycle": "active",
@@ -5344,11 +5714,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-015 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-015-trap",
           "key": "trap-015",
           "lifecycle": "active",
@@ -5360,7 +5730,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-015 palimpsest-isolation-lifecycle-015 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5378,10 +5747,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000070",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-016-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-016-relevant",
           "key": "allowed-016",
           "lifecycle": "active",
@@ -5393,11 +5766,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-016 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-016-trap",
           "key": "trap-016",
           "lifecycle": "active",
@@ -5409,7 +5782,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-016 palimpsest-isolation-lifecycle-016 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5427,10 +5799,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000071",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-017-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-017-relevant",
           "key": "allowed-017",
           "lifecycle": "active",
@@ -5442,11 +5818,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-017 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-017-trap",
           "key": "trap-017",
           "lifecycle": "active",
@@ -5458,7 +5834,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-017 palimpsest-isolation-lifecycle-017 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5476,10 +5851,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000072",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-018-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-018-relevant",
           "key": "allowed-018",
           "lifecycle": "active",
@@ -5491,11 +5870,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-018 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-018-trap",
           "key": "trap-018",
           "lifecycle": "active",
@@ -5507,7 +5886,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-018 palimpsest-isolation-lifecycle-018 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5525,10 +5903,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000073",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-019-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-019-relevant",
           "key": "allowed-019",
           "lifecycle": "active",
@@ -5540,11 +5922,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-019 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-019-trap",
           "key": "trap-019",
           "lifecycle": "active",
@@ -5556,7 +5938,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-019 palimpsest-isolation-lifecycle-019 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5574,10 +5955,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000074",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-020-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-020-relevant",
           "key": "allowed-020",
           "lifecycle": "active",
@@ -5589,11 +5974,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-020 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-020-trap",
           "key": "trap-020",
           "lifecycle": "active",
@@ -5605,7 +5990,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-020 palimpsest-isolation-lifecycle-020 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5623,10 +6007,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000075",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-021-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-021-relevant",
           "key": "allowed-021",
           "lifecycle": "active",
@@ -5638,11 +6026,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-021 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-021-trap",
           "key": "trap-021",
           "lifecycle": "active",
@@ -5654,7 +6042,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-021 palimpsest-isolation-lifecycle-021 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5672,10 +6059,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000076",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-022-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-022-relevant",
           "key": "allowed-022",
           "lifecycle": "active",
@@ -5687,11 +6078,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-022 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-022-trap",
           "key": "trap-022",
           "lifecycle": "active",
@@ -5703,7 +6094,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-022 palimpsest-isolation-lifecycle-022 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5721,10 +6111,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000077",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-023-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-023-relevant",
           "key": "allowed-023",
           "lifecycle": "active",
@@ -5736,11 +6130,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-023 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-023-trap",
           "key": "trap-023",
           "lifecycle": "active",
@@ -5752,7 +6146,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-023 palimpsest-isolation-lifecycle-023 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5770,10 +6163,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000078",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-024-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-024-relevant",
           "key": "allowed-024",
           "lifecycle": "active",
@@ -5785,11 +6182,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-024 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-024-trap",
           "key": "trap-024",
           "lifecycle": "active",
@@ -5801,7 +6198,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-024 palimpsest-isolation-lifecycle-024 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5819,10 +6215,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000079",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-025-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-025-relevant",
           "key": "allowed-025",
           "lifecycle": "active",
@@ -5834,11 +6234,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-025 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-025-trap",
           "key": "trap-025",
           "lifecycle": "deleted",
@@ -5850,7 +6250,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-025 palimpsest-isolation-lifecycle-025 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5868,10 +6267,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000007a",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-026-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-026-relevant",
           "key": "allowed-026",
           "lifecycle": "active",
@@ -5883,11 +6286,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-026 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-026-trap",
           "key": "trap-026",
           "lifecycle": "deleted",
@@ -5899,7 +6302,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-026 palimpsest-isolation-lifecycle-026 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5917,10 +6319,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000007b",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-027-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-027-relevant",
           "key": "allowed-027",
           "lifecycle": "active",
@@ -5932,11 +6338,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-027 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-027-trap",
           "key": "trap-027",
           "lifecycle": "deleted",
@@ -5948,7 +6354,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-027 palimpsest-isolation-lifecycle-027 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -5966,10 +6371,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000007c",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-028-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-028-relevant",
           "key": "allowed-028",
           "lifecycle": "active",
@@ -5981,11 +6390,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-028 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-028-trap",
           "key": "trap-028",
           "lifecycle": "deleted",
@@ -5997,7 +6406,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-028 palimpsest-isolation-lifecycle-028 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -6015,10 +6423,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000007d",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-029-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-029-relevant",
           "key": "allowed-029",
           "lifecycle": "active",
@@ -6030,11 +6442,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-029 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-029-trap",
           "key": "trap-029",
           "lifecycle": "expired",
@@ -6046,7 +6458,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-029 palimpsest-isolation-lifecycle-029 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -6064,10 +6475,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000007e",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-030-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-030-relevant",
           "key": "allowed-030",
           "lifecycle": "active",
@@ -6079,11 +6494,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-030 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-030-trap",
           "key": "trap-030",
           "lifecycle": "expired",
@@ -6095,7 +6510,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-030 palimpsest-isolation-lifecycle-030 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -6113,10 +6527,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-00000000007f",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-031-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-031-relevant",
           "key": "allowed-031",
           "lifecycle": "active",
@@ -6128,11 +6546,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-031 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-031-trap",
           "key": "trap-031",
           "lifecycle": "expired",
@@ -6144,7 +6562,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-031 palimpsest-isolation-lifecycle-031 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
@@ -6162,10 +6579,14 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000080",
       "category": "isolation-lifecycle",
+      "expected_candidate_ids": [
+        "isolation-lifecycle-032-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "relevant",
           "id": "isolation-lifecycle-032-relevant",
           "key": "allowed-032",
           "lifecycle": "active",
@@ -6177,11 +6598,11 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-032 authorized",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "relevant",
           "write_policy_id": "temporal-stable-evidence"
         },
         {
           "confidence": 1.0,
+          "embedding_fixture_role": "trap",
           "id": "isolation-lifecycle-032-trap",
           "key": "trap-032",
           "lifecycle": "expired",
@@ -6193,7 +6614,6 @@
           "supersedes": null,
           "text": "palimpsest-isolation-lifecycle-032 palimpsest-isolation-lifecycle-032 private trap",
           "valid_from": "2026-06-30T00:00:00Z",
-          "vector": "trap",
           "write_policy_id": "temporal-stable-evidence"
         }
       ],

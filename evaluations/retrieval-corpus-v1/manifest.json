@@ -6,7 +6,7 @@
     "full-policy"
   ],
   "calibration_count": 32,
-  "corpus_sha256": "7c066db8c7eb082ed13feaf3738bb11a291dda11162266731f687dbd8c523635",
+  "corpus_sha256": "6d5828d931e16164c0bedf19f09f85bc5dc8668c0762e7dc2e76160878d0d6f0",
   "embedder": {
     "id": "embedding-conformance-4d-v1",
     "kind": "deterministic-fixture",
