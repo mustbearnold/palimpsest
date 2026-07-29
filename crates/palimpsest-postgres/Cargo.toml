@@ -11,6 +11,7 @@ async-trait.workspace = true
 hex.workspace = true
 palimpsest-application = { path = "../palimpsest-application" }
 palimpsest-domain = { path = "../palimpsest-domain" }
+pgvector.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true

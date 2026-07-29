@@ -1,27 +1,685 @@
 use async_trait::async_trait;
 use palimpsest_application::{
-    AppendOutcome, CheckpointMutationOutcome, CheckpointRepository, EpisodeRepository,
-    FactMutationOutcome, FactRepository, IdempotencyRequest, RepositoryError,
-    RetrievalMutationOutcome, RetrievalRepository,
+    AppendOutcome, CheckpointMutationOutcome, CheckpointRepository, EmbeddingProvider,
+    EmbeddingRequest, EpisodeRepository, FactMutationOutcome, FactRepository, IdempotencyRequest,
+    RepositoryError, RetrievalMutationOutcome, RetrievalPreparation, RetrievalQueryEmbedding,
+    RetrievalRepository, validate_embedding_response,
 };
 use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
     CheckpointSnapshot, CheckpointView, EffectId, EffectKey, EffectKind, EffectReceipt,
-    EffectRecoveryMode, EffectStatus, Episode, EpisodeId, EpisodeKind, FactId, FactKey,
-    FactNamespace, FactRevision, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode,
-    NewFact, NewRetrieval, PrincipalId, PrincipalScope, Provenance, RetentionPolicyId,
-    RetrievalAuthorizationReceipt, RetrievalId, RetrievalItem, RetrievalPerspective,
-    RetrievalPolicy, RetrievalPolicyId, RetrievalReceipt, RetrievalScore, RevisionId, Sensitivity,
-    SourceType, SubjectId, TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId,
-    WritePolicyVersion,
+    EffectRecoveryMode, EffectStatus, EmbeddingInput, EmbeddingProfile, EmbeddingTask, Episode,
+    EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace, FactRevision, FactView,
+    NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewRetrieval, PrincipalId,
+    PrincipalScope, Provenance, RetentionPolicyId, RetrievalAuthorizationReceipt,
+    RetrievalEmbeddingLineage, RetrievalId, RetrievalItem, RetrievalPerspective, RetrievalPolicy,
+    RetrievalPolicyId, RetrievalQueryEmbeddingLineage, RetrievalReceipt, RetrievalScore,
+    RevisionId, Sensitivity, SourceType, SubjectId, TenantId, ThreadId, ValidTime, WritePolicy,
+    WritePolicyId, WritePolicyVersion,
 };
+use pgvector::Vector;
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
+use sqlx::{Decode, PgPool, Postgres, Row, Transaction, Type, postgres::PgRow};
 use time::OffsetDateTime;
 
 #[derive(Clone)]
 pub struct PostgresMemoryRepository {
     pool: PgPool,
+}
+
+#[derive(Clone)]
+pub struct EmbeddingProjectionCoordinator {
+    pool: PgPool,
+    provider: std::sync::Arc<dyn EmbeddingProvider>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProjectionRebuildReport {
+    pub attempted: usize,
+    pub ready: usize,
+    pub failed: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ProjectionJob {
+    tenant_id: uuid::Uuid,
+    subject_id: uuid::Uuid,
+    case_id: uuid::Uuid,
+    fact_id: uuid::Uuid,
+    revision_id: uuid::Uuid,
+    profile: EmbeddingProfile,
+    projection_profile_id: String,
+    projection_profile_version: String,
+    projection_profile_sha256: String,
+    projection_input_serialization: String,
+    projection_input_schema_version: i32,
+    generation_attempt_id: uuid::Uuid,
+    source_content_sha256: String,
+    source_projection_sha256: String,
+    input_sha256: String,
+    content: String,
+}
+
+impl EmbeddingProjectionCoordinator {
+    pub fn new(pool: PgPool, provider: std::sync::Arc<dyn EmbeddingProvider>) -> Self {
+        Self { pool, provider }
+    }
+
+    pub async fn rebuild_pending(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        batch_size: usize,
+    ) -> Result<ProjectionRebuildReport, RepositoryError> {
+        if batch_size == 0 {
+            return Ok(ProjectionRebuildReport::default());
+        }
+        let limit = i64::try_from(batch_size).map_err(unexpected)?;
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope(&mut transaction, tenant_id, subject_id).await?;
+        sqlx::query("SELECT memory.enqueue_missing_fact_revision_embedding_projections()")
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        sqlx::query(
+            r#"
+            UPDATE memory.fact_revision_embedding_projections
+            SET status = 'pending',
+                generation_attempt_id = NULL,
+                generation_started_at = NULL
+            WHERE tenant_id = $1
+              AND subject_id = $2
+              AND status = 'generating'
+              AND generation_started_at
+                    < clock_timestamp() - interval '15 minutes'
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        let generation_attempt_id = uuid::Uuid::now_v7();
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                projection.tenant_id,
+                projection.subject_id,
+                projection.case_id,
+                projection.fact_id,
+                projection.revision_id,
+                profile.profile_id,
+                profile.profile_version,
+                profile.provider,
+                profile.model,
+                profile.model_revision,
+                profile.dimensions,
+                profile.normalization,
+                profile.normalization_tolerance::double precision
+                    AS normalization_tolerance,
+                profile.distance_metric,
+                profile.scalar_type,
+                profile.input_serialization,
+                profile.query_task_mode,
+                profile.document_task_mode,
+                profile.provider_contract_schema_version,
+                profile.profile_sha256,
+                projection.embedding_projection_profile_id,
+                projection.embedding_projection_profile_version,
+                projection.embedding_projection_profile_sha256,
+                projection_profile.input_serialization
+                    AS projection_input_serialization,
+                projection_profile.input_schema_version
+                    AS projection_input_schema_version,
+                projection.source_content_sha256,
+                projection.source_projection_sha256,
+                projection.input_sha256,
+                '1' || chr(31) || fact.namespace || chr(31)
+                    || fact.fact_key || chr(31) || revision.value::text AS content
+            FROM memory.fact_revision_embedding_projections AS projection
+            JOIN memory.embedding_profiles AS profile
+              ON profile.profile_id = projection.embedding_profile_id
+             AND profile.profile_version = projection.embedding_profile_version
+             AND profile.profile_sha256 = projection.embedding_profile_sha256
+            JOIN memory.embedding_projection_profiles AS projection_profile
+              ON projection_profile.projection_profile_id
+                    = projection.embedding_projection_profile_id
+             AND projection_profile.projection_profile_version
+                    = projection.embedding_projection_profile_version
+             AND projection_profile.projection_profile_sha256
+                    = projection.embedding_projection_profile_sha256
+            JOIN memory.fact_revisions AS revision
+              ON revision.tenant_id = projection.tenant_id
+             AND revision.subject_id = projection.subject_id
+             AND revision.case_id = projection.case_id
+             AND revision.fact_id = projection.fact_id
+             AND revision.revision_id = projection.revision_id
+             AND revision.content_sha256 = projection.source_content_sha256
+            JOIN memory.facts AS fact
+              ON fact.tenant_id = revision.tenant_id
+             AND fact.subject_id = revision.subject_id
+             AND fact.case_id = revision.case_id
+             AND fact.fact_id = revision.fact_id
+            WHERE projection.tenant_id = $2
+              AND projection.subject_id = $3
+              AND projection.status = 'pending'
+            ORDER BY projection.queued_at, projection.revision_id,
+                projection.embedding_profile_id,
+                projection.embedding_profile_version
+            LIMIT $1
+            FOR UPDATE OF projection SKIP LOCKED
+            "#,
+        )
+        .bind(limit)
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+
+        let mut jobs = Vec::with_capacity(rows.len());
+        for row in rows {
+            jobs.push(ProjectionJob {
+                tenant_id: row.try_get("tenant_id").map_err(unexpected)?,
+                subject_id: row.try_get("subject_id").map_err(unexpected)?,
+                case_id: row.try_get("case_id").map_err(unexpected)?,
+                fact_id: row.try_get("fact_id").map_err(unexpected)?,
+                revision_id: row.try_get("revision_id").map_err(unexpected)?,
+                profile: EmbeddingProfile {
+                    id: row.try_get("profile_id").map_err(unexpected)?,
+                    version: row.try_get("profile_version").map_err(unexpected)?,
+                    provider: row.try_get("provider").map_err(unexpected)?,
+                    model: row.try_get("model").map_err(unexpected)?,
+                    model_revision: row.try_get("model_revision").map_err(unexpected)?,
+                    dimensions: usize::try_from(
+                        row.try_get::<i32, _>("dimensions").map_err(unexpected)?,
+                    )
+                    .map_err(unexpected)?,
+                    normalization: row.try_get("normalization").map_err(unexpected)?,
+                    normalization_tolerance: row
+                        .try_get("normalization_tolerance")
+                        .map_err(unexpected)?,
+                    distance_metric: row.try_get("distance_metric").map_err(unexpected)?,
+                    scalar_type: row.try_get("scalar_type").map_err(unexpected)?,
+                    input_serialization: row.try_get("input_serialization").map_err(unexpected)?,
+                    query_task: row.try_get("query_task_mode").map_err(unexpected)?,
+                    document_task: row.try_get("document_task_mode").map_err(unexpected)?,
+                    provider_contract_schema_version: u32::try_from(
+                        row.try_get::<i32, _>("provider_contract_schema_version")
+                            .map_err(unexpected)?,
+                    )
+                    .map_err(unexpected)?,
+                    digest: row.try_get("profile_sha256").map_err(unexpected)?,
+                },
+                projection_profile_id: row
+                    .try_get("embedding_projection_profile_id")
+                    .map_err(unexpected)?,
+                projection_profile_version: row
+                    .try_get("embedding_projection_profile_version")
+                    .map_err(unexpected)?,
+                projection_profile_sha256: row
+                    .try_get("embedding_projection_profile_sha256")
+                    .map_err(unexpected)?,
+                projection_input_serialization: row
+                    .try_get("projection_input_serialization")
+                    .map_err(unexpected)?,
+                projection_input_schema_version: row
+                    .try_get("projection_input_schema_version")
+                    .map_err(unexpected)?,
+                generation_attempt_id,
+                source_content_sha256: row.try_get("source_content_sha256").map_err(unexpected)?,
+                source_projection_sha256: row
+                    .try_get("source_projection_sha256")
+                    .map_err(unexpected)?,
+                input_sha256: row.try_get("input_sha256").map_err(unexpected)?,
+                content: row.try_get("content").map_err(unexpected)?,
+            });
+        }
+        for job in &jobs {
+            let claimed = sqlx::query(
+                r#"
+                UPDATE memory.fact_revision_embedding_projections
+                SET status = 'generating',
+                    generation_attempt_id = $12,
+                    generation_started_at = clock_timestamp()
+                WHERE tenant_id = $1
+                  AND subject_id = $2
+                  AND case_id = $3
+                  AND fact_id = $4
+                  AND revision_id = $5
+                  AND embedding_profile_id = $6
+                  AND embedding_profile_version = $7
+                  AND embedding_profile_sha256 = $8
+                  AND embedding_projection_profile_id = $9
+                  AND embedding_projection_profile_version = $10
+                  AND embedding_projection_profile_sha256 = $11
+                  AND status = 'pending'
+                "#,
+            )
+            .bind(job.tenant_id)
+            .bind(job.subject_id)
+            .bind(job.case_id)
+            .bind(job.fact_id)
+            .bind(job.revision_id)
+            .bind(&job.profile.id)
+            .bind(&job.profile.version)
+            .bind(&job.profile.digest)
+            .bind(&job.projection_profile_id)
+            .bind(&job.projection_profile_version)
+            .bind(&job.projection_profile_sha256)
+            .bind(job.generation_attempt_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+            if claimed.rows_affected() != 1 {
+                return Err(RepositoryError::Unexpected(
+                    "embedding projection claim was lost".to_owned(),
+                ));
+            }
+        }
+        transaction.commit().await.map_err(unexpected)?;
+
+        let mut report = ProjectionRebuildReport {
+            attempted: jobs.len(),
+            ..ProjectionRebuildReport::default()
+        };
+        let mut offset = 0;
+        while offset < jobs.len() {
+            let profile = jobs[offset].profile.clone();
+            let end = jobs[offset..]
+                .iter()
+                .position(|job| {
+                    job.profile.id != profile.id
+                        || job.profile.version != profile.version
+                        || job.profile.digest != profile.digest
+                })
+                .map_or(jobs.len(), |relative| offset + relative);
+            let profile_jobs = &jobs[offset..end];
+            if profile.input_serialization != "utf8"
+                || profile.provider_contract_schema_version != 1
+                || profile_jobs.iter().any(|job| {
+                    job.projection_input_serialization != "fact-projection-v1"
+                        || job.projection_input_schema_version != 1
+                })
+            {
+                for job in profile_jobs {
+                    report.failed += usize::from(
+                        self.mark_projection_failed(job, "projection_contract_unsupported")
+                            .await?,
+                    );
+                }
+                offset = end;
+                continue;
+            }
+            let inputs = profile_jobs
+                .iter()
+                .map(|job| EmbeddingInput {
+                    input_sha256: job.input_sha256.clone(),
+                    content: job.content.clone(),
+                })
+                .collect::<Vec<_>>();
+            let response = self
+                .provider
+                .embed(EmbeddingRequest {
+                    profile: profile.clone(),
+                    task: EmbeddingTask::Document,
+                    inputs,
+                })
+                .await;
+            let outputs = match response.and_then(|response| {
+                let expected = profile_jobs
+                    .iter()
+                    .map(|job| job.input_sha256.as_str())
+                    .collect::<Vec<_>>();
+                validate_embedding_response(&profile, &expected, response)
+            }) {
+                Ok(outputs) => outputs,
+                Err(error) => {
+                    let code = match error {
+                        palimpsest_application::EmbeddingProviderError::Unavailable { .. } => {
+                            "provider_unavailable"
+                        }
+                        palimpsest_application::EmbeddingProviderError::InvalidResponse {
+                            ..
+                        } => "provider_response_invalid",
+                    };
+                    for job in profile_jobs {
+                        report.failed += usize::from(self.mark_projection_failed(job, code).await?);
+                    }
+                    offset = end;
+                    continue;
+                }
+            };
+
+            for (job, output) in profile_jobs.iter().zip(outputs) {
+                let input_sha256 = hex::encode(Sha256::digest(job.content.as_bytes()));
+                if input_sha256 != job.input_sha256 {
+                    report.failed += usize::from(
+                        self.mark_projection_failed(job, "input_digest_mismatch")
+                            .await?,
+                    );
+                    continue;
+                }
+                let vector_sha256 = embedding_vector_sha256(&output.values);
+                report.ready += usize::from(
+                    self.mark_projection_ready(job, output.values, &vector_sha256)
+                        .await?,
+                );
+            }
+            offset = end;
+        }
+        Ok(report)
+    }
+
+    async fn mark_projection_ready(
+        &self,
+        job: &ProjectionJob,
+        values: Vec<f32>,
+        vector_sha256: &str,
+    ) -> Result<bool, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope(
+            &mut transaction,
+            TenantId(job.tenant_id),
+            SubjectId(job.subject_id),
+        )
+        .await?;
+        let result = sqlx::query(
+            r#"
+            WITH generated AS (SELECT clock_timestamp() AS at)
+            UPDATE memory.fact_revision_embedding_projections AS projection
+            SET status = 'ready',
+                embedding = $17,
+                vector_sha256 = $18,
+                failure_code = NULL,
+                generated_at = generated.at
+            FROM generated
+            WHERE projection.tenant_id = $1
+              AND projection.subject_id = $2
+              AND projection.case_id = $3
+              AND projection.fact_id = $4
+              AND projection.revision_id = $5
+              AND projection.embedding_profile_id = $6
+              AND projection.embedding_profile_version = $7
+              AND projection.embedding_profile_sha256 = $8
+              AND projection.embedding_projection_profile_id = $9
+              AND projection.embedding_projection_profile_version = $10
+              AND projection.embedding_projection_profile_sha256 = $11
+              AND projection.source_content_sha256 = $12
+              AND projection.source_projection_sha256 = $13
+              AND projection.input_sha256 = $14
+              AND projection.status = 'generating'
+              AND projection.generation_attempt_id = $19
+              AND projection.embedding_dimensions = $15
+              AND projection.generation_schema_version = $16
+            "#,
+        )
+        .bind(job.tenant_id)
+        .bind(job.subject_id)
+        .bind(job.case_id)
+        .bind(job.fact_id)
+        .bind(job.revision_id)
+        .bind(&job.profile.id)
+        .bind(&job.profile.version)
+        .bind(&job.profile.digest)
+        .bind(&job.projection_profile_id)
+        .bind(&job.projection_profile_version)
+        .bind(&job.projection_profile_sha256)
+        .bind(&job.source_content_sha256)
+        .bind(&job.source_projection_sha256)
+        .bind(&job.input_sha256)
+        .bind(i32::try_from(job.profile.dimensions).map_err(unexpected)?)
+        .bind(1_i32)
+        .bind(Vector::from(values))
+        .bind(vector_sha256)
+        .bind(job.generation_attempt_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    async fn mark_projection_failed(
+        &self,
+        job: &ProjectionJob,
+        failure_code: &str,
+    ) -> Result<bool, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope(
+            &mut transaction,
+            TenantId(job.tenant_id),
+            SubjectId(job.subject_id),
+        )
+        .await?;
+        let result = sqlx::query(
+            r#"
+            WITH failed AS (SELECT clock_timestamp() AS at)
+            UPDATE memory.fact_revision_embedding_projections AS projection
+            SET status = 'failed',
+                embedding = NULL,
+                vector_sha256 = NULL,
+                failure_code = $15,
+                generated_at = NULL
+            FROM failed
+            WHERE projection.tenant_id = $1
+              AND projection.subject_id = $2
+              AND projection.case_id = $3
+              AND projection.fact_id = $4
+              AND projection.revision_id = $5
+              AND projection.embedding_profile_id = $6
+              AND projection.embedding_profile_version = $7
+              AND projection.embedding_profile_sha256 = $8
+              AND projection.embedding_projection_profile_id = $9
+              AND projection.embedding_projection_profile_version = $10
+              AND projection.embedding_projection_profile_sha256 = $11
+              AND projection.source_content_sha256 = $12
+              AND projection.source_projection_sha256 = $13
+              AND projection.input_sha256 = $14
+              AND projection.status = 'generating'
+              AND projection.generation_attempt_id = $16
+            "#,
+        )
+        .bind(job.tenant_id)
+        .bind(job.subject_id)
+        .bind(job.case_id)
+        .bind(job.fact_id)
+        .bind(job.revision_id)
+        .bind(&job.profile.id)
+        .bind(&job.profile.version)
+        .bind(&job.profile.digest)
+        .bind(&job.projection_profile_id)
+        .bind(&job.projection_profile_version)
+        .bind(&job.projection_profile_sha256)
+        .bind(&job.source_content_sha256)
+        .bind(&job.source_projection_sha256)
+        .bind(&job.input_sha256)
+        .bind(failure_code)
+        .bind(job.generation_attempt_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(result.rows_affected() == 1)
+    }
+}
+
+fn embedding_vector_sha256(values: &[f32]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"palimpsest.embedding.float32-be.v1\0");
+    for value in values {
+        digest.update(value.to_bits().to_be_bytes());
+    }
+    hex::encode(digest.finalize())
+}
+
+fn required_column<T>(row: &PgRow, column: &str) -> Result<T, RepositoryError>
+where
+    for<'row> T: Decode<'row, Postgres> + Type<Postgres>,
+{
+    row.try_get::<Option<T>, _>(column)
+        .map_err(unexpected)?
+        .ok_or_else(|| RepositoryError::Unexpected("retrieval policy is incomplete".to_owned()))
+}
+
+fn hybrid_policy_plan(
+    row: &PgRow,
+    policy_version: String,
+    policy_sha256: String,
+    document: &serde_json::Value,
+) -> Result<HybridPolicyPlan, RepositoryError> {
+    fn integer(document: &serde_json::Value, pointer: &str) -> Result<i32, RepositoryError> {
+        document
+            .pointer(pointer)
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|value| i32::try_from(value).ok())
+            .ok_or_else(|| {
+                RepositoryError::Unexpected("hybrid retrieval policy is incomplete".to_owned())
+            })
+    }
+
+    if document
+        .pointer("/fusion/method")
+        .and_then(|value| value.as_str())
+        != Some("reciprocal-rank")
+        || document
+            .pointer("/fts_configuration")
+            .and_then(|value| value.as_str())
+            != Some("pg_catalog.simple")
+        || document
+            .pointer("/fts_rank")
+            .and_then(|value| value.as_str())
+            != Some("ts_rank_cd")
+        || document
+            .pointer("/distance_metric")
+            .and_then(|value| value.as_str())
+            != Some("cosine")
+        || document
+            .pointer("/fallback")
+            .and_then(|value| value.as_str())
+            != Some("none")
+        || document
+            .pointer("/rounding")
+            .and_then(|value| value.as_str())
+            != Some("half-away-from-zero")
+        || integer(document, "/fusion/weights/exact")? != 1
+        || integer(document, "/fusion/weights/lexical")? != 1
+        || integer(document, "/fusion/weights/vector")? != 1
+    {
+        return Err(RepositoryError::Unexpected(
+            "hybrid retrieval policy is unsupported".to_owned(),
+        ));
+    }
+
+    let plan = HybridPolicyPlan {
+        policy_version,
+        policy_sha256,
+        exact_candidate_limit: integer(document, "/candidate_limits/exact")?,
+        lexical_candidate_limit: integer(document, "/candidate_limits/lexical")?,
+        vector_candidate_limit: integer(document, "/candidate_limits/vector")?,
+        manifest_limit: integer(document, "/manifest_limit")?,
+        fts_rank_normalization: integer(document, "/fts_rank_normalization")?,
+        score_scale: integer(document, "/score_scale")?,
+        rrf_k: integer(document, "/fusion/k")?,
+        profile: EmbeddingProfile {
+            id: required_column(row, "profile_id")?,
+            version: required_column(row, "profile_version")?,
+            provider: required_column(row, "provider")?,
+            model: required_column(row, "model")?,
+            model_revision: required_column(row, "model_revision")?,
+            dimensions: usize::try_from(required_column::<i32>(row, "dimensions")?)
+                .map_err(unexpected)?,
+            normalization: required_column(row, "normalization")?,
+            normalization_tolerance: required_column(row, "normalization_tolerance")?,
+            distance_metric: required_column(row, "distance_metric")?,
+            scalar_type: required_column(row, "scalar_type")?,
+            input_serialization: required_column(row, "input_serialization")?,
+            query_task: required_column(row, "query_task_mode")?,
+            document_task: required_column(row, "document_task_mode")?,
+            provider_contract_schema_version: u32::try_from(required_column::<i32>(
+                row,
+                "provider_contract_schema_version",
+            )?)
+            .map_err(unexpected)?,
+            digest: required_column(row, "profile_sha256")?,
+        },
+        projection_profile_id: required_column(row, "embedding_projection_profile_id")?,
+        projection_profile_version: required_column(row, "embedding_projection_profile_version")?,
+        projection_profile_sha256: required_column(row, "embedding_projection_profile_sha256")?,
+    };
+    let expected_tie_break = serde_json::json!([
+        "fused_score_desc",
+        "exact_identity_rank_asc_nulls_last",
+        "exact_rank_asc_nulls_last",
+        "lexical_rank_asc_nulls_last",
+        "vector_rank_asc_nulls_last",
+        "case_id_asc",
+        "fact_id_asc",
+        "revision_id_asc"
+    ]);
+    let expected_channel_tie_breaks = serde_json::json!({
+        "exact": [
+            "exact_identity_rank_asc",
+            "case_id_asc",
+            "fact_id_asc",
+            "revision_id_asc"
+        ],
+        "lexical": [
+            "lexical_score_desc",
+            "case_id_asc",
+            "fact_id_asc",
+            "revision_id_asc"
+        ],
+        "vector": [
+            "vector_distance_asc",
+            "case_id_asc",
+            "fact_id_asc",
+            "revision_id_asc"
+        ]
+    });
+    if !(1..=50).contains(&plan.exact_candidate_limit)
+        || !(1..=50).contains(&plan.lexical_candidate_limit)
+        || !(1..=50).contains(&plan.vector_candidate_limit)
+        || !(1..=50).contains(&plan.manifest_limit)
+        || plan.fts_rank_normalization != 32
+        || plan.score_scale != 12
+        || plan.rrf_k != 60
+        || document
+            .pointer("/exact_identity_precedence")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        || document.pointer("/tie_break") != Some(&expected_tie_break)
+        || document.pointer("/channel_tie_breaks") != Some(&expected_channel_tie_breaks)
+        || document
+            .pointer("/embedding_profile/id")
+            .and_then(serde_json::Value::as_str)
+            != Some(plan.profile.id.as_str())
+        || document
+            .pointer("/embedding_profile/version")
+            .and_then(serde_json::Value::as_str)
+            != Some(plan.profile.version.as_str())
+        || document
+            .pointer("/embedding_profile/digest")
+            .and_then(serde_json::Value::as_str)
+            != Some(plan.profile.digest.as_str())
+        || document
+            .pointer("/projection_profile/id")
+            .and_then(serde_json::Value::as_str)
+            != Some(plan.projection_profile_id.as_str())
+        || document
+            .pointer("/projection_profile/version")
+            .and_then(serde_json::Value::as_str)
+            != Some(plan.projection_profile_version.as_str())
+        || document
+            .pointer("/projection_profile/digest")
+            .and_then(serde_json::Value::as_str)
+            != Some(plan.projection_profile_sha256.as_str())
+    {
+        return Err(RepositoryError::Unexpected(
+            "hybrid retrieval policy is unsupported".to_owned(),
+        ));
+    }
+    Ok(plan)
 }
 
 #[derive(Debug)]
@@ -38,11 +696,52 @@ struct LexicalCandidate {
     item_sha256: String,
 }
 
+#[derive(Clone, Debug)]
+struct HybridPolicyPlan {
+    policy_version: String,
+    policy_sha256: String,
+    exact_candidate_limit: i32,
+    lexical_candidate_limit: i32,
+    vector_candidate_limit: i32,
+    manifest_limit: i32,
+    fts_rank_normalization: i32,
+    score_scale: i32,
+    rrf_k: i32,
+    profile: EmbeddingProfile,
+    projection_profile_id: String,
+    projection_profile_version: String,
+    projection_profile_sha256: String,
+}
+
+#[derive(Clone, Debug)]
+struct HybridCandidate {
+    case_id: uuid::Uuid,
+    fact_id: uuid::Uuid,
+    revision_id: uuid::Uuid,
+    exact_identity_rank: Option<i16>,
+    exact_rank: Option<i64>,
+    lexical_rank: Option<i64>,
+    lexical_score: Option<String>,
+    vector_rank: Option<i64>,
+    vector_distance: Option<String>,
+    vector_similarity: Option<String>,
+    exact_rrf: String,
+    lexical_rrf: String,
+    vector_rrf: String,
+    fused_score: String,
+    source_content_sha256: String,
+    projection_sha256: String,
+    embedding_input_sha256: String,
+    embedding_vector_sha256: String,
+    item_sha256: String,
+}
+
 impl PostgresMemoryRepository {
     async fn create_receipt_once(
         &self,
         retrieval: NewRetrieval,
         idempotency: IdempotencyRequest,
+        query_embedding: Option<RetrievalQueryEmbedding>,
     ) -> Result<RetrievalMutationOutcome, RepositoryError> {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
@@ -132,28 +831,45 @@ impl PostgresMemoryRepository {
             .map_err(unexpected)?
             .try_get("evaluated_at")
             .map_err(unexpected)?;
-        let (perspective, valid_at, recorded_at) = match retrieval.perspective {
+        let (perspective, valid_at, recorded_at) = match &retrieval.perspective {
             RetrievalPerspective::Current => ("current", evaluated_at, evaluated_at),
             RetrievalPerspective::AsOf {
                 valid_at,
                 recorded_at,
             } => {
-                if recorded_at > evaluated_at {
+                if *recorded_at > evaluated_at {
                     return Err(RepositoryError::FutureRecordedTime);
                 }
-                ("as_of", valid_at, recorded_at)
+                ("as_of", *valid_at, *recorded_at)
             }
         };
 
         let policy = sqlx::query(
             r#"
-            SELECT policy_id, policy_version, policy_sha256,
+            SELECT policy.policy_id, policy.policy_version, policy.policy_sha256,
+                policy.retrieval_mode, policy.policy_document,
                 (policy_document ->> 'candidate_limit')::integer AS candidate_limit,
                 (policy_document ->> 'fts_rank_normalization')::integer
                     AS fts_rank_normalization,
-                (policy_document ->> 'score_scale')::integer AS score_scale
-            FROM memory.lexical_retrieval_policies
-            WHERE policy_id = $1 AND policy_version = '1'
+                (policy_document ->> 'score_scale')::integer AS score_scale,
+                profile.profile_id, profile.profile_version, profile.provider,
+                profile.model, profile.model_revision, profile.dimensions,
+                profile.normalization,
+                profile.normalization_tolerance::double precision
+                    AS normalization_tolerance,
+                profile.distance_metric, profile.scalar_type,
+                profile.input_serialization,
+                profile.query_task_mode, profile.document_task_mode,
+                profile.provider_contract_schema_version, profile.profile_sha256,
+                policy.embedding_projection_profile_id,
+                policy.embedding_projection_profile_version,
+                policy.embedding_projection_profile_sha256
+            FROM memory.retrieval_policies AS policy
+            LEFT JOIN memory.embedding_profiles AS profile
+              ON profile.profile_id = policy.embedding_profile_id
+             AND profile.profile_version = policy.embedding_profile_version
+             AND profile.profile_sha256 = policy.embedding_profile_sha256
+            WHERE policy.policy_id = $1 AND policy.policy_version = '1'
             "#,
         )
         .bind(retrieval.policy_id.as_str())
@@ -163,11 +879,7 @@ impl PostgresMemoryRepository {
         .ok_or_else(|| RepositoryError::Unexpected("retrieval policy is unavailable".to_owned()))?;
         let policy_version: String = policy.try_get("policy_version").map_err(unexpected)?;
         let policy_sha256: String = policy.try_get("policy_sha256").map_err(unexpected)?;
-        let candidate_limit: i32 = policy.try_get("candidate_limit").map_err(unexpected)?;
-        let fts_rank_normalization: i32 = policy
-            .try_get("fts_rank_normalization")
-            .map_err(unexpected)?;
-        let score_scale: i32 = policy.try_get("score_scale").map_err(unexpected)?;
+        let retrieval_mode: String = policy.try_get("retrieval_mode").map_err(unexpected)?;
         let projection = sqlx::query(
             r#"
             SELECT projection_schema_version, projection_sha256
@@ -187,6 +899,43 @@ impl PostgresMemoryRepository {
         let projection_schema_sha256: String = projection
             .try_get("projection_sha256")
             .map_err(unexpected)?;
+
+        if retrieval_mode == "hybrid" {
+            let policy_document: serde_json::Value =
+                policy.try_get("policy_document").map_err(unexpected)?;
+            let plan =
+                hybrid_policy_plan(&policy, policy_version, policy_sha256, &policy_document)?;
+            let receipt = self
+                .create_hybrid_receipt_in_transaction(
+                    &mut transaction,
+                    &retrieval,
+                    &idempotency,
+                    query_embedding.as_ref(),
+                    perspective,
+                    valid_at,
+                    recorded_at,
+                    evaluated_at,
+                    projection_schema_version,
+                    &projection_schema_sha256,
+                    &plan,
+                )
+                .await?;
+            transaction.commit().await.map_err(map_retrieval_sqlx)?;
+            return Ok(RetrievalMutationOutcome {
+                receipt,
+                replayed: false,
+            });
+        }
+        if retrieval_mode != "lexical" || query_embedding.is_some() {
+            return Err(RepositoryError::Unexpected(
+                "retrieval policy execution plan is invalid".to_owned(),
+            ));
+        }
+        let candidate_limit: i32 = policy.try_get("candidate_limit").map_err(unexpected)?;
+        let fts_rank_normalization: i32 = policy
+            .try_get("fts_rank_normalization")
+            .map_err(unexpected)?;
+        let score_scale: i32 = policy.try_get("score_scale").map_err(unexpected)?;
 
         let case_ids = retrieval
             .filters
@@ -515,6 +1264,561 @@ impl PostgresMemoryRepository {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    async fn create_hybrid_receipt_in_transaction(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        retrieval: &NewRetrieval,
+        idempotency: &IdempotencyRequest,
+        query_embedding: Option<&RetrievalQueryEmbedding>,
+        perspective: &str,
+        valid_at: OffsetDateTime,
+        recorded_at: OffsetDateTime,
+        evaluated_at: OffsetDateTime,
+        projection_schema_version: i32,
+        projection_schema_sha256: &str,
+        plan: &HybridPolicyPlan,
+    ) -> Result<RetrievalReceipt, RepositoryError> {
+        let query_embedding = query_embedding.ok_or_else(|| {
+            RepositoryError::Unexpected("query embedding is unavailable".to_owned())
+        })?;
+        if query_embedding.profile != plan.profile
+            || query_embedding.output.input_sha256 != retrieval.query_sha256
+            || query_embedding.output.values.len() != plan.profile.dimensions
+        {
+            return Err(RepositoryError::Unexpected(
+                "query embedding does not match the retrieval plan".to_owned(),
+            ));
+        }
+        let query_vector_sha256 = embedding_vector_sha256(&query_embedding.output.values);
+        let query_vector = Vector::from(query_embedding.output.values.clone());
+        let case_ids = retrieval
+            .filters
+            .case_ids
+            .as_ref()
+            .map(|values| values.iter().map(|value| value.0).collect::<Vec<_>>());
+        let namespaces = retrieval.filters.namespaces.as_ref().map(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect::<Vec<_>>()
+        });
+        let keys = retrieval.filters.keys.as_ref().map(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect::<Vec<_>>()
+        });
+        let requested_sensitivities = retrieval.filters.sensitivities.as_ref().map(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect::<Vec<_>>()
+        });
+        let allowed_sensitivities = retrieval
+            .allowed_sensitivities
+            .iter()
+            .map(|value| value.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let candidate_started = std::time::Instant::now();
+        let rows = sqlx::query(
+            r#"
+            WITH effective AS MATERIALIZED (
+                SELECT DISTINCT ON (revision.fact_id)
+                    revision.tenant_id,
+                    revision.subject_id,
+                    revision.case_id,
+                    revision.fact_id,
+                    revision.revision_id,
+                    fact.namespace,
+                    fact.fact_key,
+                    revision.value,
+                    revision.sensitivity,
+                    revision.content_sha256
+                FROM memory.fact_revisions AS revision
+                JOIN memory.facts AS fact
+                  ON fact.tenant_id = revision.tenant_id
+                 AND fact.subject_id = revision.subject_id
+                 AND fact.case_id = revision.case_id
+                 AND fact.fact_id = revision.fact_id
+                WHERE revision.tenant_id = $1
+                  AND revision.subject_id = $2
+                  AND revision.recorded_at <= $3
+                  AND revision.valid_during @> $4::timestamptz
+                  AND ($5::uuid[] IS NULL OR revision.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR fact.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
+                ORDER BY revision.fact_id, revision.revision_no DESC,
+                    revision.revision_id
+            ),
+            authorized AS MATERIALIZED (
+                SELECT effective.*
+                FROM effective
+                JOIN memory.fact_revision_governance AS governance
+                  ON governance.tenant_id = effective.tenant_id
+                 AND governance.subject_id = effective.subject_id
+                 AND governance.case_id = effective.case_id
+                 AND governance.fact_id = effective.fact_id
+                 AND governance.revision_id = effective.revision_id
+                WHERE governance.lifecycle_state = 'active'
+                  AND (
+                      governance.retention_expires_at IS NULL
+                      OR governance.retention_expires_at > $8
+                  )
+                  AND effective.sensitivity = ANY($9::text[])
+                  AND (
+                      $10::text[] IS NULL
+                      OR effective.sensitivity = ANY($10)
+                  )
+            ),
+            projected AS MATERIALIZED (
+                SELECT authorized.*,
+                    document.search_vector,
+                    document.projection_sha256,
+                    embedding.embedding,
+                    embedding.embedding_profile_sha256,
+                    embedding.embedding_projection_profile_sha256,
+                    embedding.input_sha256 AS embedding_input_sha256,
+                    embedding.vector_sha256 AS embedding_vector_sha256,
+                    (
+                        document.revision_id IS NOT NULL
+                        AND document.projection_schema_sha256 = $12
+                        AND document.source_content_sha256
+                            = authorized.content_sha256
+                        AND document.projection_sha256 =
+                            memory.fact_projection_sha256_v1(
+                                authorized.namespace,
+                                authorized.fact_key,
+                                authorized.value
+                            )
+                        AND document.search_vector =
+                            memory.fact_search_vector_v1(
+                                authorized.namespace,
+                                authorized.fact_key,
+                                authorized.value
+                            )
+                    ) AS lexical_ready,
+                    (
+                        embedding.revision_id IS NOT NULL
+                        AND embedding.embedding_profile_id = $16
+                        AND embedding.embedding_profile_version = $17
+                        AND embedding.embedding_profile_sha256 = $18
+                        AND embedding.embedding_dimensions = $19
+                        AND embedding.embedding_projection_profile_id = $20
+                        AND embedding.embedding_projection_profile_version = $21
+                        AND embedding.embedding_projection_profile_sha256 = $22
+                        AND embedding.source_content_sha256
+                            = authorized.content_sha256
+                        AND embedding.source_projection_sha256
+                            = document.projection_sha256
+                    ) AS embedding_ready
+                FROM authorized
+                LEFT JOIN memory.fact_revision_search_documents AS document
+                  ON document.tenant_id = authorized.tenant_id
+                 AND document.subject_id = authorized.subject_id
+                 AND document.case_id = authorized.case_id
+                 AND document.fact_id = authorized.fact_id
+                 AND document.revision_id = authorized.revision_id
+                 AND document.projection_schema_version = $11
+                LEFT JOIN memory.retrieval_ready_fact_revision_embeddings AS embedding
+                  ON embedding.tenant_id = authorized.tenant_id
+                 AND embedding.subject_id = authorized.subject_id
+                 AND embedding.case_id = authorized.case_id
+                 AND embedding.fact_id = authorized.fact_id
+                 AND embedding.revision_id = authorized.revision_id
+                 AND embedding.embedding_profile_id = $16
+                 AND embedding.embedding_profile_version = $17
+                 AND embedding.embedding_projection_profile_id = $20
+                 AND embedding.embedding_projection_profile_version = $21
+            ),
+            coverage AS (
+                SELECT COALESCE(
+                    bool_or(NOT lexical_ready OR NOT embedding_ready),
+                    false
+                ) AS coverage_missing
+                FROM projected
+            ),
+            eligible AS MATERIALIZED (
+                SELECT *
+                FROM projected
+                WHERE lexical_ready AND embedding_ready
+            ),
+            scored AS MATERIALIZED (
+                SELECT eligible.*,
+                    CASE
+                        WHEN lower(eligible.namespace || ':' || eligible.fact_key)
+                            = lower(btrim($13)) THEN 1::smallint
+                        WHEN lower(eligible.fact_key) = lower(btrim($13))
+                            THEN 2::smallint
+                        ELSE NULL::smallint
+                    END AS exact_identity_rank,
+                    eligible.search_vector
+                        @@ websearch_to_tsquery('pg_catalog.simple', $13)
+                        AS lexical_match,
+                    ts_rank_cd(
+                        eligible.search_vector,
+                        websearch_to_tsquery('pg_catalog.simple', $13),
+                        $14
+                    )::double precision AS lexical_score,
+                    eligible.embedding <=> $15 AS vector_distance
+                FROM eligible
+            ),
+            exact_channel AS MATERIALIZED (
+                SELECT scored.case_id, scored.fact_id, scored.revision_id,
+                    scored.exact_identity_rank,
+                    row_number() OVER (
+                        ORDER BY scored.exact_identity_rank,
+                            scored.case_id, scored.fact_id, scored.revision_id
+                    ) AS exact_rank
+                FROM scored
+                WHERE scored.exact_identity_rank IS NOT NULL
+                ORDER BY scored.exact_identity_rank,
+                    scored.case_id, scored.fact_id, scored.revision_id
+                LIMIT $23
+            ),
+            lexical_channel AS MATERIALIZED (
+                SELECT scored.case_id, scored.fact_id, scored.revision_id,
+                    scored.lexical_score,
+                    row_number() OVER (
+                        ORDER BY scored.lexical_score DESC,
+                            scored.case_id, scored.fact_id, scored.revision_id
+                    ) AS lexical_rank
+                FROM scored
+                WHERE scored.lexical_match
+                ORDER BY scored.lexical_score DESC,
+                    scored.case_id, scored.fact_id, scored.revision_id
+                LIMIT $24
+            ),
+            vector_channel AS MATERIALIZED (
+                SELECT scored.case_id, scored.fact_id, scored.revision_id,
+                    scored.vector_distance,
+                    row_number() OVER (
+                        ORDER BY scored.vector_distance,
+                            scored.case_id, scored.fact_id, scored.revision_id
+                    ) AS vector_rank
+                FROM scored
+                ORDER BY scored.vector_distance,
+                    scored.case_id, scored.fact_id, scored.revision_id
+                LIMIT $25
+            ),
+            candidate_keys AS MATERIALIZED (
+                SELECT case_id, fact_id, revision_id FROM exact_channel
+                UNION
+                SELECT case_id, fact_id, revision_id FROM lexical_channel
+                UNION
+                SELECT case_id, fact_id, revision_id FROM vector_channel
+            ),
+            fusion AS MATERIALIZED (
+                SELECT eligible.case_id, eligible.fact_id,
+                    eligible.revision_id,
+                    exact_channel.exact_identity_rank,
+                    exact_channel.exact_rank,
+                    lexical_channel.lexical_rank,
+                    lexical_channel.lexical_score,
+                    vector_channel.vector_rank,
+                    vector_channel.vector_distance,
+                    CASE WHEN vector_channel.vector_distance IS NULL
+                        THEN NULL::double precision
+                        ELSE 1.0 - vector_channel.vector_distance
+                    END AS vector_similarity,
+                    CASE WHEN exact_channel.exact_rank IS NULL THEN 0::numeric
+                        ELSE round(
+                            1::numeric / ($27 + exact_channel.exact_rank),
+                            $26
+                        )
+                    END AS exact_rrf,
+                    CASE WHEN lexical_channel.lexical_rank IS NULL THEN 0::numeric
+                        ELSE round(
+                            1::numeric / ($27 + lexical_channel.lexical_rank),
+                            $26
+                        )
+                    END AS lexical_rrf,
+                    CASE WHEN vector_channel.vector_rank IS NULL THEN 0::numeric
+                        ELSE round(
+                            1::numeric / ($27 + vector_channel.vector_rank),
+                            $26
+                        )
+                    END AS vector_rrf,
+                    eligible.content_sha256,
+                    eligible.projection_sha256,
+                    eligible.embedding_input_sha256,
+                    eligible.embedding_vector_sha256
+                FROM candidate_keys
+                JOIN eligible
+                  ON eligible.case_id = candidate_keys.case_id
+                 AND eligible.fact_id = candidate_keys.fact_id
+                 AND eligible.revision_id = candidate_keys.revision_id
+                LEFT JOIN exact_channel
+                  ON exact_channel.case_id = candidate_keys.case_id
+                 AND exact_channel.fact_id = candidate_keys.fact_id
+                 AND exact_channel.revision_id = candidate_keys.revision_id
+                LEFT JOIN lexical_channel
+                  ON lexical_channel.case_id = candidate_keys.case_id
+                 AND lexical_channel.fact_id = candidate_keys.fact_id
+                 AND lexical_channel.revision_id = candidate_keys.revision_id
+                LEFT JOIN vector_channel
+                  ON vector_channel.case_id = candidate_keys.case_id
+                 AND vector_channel.fact_id = candidate_keys.fact_id
+                 AND vector_channel.revision_id = candidate_keys.revision_id
+            ),
+            ranked AS MATERIALIZED (
+                SELECT fusion.*,
+                    fusion.exact_rrf + fusion.lexical_rrf + fusion.vector_rrf
+                        AS fused_score,
+                    row_number() OVER (
+                        ORDER BY
+                            fusion.exact_rrf + fusion.lexical_rrf
+                                + fusion.vector_rrf DESC,
+                            fusion.exact_identity_rank ASC NULLS LAST,
+                            fusion.exact_rank ASC NULLS LAST,
+                            fusion.lexical_rank ASC NULLS LAST,
+                            fusion.vector_rank ASC NULLS LAST,
+                            fusion.case_id, fusion.fact_id, fusion.revision_id
+                    ) AS final_rank
+                FROM fusion
+            ),
+            limited AS MATERIALIZED (
+                SELECT case_id, fact_id, revision_id,
+                    exact_identity_rank, exact_rank, lexical_rank,
+                    CASE WHEN lexical_rank IS NULL THEN NULL::text
+                        ELSE round(lexical_score::numeric, $26)::text
+                    END AS lexical_score,
+                    vector_rank,
+                    CASE WHEN vector_rank IS NULL THEN NULL::text
+                        ELSE round(vector_distance::numeric, $26)::text
+                    END AS vector_distance,
+                    CASE WHEN vector_rank IS NULL THEN NULL::text
+                        ELSE round(vector_similarity::numeric, $26)::text
+                    END AS vector_similarity,
+                    round(exact_rrf, $26)::text AS exact_rrf,
+                    round(lexical_rrf, $26)::text AS lexical_rrf,
+                    round(vector_rrf, $26)::text AS vector_rrf,
+                    round(fused_score, $26)::text AS fused_score,
+                    content_sha256, projection_sha256,
+                    embedding_input_sha256, embedding_vector_sha256,
+                    final_rank
+                FROM ranked
+                ORDER BY final_rank
+                LIMIT $28
+            )
+            SELECT coverage.coverage_missing,
+                candidate.fact_id IS NOT NULL AS candidate_present,
+                candidate.case_id, candidate.fact_id, candidate.revision_id,
+                candidate.exact_identity_rank, candidate.exact_rank,
+                candidate.lexical_rank, candidate.lexical_score,
+                candidate.vector_rank, candidate.vector_distance,
+                candidate.vector_similarity, candidate.exact_rrf,
+                candidate.lexical_rrf, candidate.vector_rrf,
+                candidate.fused_score, candidate.content_sha256,
+                candidate.projection_sha256,
+                candidate.embedding_input_sha256,
+                candidate.embedding_vector_sha256,
+                candidate.final_rank
+            FROM coverage
+            LEFT JOIN limited AS candidate
+              ON NOT coverage.coverage_missing
+            ORDER BY candidate.final_rank
+            "#,
+        )
+        .bind(retrieval.tenant_id.0)
+        .bind(retrieval.subject_id.0)
+        .bind(recorded_at)
+        .bind(valid_at)
+        .bind(case_ids)
+        .bind(namespaces)
+        .bind(keys)
+        .bind(evaluated_at)
+        .bind(allowed_sensitivities)
+        .bind(requested_sensitivities)
+        .bind(projection_schema_version)
+        .bind(projection_schema_sha256)
+        .bind(retrieval.query.as_str())
+        .bind(plan.fts_rank_normalization)
+        .bind(query_vector)
+        .bind(&plan.profile.id)
+        .bind(&plan.profile.version)
+        .bind(&plan.profile.digest)
+        .bind(i32::try_from(plan.profile.dimensions).map_err(unexpected)?)
+        .bind(&plan.projection_profile_id)
+        .bind(&plan.projection_profile_version)
+        .bind(&plan.projection_profile_sha256)
+        .bind(plan.exact_candidate_limit)
+        .bind(plan.lexical_candidate_limit)
+        .bind(plan.vector_candidate_limit)
+        .bind(plan.score_scale)
+        .bind(plan.rrf_k)
+        .bind(plan.manifest_limit)
+        .fetch_all(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
+        let coverage_missing = rows
+            .first()
+            .ok_or_else(|| {
+                RepositoryError::Unexpected("hybrid retrieval query returned no rows".to_owned())
+            })?
+            .try_get::<bool, _>("coverage_missing")
+            .map_err(unexpected)?;
+        if coverage_missing {
+            return Err(RepositoryError::Unexpected(
+                "retrieval index is not ready".to_owned(),
+            ));
+        }
+        let mut candidates = Vec::new();
+        for row in &rows {
+            if row
+                .try_get::<bool, _>("candidate_present")
+                .map_err(unexpected)?
+            {
+                candidates.push(hybrid_candidate_from_row(row)?);
+            }
+        }
+        let manifest_sha256 = hex::encode(Sha256::digest(
+            candidates
+                .iter()
+                .map(|candidate| candidate.item_sha256.as_str())
+                .collect::<String>()
+                .as_bytes(),
+        ));
+        let outcome = if candidates.is_empty() {
+            "abstention"
+        } else {
+            "results"
+        };
+        let abstention_reason = candidates.is_empty().then_some("no_authorized_match");
+        let stage_timings_ms = serde_json::json!({
+            "candidate_generation": candidate_started.elapsed().as_secs_f64() * 1000.0
+        });
+        sqlx::query(
+            r#"
+            INSERT INTO memory.retrieval_receipts (
+                tenant_id, subject_id, retrieval_id, principal_id,
+                idempotency_key, request_fingerprint, query_sha256,
+                perspective, valid_at, recorded_at, evaluated_at,
+                policy_id, policy_version, policy_sha256,
+                projection_schema_version, projection_schema_sha256,
+                authorization_scope_sha256, authorization_policy_version,
+                outcome, abstention_reason, stage_timings_ms, manifest_sha256,
+                page_size, schema_version,
+                embedding_profile_id, embedding_profile_version,
+                embedding_profile_sha256,
+                embedding_projection_profile_id,
+                embedding_projection_profile_version,
+                embedding_projection_profile_sha256,
+                query_input_sha256, query_vector_sha256
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                $12, $13, $14, $15, $16, $17, 'principal-scope-v1',
+                $18, $19, $20, $21, $22, 1,
+                $23, $24, $25, $26, $27, $28, $29, $30
+            )
+            "#,
+        )
+        .bind(retrieval.tenant_id.0)
+        .bind(retrieval.subject_id.0)
+        .bind(retrieval.retrieval_id.0)
+        .bind(&retrieval.principal_id.0)
+        .bind(&idempotency.key)
+        .bind(&idempotency.fingerprint)
+        .bind(&retrieval.query_sha256)
+        .bind(perspective)
+        .bind(valid_at)
+        .bind(recorded_at)
+        .bind(evaluated_at)
+        .bind(retrieval.policy_id.as_str())
+        .bind(&plan.policy_version)
+        .bind(&plan.policy_sha256)
+        .bind(projection_schema_version)
+        .bind(projection_schema_sha256)
+        .bind(&retrieval.authorization_scope_sha256)
+        .bind(outcome)
+        .bind(abstention_reason)
+        .bind(&stage_timings_ms)
+        .bind(&manifest_sha256)
+        .bind(i16::try_from(retrieval.page_size).map_err(unexpected)?)
+        .bind(&plan.profile.id)
+        .bind(&plan.profile.version)
+        .bind(&plan.profile.digest)
+        .bind(&plan.projection_profile_id)
+        .bind(&plan.projection_profile_version)
+        .bind(&plan.projection_profile_sha256)
+        .bind(&retrieval.query_sha256)
+        .bind(&query_vector_sha256)
+        .execute(&mut **transaction)
+        .await
+        .map_err(map_retrieval_sqlx)?;
+
+        for (index, candidate) in candidates.iter().enumerate() {
+            let ordinal = i16::try_from(index + 1).map_err(unexpected)?;
+            sqlx::query(
+                r#"
+                INSERT INTO memory.retrieval_manifest_items (
+                    tenant_id, subject_id, retrieval_id, principal_id,
+                    ordinal, case_id, fact_id, revision_id,
+                    exact_identity_rank, exact_rank, lexical_rank,
+                    lexical_score, vector_rank, vector_distance,
+                    vector_similarity, exact_rrf_contribution,
+                    lexical_rrf_contribution, vector_rrf_contribution,
+                    fused_score, final_rank, final_score,
+                    source_content_sha256, projection_sha256, item_sha256,
+                    embedding_profile_sha256,
+                    embedding_projection_profile_sha256,
+                    embedding_input_sha256, embedding_vector_sha256,
+                    schema_version
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8,
+                    $9, $10, $11, COALESCE($12::numeric, 0),
+                    $13, $14::numeric, $15::numeric,
+                    $16::numeric, $17::numeric, $18::numeric,
+                    $19::numeric, $5, $19::numeric,
+                    $20, $21, $22, $23, $24, $25, $26, 1
+                )
+                "#,
+            )
+            .bind(retrieval.tenant_id.0)
+            .bind(retrieval.subject_id.0)
+            .bind(retrieval.retrieval_id.0)
+            .bind(&retrieval.principal_id.0)
+            .bind(ordinal)
+            .bind(candidate.case_id)
+            .bind(candidate.fact_id)
+            .bind(candidate.revision_id)
+            .bind(candidate.exact_identity_rank)
+            .bind(candidate.exact_rank)
+            .bind(candidate.lexical_rank)
+            .bind(candidate.lexical_score.as_deref())
+            .bind(candidate.vector_rank)
+            .bind(candidate.vector_distance.as_deref())
+            .bind(candidate.vector_similarity.as_deref())
+            .bind(&candidate.exact_rrf)
+            .bind(&candidate.lexical_rrf)
+            .bind(&candidate.vector_rrf)
+            .bind(&candidate.fused_score)
+            .bind(&candidate.source_content_sha256)
+            .bind(&candidate.projection_sha256)
+            .bind(&candidate.item_sha256)
+            .bind(&plan.profile.digest)
+            .bind(&plan.projection_profile_sha256)
+            .bind(&candidate.embedding_input_sha256)
+            .bind(&candidate.embedding_vector_sha256)
+            .execute(&mut **transaction)
+            .await
+            .map_err(unexpected)?;
+        }
+
+        select_retrieval_receipt(
+            transaction,
+            retrieval.tenant_id,
+            retrieval.subject_id,
+            retrieval.retrieval_id,
+            None,
+            &retrieval.authorization_scope_sha256,
+        )
+        .await?
+        .ok_or(RepositoryError::NotFound)
+    }
+
     async fn get_receipt_once(
         &self,
         principal: &PrincipalScope,
@@ -554,15 +1858,152 @@ impl PostgresMemoryRepository {
 
 #[async_trait]
 impl RetrievalRepository for PostgresMemoryRepository {
+    async fn prepare_receipt(
+        &self,
+        retrieval: &NewRetrieval,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<RetrievalPreparation, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        set_retrieval_scope(
+            &mut transaction,
+            retrieval.tenant_id,
+            retrieval.subject_id,
+            &retrieval.principal_id,
+            &retrieval.allowed_sensitivities,
+        )
+        .await?;
+
+        let reservation = sqlx::query(
+            r#"
+            SELECT subject_id, retrieval_id, request_fingerprint
+            FROM memory.retrieval_idempotency_reservations
+            WHERE tenant_id = $1
+              AND principal_id = $2
+              AND idempotency_key = $3
+            "#,
+        )
+        .bind(retrieval.tenant_id.0)
+        .bind(&retrieval.principal_id.0)
+        .bind(&idempotency.key)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(map_retrieval_sqlx)?;
+        if let Some(reservation) = reservation {
+            let stored_subject_id: uuid::Uuid =
+                reservation.try_get("subject_id").map_err(unexpected)?;
+            let stored_fingerprint: String = reservation
+                .try_get("request_fingerprint")
+                .map_err(unexpected)?;
+            if stored_subject_id != retrieval.subject_id.0
+                || stored_fingerprint != idempotency.fingerprint
+            {
+                return Err(RepositoryError::IdempotencyKeyReused);
+            }
+            let retrieval_id =
+                RetrievalId(reservation.try_get("retrieval_id").map_err(unexpected)?);
+            let receipt = select_retrieval_receipt(
+                &mut transaction,
+                retrieval.tenant_id,
+                retrieval.subject_id,
+                retrieval_id,
+                None,
+                &retrieval.authorization_scope_sha256,
+            )
+            .await?
+            .ok_or(RepositoryError::IdempotencyInProgress)?;
+            transaction.commit().await.map_err(map_retrieval_sqlx)?;
+            return Ok(RetrievalPreparation::Replay(RetrievalMutationOutcome {
+                receipt,
+                replayed: true,
+            }));
+        }
+
+        let policy = sqlx::query(
+            r#"
+            SELECT policy.retrieval_mode,
+                profile.profile_id,
+                profile.profile_version,
+                profile.provider,
+                profile.model,
+                profile.model_revision,
+                profile.dimensions,
+                profile.normalization,
+                profile.normalization_tolerance::double precision
+                    AS normalization_tolerance,
+                profile.distance_metric,
+                profile.scalar_type,
+                profile.input_serialization,
+                profile.query_task_mode,
+                profile.document_task_mode,
+                profile.provider_contract_schema_version,
+                profile.profile_sha256
+            FROM memory.retrieval_policies AS policy
+            LEFT JOIN memory.embedding_profiles AS profile
+              ON profile.profile_id = policy.embedding_profile_id
+             AND profile.profile_version = policy.embedding_profile_version
+             AND profile.profile_sha256 = policy.embedding_profile_sha256
+            WHERE policy.policy_id = $1
+              AND policy.policy_version = '1'
+            "#,
+        )
+        .bind(retrieval.policy_id.as_str())
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unexpected)?
+        .ok_or_else(|| RepositoryError::Unexpected("retrieval policy is unavailable".to_owned()))?;
+        let retrieval_mode: String = policy.try_get("retrieval_mode").map_err(unexpected)?;
+        let embedding_profile = match retrieval_mode.as_str() {
+            "lexical" => None,
+            "hybrid" => Some(EmbeddingProfile {
+                id: required_column(&policy, "profile_id")?,
+                version: required_column(&policy, "profile_version")?,
+                provider: required_column(&policy, "provider")?,
+                model: required_column(&policy, "model")?,
+                model_revision: required_column(&policy, "model_revision")?,
+                dimensions: usize::try_from(required_column::<i32>(&policy, "dimensions")?)
+                    .map_err(unexpected)?,
+                normalization: required_column(&policy, "normalization")?,
+                normalization_tolerance: required_column(&policy, "normalization_tolerance")?,
+                distance_metric: required_column(&policy, "distance_metric")?,
+                scalar_type: required_column(&policy, "scalar_type")?,
+                input_serialization: required_column(&policy, "input_serialization")?,
+                query_task: required_column(&policy, "query_task_mode")?,
+                document_task: required_column(&policy, "document_task_mode")?,
+                provider_contract_schema_version: u32::try_from(required_column::<i32>(
+                    &policy,
+                    "provider_contract_schema_version",
+                )?)
+                .map_err(unexpected)?,
+                digest: required_column(&policy, "profile_sha256")?,
+            }),
+            _ => {
+                return Err(RepositoryError::Unexpected(
+                    "retrieval policy mode is invalid".to_owned(),
+                ));
+            }
+        };
+        transaction.commit().await.map_err(map_retrieval_sqlx)?;
+        Ok(RetrievalPreparation::Execute { embedding_profile })
+    }
+
     async fn create_receipt(
         &self,
         retrieval: NewRetrieval,
         idempotency: IdempotencyRequest,
+        query_embedding: Option<RetrievalQueryEmbedding>,
     ) -> Result<RetrievalMutationOutcome, RepositoryError> {
         const MAX_SERIALIZATION_ATTEMPTS: usize = 3;
         for attempt in 1..=MAX_SERIALIZATION_ATTEMPTS {
             match self
-                .create_receipt_once(retrieval.clone(), idempotency.clone())
+                .create_receipt_once(
+                    retrieval.clone(),
+                    idempotency.clone(),
+                    query_embedding.clone(),
+                )
                 .await
             {
                 Err(RepositoryError::SerializationRetry)
@@ -2225,6 +3666,71 @@ fn lexical_candidate_from_row(row: &PgRow) -> Result<LexicalCandidate, Repositor
     })
 }
 
+fn hybrid_candidate_from_row(row: &PgRow) -> Result<HybridCandidate, RepositoryError> {
+    let case_id = row.try_get("case_id").map_err(unexpected)?;
+    let fact_id = row.try_get("fact_id").map_err(unexpected)?;
+    let revision_id = row.try_get("revision_id").map_err(unexpected)?;
+    let exact_identity_rank = row.try_get("exact_identity_rank").map_err(unexpected)?;
+    let exact_rank = row.try_get("exact_rank").map_err(unexpected)?;
+    let lexical_rank = row.try_get("lexical_rank").map_err(unexpected)?;
+    let lexical_score = row.try_get("lexical_score").map_err(unexpected)?;
+    let vector_rank = row.try_get("vector_rank").map_err(unexpected)?;
+    let vector_distance = row.try_get("vector_distance").map_err(unexpected)?;
+    let vector_similarity = row.try_get("vector_similarity").map_err(unexpected)?;
+    let exact_rrf = row.try_get("exact_rrf").map_err(unexpected)?;
+    let lexical_rrf = row.try_get("lexical_rrf").map_err(unexpected)?;
+    let vector_rrf = row.try_get("vector_rrf").map_err(unexpected)?;
+    let fused_score = row.try_get("fused_score").map_err(unexpected)?;
+    let source_content_sha256 = row.try_get("content_sha256").map_err(unexpected)?;
+    let projection_sha256 = row.try_get("projection_sha256").map_err(unexpected)?;
+    let embedding_input_sha256 = row.try_get("embedding_input_sha256").map_err(unexpected)?;
+    let embedding_vector_sha256 = row.try_get("embedding_vector_sha256").map_err(unexpected)?;
+    let item_sha256 = hex::encode(Sha256::digest(
+        serde_json::to_vec(&serde_json::json!({
+            "case_id": case_id,
+            "fact_id": fact_id,
+            "revision_id": revision_id,
+            "exact_identity_rank": exact_identity_rank,
+            "exact_rank": exact_rank,
+            "lexical_rank": lexical_rank,
+            "lexical_score": lexical_score,
+            "vector_rank": vector_rank,
+            "vector_distance": vector_distance,
+            "vector_similarity": vector_similarity,
+            "exact_rrf": exact_rrf,
+            "lexical_rrf": lexical_rrf,
+            "vector_rrf": vector_rrf,
+            "fused_score": fused_score,
+            "source_content_sha256": source_content_sha256,
+            "projection_sha256": projection_sha256,
+            "embedding_input_sha256": embedding_input_sha256,
+            "embedding_vector_sha256": embedding_vector_sha256,
+        }))
+        .map_err(unexpected)?,
+    ));
+    Ok(HybridCandidate {
+        case_id,
+        fact_id,
+        revision_id,
+        exact_identity_rank,
+        exact_rank,
+        lexical_rank,
+        lexical_score,
+        vector_rank,
+        vector_distance,
+        vector_similarity,
+        exact_rrf,
+        lexical_rrf,
+        vector_rrf,
+        fused_score,
+        source_content_sha256,
+        projection_sha256,
+        embedding_input_sha256,
+        embedding_vector_sha256,
+        item_sha256,
+    })
+}
+
 async fn select_retrieval_receipt(
     transaction: &mut Transaction<'_, Postgres>,
     tenant_id: TenantId,
@@ -2237,7 +3743,13 @@ async fn select_retrieval_receipt(
         r#"
         SELECT evaluated_at, valid_at, recorded_at, policy_id, policy_version,
             policy_sha256, projection_schema_version,
-            authorization_scope_sha256, page_size
+            authorization_scope_sha256, page_size,
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256,
+            query_input_sha256, query_vector_sha256
         FROM memory.retrieval_receipts
         WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
         "#,
@@ -2288,6 +3800,19 @@ async fn select_retrieval_receipt(
             manifest.revision_id, manifest.exact_identity_rank,
             manifest.lexical_rank, manifest.lexical_score::text AS lexical_score,
             manifest.final_rank, manifest.final_score::text AS final_score,
+            manifest.exact_rank, manifest.vector_rank,
+            manifest.vector_distance::text AS vector_distance,
+            manifest.vector_similarity::text AS vector_similarity,
+            manifest.exact_rrf_contribution::text AS exact_rrf_contribution,
+            manifest.lexical_rrf_contribution::text AS lexical_rrf_contribution,
+            manifest.vector_rrf_contribution::text AS vector_rrf_contribution,
+            manifest.fused_score::text AS fused_score,
+            manifest.embedding_input_sha256,
+            manifest.embedding_vector_sha256,
+            receipt.embedding_profile_id,
+            receipt.embedding_profile_version,
+            receipt.embedding_profile_sha256,
+            receipt.embedding_projection_profile_sha256,
             fact.namespace, fact.fact_key, revision.value,
             ARRAY(
                 SELECT evidence.episode_id
@@ -2300,6 +3825,11 @@ async fn select_retrieval_receipt(
                 ORDER BY evidence.episode_id
             ) AS evidence_episode_ids
         FROM memory.authorized_retrieval_manifest AS manifest
+        JOIN memory.retrieval_receipts AS receipt
+          ON receipt.tenant_id = manifest.tenant_id
+         AND receipt.subject_id = manifest.subject_id
+         AND receipt.retrieval_id = manifest.retrieval_id
+         AND receipt.principal_id = manifest.principal_id
         JOIN memory.facts AS fact
           ON fact.tenant_id = manifest.tenant_id
          AND fact.subject_id = manifest.subject_id
@@ -2352,6 +3882,31 @@ async fn select_retrieval_receipt(
     let projection_schema_version: i32 = receipt
         .try_get("projection_schema_version")
         .map_err(unexpected)?;
+    let query_embedding = receipt
+        .try_get::<Option<String>, _>("embedding_profile_id")
+        .map_err(unexpected)?
+        .map(|profile_id| {
+            Ok(RetrievalQueryEmbeddingLineage {
+                profile_id,
+                profile_version: required_column(&receipt, "embedding_profile_version")?,
+                profile_digest: required_column(&receipt, "embedding_profile_sha256")?,
+                projection_profile_id: required_column(
+                    &receipt,
+                    "embedding_projection_profile_id",
+                )?,
+                projection_profile_version: required_column(
+                    &receipt,
+                    "embedding_projection_profile_version",
+                )?,
+                projection_profile_digest: required_column(
+                    &receipt,
+                    "embedding_projection_profile_sha256",
+                )?,
+                input_sha256: required_column(&receipt, "query_input_sha256")?,
+                vector_sha256: required_column(&receipt, "query_vector_sha256")?,
+            })
+        })
+        .transpose()?;
     Ok(Some(RetrievalReceipt {
         tenant_id,
         subject_id,
@@ -2374,6 +3929,7 @@ async fn select_retrieval_receipt(
             scope_digest: authorization_scope_sha256.to_owned(),
         },
         document_schema_version: u32::try_from(projection_schema_version).map_err(unexpected)?,
+        query_embedding,
         items,
         next_cursor,
     }))
@@ -2391,19 +3947,76 @@ fn retrieval_item_from_row(row: &PgRow) -> Result<RetrievalItem, RepositoryError
         });
     }
     if let Some(rank) = row
-        .try_get::<Option<i64>, _>("lexical_rank")
+        .try_get::<Option<i16>, _>("exact_rank")
         .map_err(unexpected)?
     {
+        scores.push(RetrievalScore {
+            component: "exact_rank".to_owned(),
+            value: rank.to_string(),
+        });
+        scores.push(RetrievalScore {
+            component: "exact_rrf".to_owned(),
+            value: row.try_get("exact_rrf_contribution").map_err(unexpected)?,
+        });
+    }
+    let lexical_rank = row
+        .try_get::<Option<i64>, _>("lexical_rank")
+        .map_err(unexpected)?;
+    if let Some(rank) = lexical_rank {
         scores.push(RetrievalScore {
             component: "lexical_rank".to_owned(),
             value: rank.to_string(),
         });
-    }
-    scores.extend([
-        RetrievalScore {
+        scores.push(RetrievalScore {
             component: "lexical_score".to_owned(),
             value: row.try_get("lexical_score").map_err(unexpected)?,
-        },
+        });
+        if row
+            .try_get::<Option<String>, _>("fused_score")
+            .map_err(unexpected)?
+            .is_some()
+        {
+            scores.push(RetrievalScore {
+                component: "lexical_rrf".to_owned(),
+                value: row
+                    .try_get("lexical_rrf_contribution")
+                    .map_err(unexpected)?,
+            });
+        }
+    }
+    if let Some(rank) = row
+        .try_get::<Option<i16>, _>("vector_rank")
+        .map_err(unexpected)?
+    {
+        scores.extend([
+            RetrievalScore {
+                component: "vector_rank".to_owned(),
+                value: rank.to_string(),
+            },
+            RetrievalScore {
+                component: "vector_distance".to_owned(),
+                value: row.try_get("vector_distance").map_err(unexpected)?,
+            },
+            RetrievalScore {
+                component: "vector_similarity".to_owned(),
+                value: row.try_get("vector_similarity").map_err(unexpected)?,
+            },
+            RetrievalScore {
+                component: "vector_rrf".to_owned(),
+                value: row.try_get("vector_rrf_contribution").map_err(unexpected)?,
+            },
+        ]);
+    }
+    if let Some(fused_score) = row
+        .try_get::<Option<String>, _>("fused_score")
+        .map_err(unexpected)?
+    {
+        scores.push(RetrievalScore {
+            component: "fused_score".to_owned(),
+            value: fused_score,
+        });
+    }
+    scores.extend([
         RetrievalScore {
             component: "final_rank".to_owned(),
             value: row
@@ -2416,6 +4029,20 @@ fn retrieval_item_from_row(row: &PgRow) -> Result<RetrievalItem, RepositoryError
             value: row.try_get("final_score").map_err(unexpected)?,
         },
     ]);
+    let embedding = row
+        .try_get::<Option<String>, _>("embedding_profile_id")
+        .map_err(unexpected)?
+        .map(|profile_id| {
+            Ok(RetrievalEmbeddingLineage {
+                profile_id,
+                profile_version: required_column(row, "embedding_profile_version")?,
+                profile_digest: required_column(row, "embedding_profile_sha256")?,
+                projection_sha256: required_column(row, "embedding_projection_profile_sha256")?,
+                input_sha256: required_column(row, "embedding_input_sha256")?,
+                vector_sha256: required_column(row, "embedding_vector_sha256")?,
+            })
+        })
+        .transpose()?;
     let evidence_episode_ids: Vec<uuid::Uuid> =
         row.try_get("evidence_episode_ids").map_err(unexpected)?;
     Ok(RetrievalItem {
@@ -2427,6 +4054,7 @@ fn retrieval_item_from_row(row: &PgRow) -> Result<RetrievalItem, RepositoryError
         value: row.try_get("value").map_err(unexpected)?,
         evidence_episode_ids: evidence_episode_ids.into_iter().map(EpisodeId).collect(),
         scores,
+        embedding,
     })
 }
 

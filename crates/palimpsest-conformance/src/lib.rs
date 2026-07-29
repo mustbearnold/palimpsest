@@ -116,6 +116,28 @@ struct RetrievalScore {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct RetrievalEmbeddingLineage {
+    profile_id: String,
+    profile_version: String,
+    profile_digest: String,
+    projection_sha256: String,
+    input_sha256: String,
+    vector_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct RetrievalQueryEmbeddingLineage {
+    profile_id: String,
+    profile_version: String,
+    profile_digest: String,
+    projection_profile_id: String,
+    projection_profile_version: String,
+    projection_profile_digest: String,
+    input_sha256: String,
+    vector_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct RetrievalItem {
     memory_kind: String,
     fact_id: Uuid,
@@ -125,6 +147,8 @@ struct RetrievalItem {
     value: Value,
     evidence_episode_ids: Vec<Uuid>,
     scores: Vec<RetrievalScore>,
+    #[serde(default)]
+    embedding: Option<RetrievalEmbeddingLineage>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -139,6 +163,8 @@ struct RetrievalReceipt {
     policy: RetrievalPolicy,
     authorization: RetrievalAuthorization,
     document_schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    query_embedding: Option<RetrievalQueryEmbeddingLineage>,
     items: Vec<RetrievalItem>,
     next_cursor: Option<String>,
 }
@@ -1562,6 +1588,540 @@ pub async fn creates_and_replays_a_lexical_retrieval_receipt(target: &Target) ->
     );
 
     Ok(())
+}
+
+#[derive(Clone, Debug)]
+pub struct HybridFusionFixture {
+    pub exact_revision_id: Uuid,
+    pub alpha_revision_id: Uuid,
+    pub beta_revision_id: Uuid,
+    pub gamma_revision_id: Uuid,
+    pub delta_revision_id: Uuid,
+    pub forbidden_revision_id: Uuid,
+}
+
+#[derive(Clone, Debug)]
+pub struct HybridReplayFixture {
+    pub request_body: Value,
+    pub receipt: Value,
+}
+
+pub async fn hybrid_retrieval_requires_an_available_provider(target: &Target) -> Result<()> {
+    let response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "hybrid-provider-unavailable-default")
+        .json(&hybrid_request_body())
+        .send()
+        .await?;
+    assert_retryable_hybrid_failure(
+        response,
+        &["fixture-provider-outage", "[1,0,0,0]", "fusiontoken"],
+    )
+    .await
+}
+
+pub async fn hybrid_retrieval_rejects_caller_ranking_internals(target: &Target) -> Result<()> {
+    for (name, field) in [
+        ("vector", json!([1, 0, 0, 0])),
+        ("model", json!("caller-selected-model")),
+        ("weights", json!({"vector": 999})),
+        ("candidate_limit", json!(999)),
+    ] {
+        let mut body = hybrid_request_body();
+        body.as_object_mut()
+            .context("hybrid fixture request was not an object")?
+            .insert(name.to_owned(), field);
+        let response = Client::new()
+            .post(retrievals_url(target))
+            .bearer_auth(&target.principal_a_internal_bearer_token)
+            .header("Idempotency-Key", format!("hybrid-reject-caller-{name}"))
+            .json(&body)
+            .send()
+            .await?;
+        ensure!(
+            response.status() == StatusCode::BAD_REQUEST,
+            "caller-controlled {name} returned {}, expected 400",
+            response.status()
+        );
+        let problem: Value = response.json().await?;
+        let stable_problem_fields = json!({
+            "type": problem.get("type"),
+            "title": problem.get("title"),
+            "status": problem.get("status"),
+            "detail": problem.get("detail"),
+        })
+        .to_string();
+        for private_text in ["[1,0,0,0]", "caller-selected-model", "fusiontoken", "999"] {
+            ensure!(
+                !stable_problem_fields.contains(private_text),
+                "rejected hybrid request echoed caller-controlled ranking material"
+            );
+        }
+    }
+    Ok(())
+}
+
+pub async fn creates_hybrid_fusion_fixture(target: &Target) -> Result<HybridFusionFixture> {
+    let client = Client::new();
+    let exact = create_hybrid_fact(
+        &client,
+        target,
+        HybridFactFixture {
+            name: "hybrid-exact",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000401")?,
+            namespace: "case.allowed",
+            key: "case.retrieval:fusiontoken",
+            marker: "fusiontoken",
+            vector_fixture: "vector_fixture_exact_4d",
+            sensitivity: "internal",
+        },
+    )
+    .await?;
+    let alpha = create_hybrid_fact(
+        &client,
+        target,
+        HybridFactFixture {
+            name: "hybrid-alpha",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000402")?,
+            namespace: "case.retrieval",
+            key: "alpha",
+            marker: "case.retrieval:fusiontoken case.retrieval:fusiontoken case.retrieval:fusiontoken",
+            vector_fixture: "vector_fixture_alpha_4d",
+            sensitivity: "internal",
+        },
+    )
+    .await?;
+    let beta = create_hybrid_fact(
+        &client,
+        target,
+        HybridFactFixture {
+            name: "hybrid-beta",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000403")?,
+            namespace: "case.retrieval",
+            key: "beta",
+            marker: "case.retrieval:fusiontoken case.retrieval:fusiontoken",
+            vector_fixture: "vector_fixture_beta_4d",
+            sensitivity: "internal",
+        },
+    )
+    .await?;
+    let gamma = create_hybrid_fact(
+        &client,
+        target,
+        HybridFactFixture {
+            name: "hybrid-gamma",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000404")?,
+            namespace: "case.retrieval",
+            key: "gamma",
+            marker: "case.retrieval:fusiontoken",
+            vector_fixture: "vector_fixture_gamma_4d",
+            sensitivity: "internal",
+        },
+    )
+    .await?;
+    let delta = create_hybrid_fact(
+        &client,
+        target,
+        HybridFactFixture {
+            name: "hybrid-delta",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000405")?,
+            namespace: "case.vector",
+            key: "delta",
+            marker: "vector-only candidate",
+            vector_fixture: "vector_fixture_delta_4d",
+            sensitivity: "internal",
+        },
+    )
+    .await?;
+    let forbidden = create_hybrid_fact(
+        &client,
+        target,
+        HybridFactFixture {
+            name: "hybrid-forbidden-trap",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000406")?,
+            namespace: "case.retrieval",
+            key: "fusiontoken",
+            marker: "case.retrieval:fusiontoken case.retrieval:fusiontoken case.retrieval:fusiontoken case.retrieval:fusiontoken",
+            vector_fixture: "vector_fixture_forbidden_4d",
+            sensitivity: "restricted",
+        },
+    )
+    .await?;
+
+    Ok(HybridFusionFixture {
+        exact_revision_id: fact_revision_id(&exact)?,
+        alpha_revision_id: fact_revision_id(&alpha)?,
+        beta_revision_id: fact_revision_id(&beta)?,
+        gamma_revision_id: fact_revision_id(&gamma)?,
+        delta_revision_id: fact_revision_id(&delta)?,
+        forbidden_revision_id: fact_revision_id(&forbidden)?,
+    })
+}
+
+pub async fn creates_deterministic_hybrid_fusion_receipts(
+    target: &Target,
+    fixture: &HybridFusionFixture,
+) -> Result<HybridReplayFixture> {
+    let client = Client::new();
+    let request_body = hybrid_request_body();
+    let first_response = client
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "hybrid-fusion-first")
+        .json(&request_body)
+        .send()
+        .await?;
+    ensure!(
+        first_response.status() == StatusCode::CREATED,
+        "hybrid retrieval returned {}, expected 201",
+        first_response.status()
+    );
+    let first: RetrievalReceipt = first_response.json().await?;
+    assert_hybrid_receipt(&first, fixture)?;
+
+    let second_response = client
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "hybrid-fusion-independent")
+        .json(&request_body)
+        .send()
+        .await?;
+    ensure!(second_response.status() == StatusCode::CREATED);
+    let second: RetrievalReceipt = second_response.json().await?;
+    assert_hybrid_receipt(&second, fixture)?;
+    ensure!(
+        first.retrieval_id != second.retrieval_id,
+        "independent idempotency keys reused one retrieval ID"
+    );
+    ensure!(
+        first.policy == second.policy,
+        "independent receipts changed the pinned hybrid policy"
+    );
+    ensure!(
+        first.items == second.items,
+        "independent receipts changed deterministic fusion order or explanations"
+    );
+
+    Ok(HybridReplayFixture {
+        request_body,
+        receipt: serde_json::to_value(first)?,
+    })
+}
+
+pub async fn replays_hybrid_receipt_before_provider_io(
+    target: &Target,
+    fixture: &HybridReplayFixture,
+) -> Result<()> {
+    let response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "hybrid-fusion-first")
+        .json(&fixture.request_body)
+        .send()
+        .await?;
+    ensure!(response.status() == StatusCode::CREATED);
+    ensure!(
+        response
+            .headers()
+            .get("Idempotency-Replayed")
+            .is_some_and(|value| value == "true"),
+        "completed hybrid request was not replayed"
+    );
+    let replayed: Value = response.json().await?;
+    ensure!(
+        replayed == fixture.receipt,
+        "provider outage changed a completed durable receipt"
+    );
+    Ok(())
+}
+
+pub async fn hybrid_retrieval_fails_closed_without_leaking(
+    target: &Target,
+    idempotency_key: &str,
+    forbidden_text: &str,
+) -> Result<()> {
+    let response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", idempotency_key)
+        .json(&hybrid_request_body())
+        .send()
+        .await?;
+    assert_retryable_hybrid_failure(
+        response,
+        &[
+            forbidden_text,
+            "fusiontoken",
+            "[1,0,0,0]",
+            "[-1,0,0,0]",
+            "vector_fixture_forbidden_4d",
+        ],
+    )
+    .await
+}
+
+pub async fn hybrid_retrieval_recovers_after_projection_rebuild(
+    target: &Target,
+    fixture: &HybridFusionFixture,
+    idempotency_key: &str,
+) -> Result<()> {
+    let response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", idempotency_key)
+        .json(&hybrid_request_body())
+        .send()
+        .await?;
+    ensure!(response.status() == StatusCode::CREATED);
+    ensure!(response.headers().get("Idempotency-Replayed").is_none());
+    let receipt: RetrievalReceipt = response.json().await?;
+    assert_hybrid_receipt(&receipt, fixture)
+}
+
+fn assert_hybrid_receipt(receipt: &RetrievalReceipt, fixture: &HybridFusionFixture) -> Result<()> {
+    ensure!(receipt.status == "results");
+    ensure!(receipt.policy.id == "retrieval-hybrid-v1");
+    ensure!(receipt.policy.version == "1");
+    ensure!(receipt.policy.digest.len() == 64);
+    let query_lineage = receipt
+        .query_embedding
+        .as_ref()
+        .context("hybrid receipt omitted query embedding lineage")?;
+    ensure!(query_lineage.profile_id == "embedding-conformance-4d-v1");
+    ensure!(query_lineage.profile_version == "1");
+    ensure!(query_lineage.projection_profile_id == "fact-embedding-projection-v1");
+    ensure!(query_lineage.projection_profile_version == "1");
+    for digest in [
+        &query_lineage.profile_digest,
+        &query_lineage.projection_profile_digest,
+        &query_lineage.input_sha256,
+        &query_lineage.vector_sha256,
+    ] {
+        ensure!(
+            digest.len() == 64,
+            "query embedding lineage digest was not SHA-256"
+        );
+    }
+    ensure!(receipt.items.len() == 5);
+    let expected = [
+        (
+            "case.retrieval:fusiontoken",
+            fixture.exact_revision_id,
+            Some("1"),
+            Some("3"),
+            "5",
+            "2.000000000000",
+            "-1.000000000000",
+            Some("0.016393442623"),
+            Some("0.015873015873"),
+            "0.015384615385",
+            "0.047651073881",
+        ),
+        (
+            "beta",
+            fixture.beta_revision_id,
+            None,
+            Some("2"),
+            "1",
+            "0.199999988079",
+            "0.800000011921",
+            None,
+            Some("0.016129032258"),
+            "0.016393442623",
+            "0.032522474881",
+        ),
+        (
+            "alpha",
+            fixture.alpha_revision_id,
+            None,
+            Some("1"),
+            "4",
+            "1.600000023842",
+            "-0.600000023842",
+            None,
+            Some("0.016393442623"),
+            "0.015625000000",
+            "0.032018442623",
+        ),
+        (
+            "gamma",
+            fixture.gamma_revision_id,
+            None,
+            Some("4"),
+            "2",
+            "0.399999976158",
+            "0.600000023842",
+            None,
+            Some("0.015625000000"),
+            "0.016129032258",
+            "0.031754032258",
+        ),
+        (
+            "delta",
+            fixture.delta_revision_id,
+            None,
+            None,
+            "3",
+            "1.000000000000",
+            "0.000000000000",
+            None,
+            None,
+            "0.015873015873",
+            "0.015873015873",
+        ),
+    ];
+    for (index, item) in receipt.items.iter().enumerate() {
+        let (
+            key,
+            revision_id,
+            exact_rank,
+            lexical_rank,
+            vector_rank,
+            distance,
+            similarity,
+            exact_rrf,
+            lexical_rrf,
+            vector_rrf,
+            fused,
+        ) = expected[index];
+        ensure!(item.key == key, "hybrid item {index} had the wrong key");
+        ensure!(
+            item.revision_id == revision_id,
+            "hybrid item {key} had the wrong revision"
+        );
+        ensure!(item.revision_id != fixture.forbidden_revision_id);
+        assert_optional_score(item, "exact_rank", exact_rank)?;
+        assert_optional_score(item, "lexical_rank", lexical_rank)?;
+        assert_score(item, "vector_rank", vector_rank)?;
+        assert_score(item, "vector_distance", distance)?;
+        assert_score(item, "vector_similarity", similarity)?;
+        assert_optional_score(item, "exact_rrf", exact_rrf)?;
+        assert_optional_score(item, "lexical_rrf", lexical_rrf)?;
+        assert_score(item, "vector_rrf", vector_rrf)?;
+        assert_score(item, "fused_score", fused)?;
+        assert_score(item, "final_score", fused)?;
+        assert_score(item, "final_rank", &(index + 1).to_string())?;
+        let lineage = item
+            .embedding
+            .as_ref()
+            .context("hybrid item omitted embedding lineage")?;
+        ensure!(lineage.profile_id == "embedding-conformance-4d-v1");
+        ensure!(lineage.profile_version == "1");
+        for digest in [
+            &lineage.profile_digest,
+            &lineage.projection_sha256,
+            &lineage.input_sha256,
+            &lineage.vector_sha256,
+        ] {
+            ensure!(
+                digest.len() == 64,
+                "embedding lineage digest was not SHA-256"
+            );
+        }
+    }
+    let receipt_json = serde_json::to_string(receipt)?;
+    ensure!(
+        !receipt_json.contains(&fixture.forbidden_revision_id.to_string()),
+        "forbidden trap revision reached the fused receipt"
+    );
+    for private_text in [
+        "vector_fixture_forbidden_4d",
+        "restricted-vector-trap",
+        "[1,0,0,0]",
+        "[-1,0,0,0]",
+        "[-0.6,0.8,0,0]",
+        "[0.8,0.6,0,0]",
+    ] {
+        ensure!(
+            !receipt_json.contains(private_text),
+            "hybrid receipt disclosed raw provider material: {private_text}"
+        );
+    }
+    Ok(())
+}
+
+fn assert_score(item: &RetrievalItem, component: &str, expected: &str) -> Result<()> {
+    let score = item
+        .scores
+        .iter()
+        .find(|score| score.component == component)
+        .with_context(|| format!("{} omitted {component}", item.key))?;
+    ensure!(
+        score.value == expected,
+        "{} {component} was {}, expected {expected}",
+        item.key,
+        score.value
+    );
+    Ok(())
+}
+
+fn assert_optional_score(
+    item: &RetrievalItem,
+    component: &str,
+    expected: Option<&str>,
+) -> Result<()> {
+    match expected {
+        Some(expected) => assert_score(item, component, expected),
+        None => {
+            ensure!(
+                item.scores.iter().all(|score| score.component != component),
+                "{} unexpectedly exposed {component}",
+                item.key
+            );
+            Ok(())
+        }
+    }
+}
+
+async fn assert_retryable_hybrid_failure(
+    response: reqwest::Response,
+    forbidden_texts: &[&str],
+) -> Result<()> {
+    ensure!(response.status() == StatusCode::SERVICE_UNAVAILABLE);
+    ensure!(
+        response
+            .headers()
+            .get(header::RETRY_AFTER)
+            .is_some_and(|value| value == "1")
+    );
+    let problem: Value = response.json().await?;
+    let problem_json = problem.to_string();
+    for forbidden in forbidden_texts {
+        ensure!(
+            !problem_json.contains(forbidden),
+            "hybrid failure disclosed {forbidden}"
+        );
+    }
+    Ok(())
+}
+
+fn retrievals_url(target: &Target) -> String {
+    format!(
+        "{}/v1/tenants/{}/subjects/{}/retrievals",
+        target.base_url.trim_end_matches('/'),
+        target.tenant_id,
+        target.subject_id
+    )
+}
+
+fn hybrid_request_body() -> Value {
+    json!({
+        "query": "case.retrieval:fusiontoken",
+        "perspective": {"kind": "current"},
+        "page_size": 10,
+        "policy_id": "retrieval-hybrid-v1",
+        "filters": {
+            "case_ids": [
+                "019be000-0000-7000-8000-000000000401",
+                "019be000-0000-7000-8000-000000000402",
+                "019be000-0000-7000-8000-000000000403",
+                "019be000-0000-7000-8000-000000000404",
+                "019be000-0000-7000-8000-000000000405",
+                "019be000-0000-7000-8000-000000000406"
+            ]
+        }
+    })
 }
 
 pub struct RetrievalIsolationFixture {
@@ -2999,6 +3559,93 @@ struct MarkerFactFixture<'a> {
     secret: &'a str,
     sensitivity: &'a str,
     retention_policy_id: &'a str,
+}
+
+struct HybridFactFixture<'a> {
+    name: &'a str,
+    case_id: Uuid,
+    namespace: &'a str,
+    key: &'a str,
+    marker: &'a str,
+    vector_fixture: &'a str,
+    sensitivity: &'a str,
+}
+
+async fn create_hybrid_fact(
+    client: &Client,
+    target: &Target,
+    fixture: HybridFactFixture<'_>,
+) -> Result<FactView> {
+    let episode_response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/episodes",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header(
+            "Idempotency-Key",
+            format!("{}-episode-create", fixture.name),
+        )
+        .json(&json!({
+            "case_id": fixture.case_id,
+            "kind": "retrieval-fixture",
+            "observed_at": "2026-04-20T09:00:00Z",
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": format!("{}-episode", fixture.name)
+            },
+            "sensitivity": fixture.sensitivity,
+            "retention_policy_id": "standard",
+            "payload": {"marker": fixture.marker}
+        }))
+        .send()
+        .await?;
+    ensure!(episode_response.status() == StatusCode::CREATED);
+    let episode: Episode = episode_response.json().await?;
+    let fact_response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/facts",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", format!("{}-fact-create", fixture.name))
+        .json(&json!({
+            "case_id": fixture.case_id,
+            "namespace": fixture.namespace,
+            "key": fixture.key,
+            "value": {
+                "marker": fixture.marker,
+                "vector_fixture": fixture.vector_fixture,
+                "secret": if fixture.sensitivity == "restricted" {
+                    "restricted-vector-trap"
+                } else {
+                    "allowed-vector-fixture"
+                }
+            },
+            "observed_at": "2026-04-20T09:00:00Z",
+            "valid_time": {"from": "2026-04-20T00:00:00Z", "until": null},
+            "evidence_episode_ids": [episode.episode_id],
+            "write_policy": {"id": "direct-evidence", "version": "1"},
+            "confidence": 1.0,
+            "sensitivity": fixture.sensitivity,
+            "retention_policy_id": "standard"
+        }))
+        .send()
+        .await?;
+    ensure!(fact_response.status() == StatusCode::CREATED);
+    fact_response.json().await.map_err(Into::into)
+}
+
+fn fact_revision_id(view: &FactView) -> Result<Uuid> {
+    view.revision
+        .as_ref()
+        .map(|revision| revision.revision_id)
+        .context("hybrid fixture fact has no effective revision")
 }
 
 async fn create_marker_fact(

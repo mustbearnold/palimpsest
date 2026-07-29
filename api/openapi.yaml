@@ -481,6 +481,15 @@ paths:
         request filters before exact-identity or PostgreSQL full-text ranking.
         Request filters can narrow authority but can never grant it.
 
+        The default policy remains lexical. Callers may explicitly select an
+        immutable hybrid policy that fuses exact identity, lexical ranking, and
+        exact cosine-vector ranking. A hybrid request returns a generic,
+        retryable `503` before receipt persistence when its embedding provider
+        or any authorized-effective document projection is unavailable,
+        incomplete, stale, corrupt, or bound to the wrong immutable profile.
+        The service never silently falls back to lexical results. A completed
+        idempotent replay is resolved before a new provider call is attempted.
+
         `Idempotency-Key` is mandatory. A completed replay reauthorizes the
         receipt and every manifest item before rehydrating canonical content, so
         content that has since been deleted, expired, or revoked is not returned.
@@ -1281,7 +1290,10 @@ components:
           maxLength: 4096
           description: |
             Raw user search text accepted by a safe PostgreSQL web-search
-            parser. Only its digest is retained in the durable receipt.
+            parser. An explicitly selected hybrid policy also embeds this text
+            under its immutable server profile; clients cannot supply vectors,
+            models, weights, limits, or ranking controls. Only the query digest,
+            never the raw query or vector, is retained in the durable receipt.
         perspective:
           $ref: '#/components/schemas/RetrievalPerspective'
         page_size:
@@ -1293,7 +1305,10 @@ components:
           type: string
           minLength: 1
           maxLength: 255
-          description: Optional immutable server policy to pin for this receipt
+          description: |
+            Optional immutable server policy to pin for this receipt. Omission
+            selects the lexical default. Hybrid retrieval is opt-in through an
+            immutable server policy identifier.
         filters:
           $ref: '#/components/schemas/RetrievalFilters'
       description: |
@@ -1335,10 +1350,56 @@ components:
           description: |
             Open namespaced score component. Clients must ignore components they
             do not understand; component names are additive within `/v1`.
+            Hybrid receipts can include `exact_rank`, `lexical_rank`,
+            `lexical_score`, `vector_rank`, `vector_distance`,
+            `vector_similarity`, `exact_rrf`, `lexical_rrf`, `vector_rrf`,
+            `fused_score`, `final_score`, and `final_rank`. A channel-specific
+            rank or contribution is omitted when the item did not enter that
+            channel.
         value:
           type: string
           pattern: '^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,12})?$'
           description: Deterministic base-10 fixed-point value
+
+    RetrievalEmbeddingLineage:
+      type: object
+      additionalProperties: false
+      required:
+        - profile_id
+        - profile_version
+        - profile_digest
+        - projection_sha256
+        - input_sha256
+        - vector_sha256
+      properties:
+        profile_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Immutable embedding-profile identifier
+        profile_version:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Immutable embedding-profile version; never a floating alias
+        profile_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 digest of the complete immutable embedding profile
+        projection_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 digest binding the rebuildable projection contract
+        input_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 digest of the projected canonical document input
+        vector_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: |
+            SHA-256 digest of the validated vector representation. The raw
+            vector is never present in a receipt, item, error, or log payload.
 
     RetrievalAuthorizationReceipt:
       type: object
@@ -1358,6 +1419,52 @@ components:
             sensitivity allowlist; it contains no raw grants or hidden candidate
             counts. A narrower current grant produces a different digest.
 
+    RetrievalQueryEmbeddingLineage:
+      type: object
+      additionalProperties: false
+      required:
+        - profile_id
+        - profile_version
+        - profile_digest
+        - projection_profile_id
+        - projection_profile_version
+        - projection_profile_digest
+        - input_sha256
+        - vector_sha256
+      properties:
+        profile_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+        profile_version:
+          type: string
+          minLength: 1
+          maxLength: 255
+        profile_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        projection_profile_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+        projection_profile_version:
+          type: string
+          minLength: 1
+          maxLength: 255
+        projection_profile_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        input_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 digest of the exact query input sent to the provider
+        vector_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: |
+            SHA-256 digest of the validated query vector representation. The
+            raw query vector is never stored in or returned with the receipt.
+
     RetrievalItem:
       type: object
       additionalProperties: false
@@ -1376,8 +1483,9 @@ components:
           minLength: 1
           maxLength: 255
           description: |
-            Open namespaced result kind; the initial lexical policy returns
-            `fact_revision`. Clients must ignore kinds they do not understand.
+            Open namespaced result kind; lexical and hybrid fact retrieval
+            return `fact_revision`. Clients must ignore kinds they do not
+            understand.
         fact_id:
           type: string
           format: uuid
@@ -1408,8 +1516,19 @@ components:
         scores:
           type: array
           minItems: 1
+          description: |
+            Deterministic explanation components emitted by the selected
+            immutable policy. The lexical default keeps its existing components;
+            hybrid policies add exact, vector, and reciprocal-rank-fusion
+            components without exposing raw vectors.
           items:
             $ref: '#/components/schemas/RetrievalScore'
+        embedding:
+          $ref: '#/components/schemas/RetrievalEmbeddingLineage'
+          description: |
+            Optional rebuildable embedding lineage. It is present for items
+            ranked by an embedding-backed policy and omitted for lexical-only
+            receipts.
 
     RetrievalReceipt:
       type: object
@@ -1458,6 +1577,11 @@ components:
           type: integer
           minimum: 1
           description: Schema version of the rebuildable search projection
+        query_embedding:
+          $ref: '#/components/schemas/RetrievalQueryEmbeddingLineage'
+          description: |
+            Optional immutable query embedding and profile-plan lineage. It is
+            present for hybrid receipts and omitted for lexical-only receipts.
         items:
           type: array
           maxItems: 50
