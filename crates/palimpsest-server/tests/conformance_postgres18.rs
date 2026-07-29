@@ -1175,6 +1175,7 @@ async fn apply_corpus_lifecycle(
         match mutation.lifecycle {
             LifecycleFixture::Deleted => {
                 let mut transaction = pool.begin().await?;
+                set_retrieval_test_scope(&mut transaction, target).await?;
                 transition_revision_to_deleted(&mut transaction, target, mutation.revision_id)
                     .await?;
                 transaction.commit().await?;
