@@ -54,6 +54,13 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
     let admin_pool = PgPool::connect(&database_url)
         .await
         .with_context(|| format!("connect to PostgreSQL through {database_url}"))?;
+    let migration_database_url =
+        env::var("PALIMPSEST_MIGRATION_DATABASE_URL").unwrap_or_else(|_| database_url.clone());
+    let migration_admin_pool = PgPool::connect(&migration_database_url)
+        .await
+        .with_context(|| {
+            format!("connect to migration-authority PostgreSQL through {migration_database_url}")
+        })?;
     verify_database_versions(&admin_pool).await?;
 
     let database_name = format!("palimpsest_upgrade_{}", Uuid::now_v7().simple());
@@ -66,8 +73,6 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
 
     let runtime_options = PgConnectOptions::from_str(&database_url)?.database(&database_name);
     let runtime_pool = PgPool::connect_with(runtime_options).await?;
-    let migration_database_url =
-        env::var("PALIMPSEST_MIGRATION_DATABASE_URL").unwrap_or_else(|_| database_url.clone());
     let migration_options =
         PgConnectOptions::from_str(&migration_database_url)?.database(&database_name);
     let migration_pool = PgPool::connect_with(migration_options).await?;
@@ -89,8 +94,9 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
     sqlx::query(AssertSqlSafe(format!(
         "DROP DATABASE \"{database_name}\" WITH (FORCE)"
     )))
-    .execute(&admin_pool)
+    .execute(&migration_admin_pool)
     .await?;
+    migration_admin_pool.close().await;
     result
 }
 

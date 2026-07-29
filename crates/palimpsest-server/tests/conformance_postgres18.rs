@@ -246,6 +246,13 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     let admin_pool = PgPool::connect(&database_url)
         .await
         .with_context(|| format!("connect to PostgreSQL through {database_url}"))?;
+    let migration_database_url =
+        std::env::var("PALIMPSEST_MIGRATION_DATABASE_URL").unwrap_or_else(|_| database_url.clone());
+    let migration_admin_pool = PgPool::connect(&migration_database_url)
+        .await
+        .with_context(|| {
+            format!("connect to migration-authority PostgreSQL through {migration_database_url}")
+        })?;
 
     let version_num: i32 = sqlx::query("SELECT current_setting('server_version_num')::integer")
         .fetch_one(&admin_pool)
@@ -269,8 +276,6 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     let options = PgConnectOptions::from_str(&database_url)?.database(&database_name);
     let test_database_url = options.to_url_lossy().to_string();
     let pool = PgPool::connect_with(options).await?;
-    let migration_database_url =
-        std::env::var("PALIMPSEST_MIGRATION_DATABASE_URL").unwrap_or_else(|_| database_url.clone());
     let migration_options =
         PgConnectOptions::from_str(&migration_database_url)?.database(&database_name);
     let migration_pool = PgPool::connect_with(migration_options).await?;
@@ -473,8 +478,9 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     sqlx::query(AssertSqlSafe(format!(
         "DROP DATABASE \"{database_name}\" WITH (FORCE)"
     )))
-    .execute(&admin_pool)
+    .execute(&migration_admin_pool)
     .await?;
+    migration_admin_pool.close().await;
     result
 }
 
