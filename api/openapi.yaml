@@ -490,6 +490,15 @@ paths:
         The service never silently falls back to lexical results. A completed
         idempotent replay is resolved before a new provider call is attempted.
 
+        The opt-in `retrieval-hybrid-temporal-v1` policy applies recency,
+        confidence, and importance only after authorization-first eligibility
+        and hybrid fusion. Recency profile, recency anchor, and importance come
+        from immutable trusted metadata-policy lineage and cannot be supplied by
+        the request. Its fixed-point factors, adjustments, exact-identity bonus,
+        operation order, and complete result ordering are bound by the immutable
+        policy digest. Existing lexical and hybrid policies keep their prior
+        semantics, and persisted receipts are never rescored.
+
         `Idempotency-Key` is mandatory. A completed replay reauthorizes the
         receipt and every manifest item before rehydrating canonical content, so
         content that has since been deleted, expired, or revoked is not returned.
@@ -1188,7 +1197,11 @@ components:
           type: string
           minLength: 1
           maxLength: 255
-      description: Immutable identity of the policy that authorized derivation
+      description: |
+        Immutable identity of the policy that authorized derivation. The
+        migration authority must register the policy's trusted retrieval-
+        metadata assignment before facts may use it; unknown policies fail as
+        a nonretryable unprocessable request.
 
     CurrentRetrievalPerspective:
       type: object
@@ -1307,8 +1320,11 @@ components:
           maxLength: 255
           description: |
             Optional immutable server policy to pin for this receipt. Omission
-            selects the lexical default. Hybrid retrieval is opt-in through an
-            immutable server policy identifier.
+            selects the lexical default. `retrieval-hybrid-v1` opts into exact,
+            lexical, and exact-vector fusion with its existing semantics.
+            `retrieval-hybrid-temporal-v1` opts into the separately versioned
+            trusted recency, confidence, and importance factors. Callers cannot
+            supply factor metadata or ranking controls.
         filters:
           $ref: '#/components/schemas/RetrievalFilters'
       description: |
@@ -1318,6 +1334,11 @@ components:
     RetrievalPolicy:
       type: object
       additionalProperties: false
+      description: |
+        Immutable policy identity used to create the durable receipt. Its
+        digest binds the applicable candidate, scoring, arithmetic, factor,
+        ordering, and manifest rules. Adding a policy never changes the meaning
+        of an existing policy or receipt.
       required:
         - id
         - version
@@ -1353,13 +1374,21 @@ components:
             Hybrid receipts can include `exact_rank`, `lexical_rank`,
             `lexical_score`, `vector_rank`, `vector_distance`,
             `vector_similarity`, `exact_rrf`, `lexical_rrf`, `vector_rrf`,
-            `fused_score`, `final_score`, and `final_rank`. A channel-specific
-            rank or contribution is omitted when the item did not enter that
-            channel.
+            `fused_score`, `final_score`, and `final_rank`. Temporal hybrid
+            receipts additionally publish `recency_factor`,
+            `confidence_factor`, `importance_factor`, `temporal_adjustment`,
+            `confidence_adjustment`, `importance_adjustment`, and
+            `exact_identity_bonus`. A channel-specific rank or contribution is
+            omitted when the item did not enter that channel. Temporal factor
+            and adjustment values are present together for every item produced
+            by the temporal policy.
         value:
           type: string
           pattern: '^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,12})?$'
-          description: Deterministic base-10 fixed-point value
+          description: |
+            Deterministic base-10 fixed-point value. Temporal-policy factors,
+            adjustments, bonuses, and scores use exactly 12 fractional digits;
+            rank components remain canonical integers.
 
     RetrievalEmbeddingLineage:
       type: object
@@ -1520,7 +1549,10 @@ components:
             Deterministic explanation components emitted by the selected
             immutable policy. The lexical default keeps its existing components;
             hybrid policies add exact, vector, and reciprocal-rank-fusion
-            components without exposing raw vectors.
+            components without exposing raw vectors. The temporal hybrid policy
+            adds trusted factor values and their additive adjustments; those
+            components affect only revisions that already passed bitemporal and
+            authorization eligibility.
           items:
             $ref: '#/components/schemas/RetrievalScore'
         embedding:
@@ -1880,6 +1912,7 @@ components:
         `effect-key-conflict`, `invalid-effect-transition`, `stale-checkpoint`,
         `checkpoint-already-exists`, `checkpoint-precondition-required`,
         `checkpoint-too-large`, `retention-policy-rejected`,
+        `write-policy-rejected`,
         `invalid-valid-time`, `idempotency-key-reused`, `future-recorded-time`,
         `fact-precondition-required`, `retrieval-request-too-large`,
         `unprocessable-request`,
@@ -2026,7 +2059,8 @@ components:
       description: |
         Syntactically valid request violates domain semantics. Stable types:
         `invalid-valid-time`, `idempotency-key-reused`,
-        `future-recorded-time`, `retention-policy-rejected`.
+        `future-recorded-time`, `retention-policy-rejected`,
+        `write-policy-rejected`.
       headers:
         Cache-Control:
           $ref: '#/components/headers/PrivateNoStore'

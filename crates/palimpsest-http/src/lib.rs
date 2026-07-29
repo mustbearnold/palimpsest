@@ -1062,6 +1062,13 @@ impl Problem {
                 "retention_policy_rejected",
                 "Use an active checkpoint retention policy.",
             ),
+            ServiceError::WritePolicyRejected => Self::new(
+                "write-policy-rejected",
+                "Fact write policy is not registered",
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "write_policy_rejected",
+                "Use a write policy registered by the migration authority.",
+            ),
             ServiceError::CheckpointTooLarge => Self::new(
                 "checkpoint-too-large",
                 "Checkpoint exceeds the supported size",

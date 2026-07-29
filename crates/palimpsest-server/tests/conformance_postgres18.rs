@@ -26,31 +26,42 @@ use palimpsest_application::{
 };
 use palimpsest_conformance::{
     HybridFusionFixture, RetrievalIsolationFixture, RetrievalLifecycleFixture, Target,
-    checkpoint_scopes_fail_closed, concurrent_retrievals_converge_on_one_receipt,
-    creates_an_attributable_fact_revision, creates_and_replays_a_lexical_retrieval_receipt,
-    creates_deterministic_hybrid_fusion_receipts, creates_hybrid_fusion_fixture,
-    creates_retrieval_lifecycle_fixture, cross_scope_reads_fail_closed,
+    TemporalLifecycleFixture, TemporalLifecycleReplayFixture, TemporalReplayFixture,
+    TemporalRetrievalFixture, captures_temporal_lifecycle_receipts, checkpoint_scopes_fail_closed,
+    concurrent_retrievals_converge_on_one_receipt, creates_an_attributable_fact_revision,
+    creates_and_replays_a_lexical_retrieval_receipt, creates_deterministic_hybrid_fusion_receipts,
+    creates_hybrid_fusion_fixture, creates_retrieval_lifecycle_fixture,
+    creates_temporal_lifecycle_fixture, creates_temporal_receipt_through_nonbypass_runtime,
+    creates_temporal_retrieval_fixture, cross_scope_reads_fail_closed,
     expires_only_the_targeted_checkpoint, hybrid_retrieval_fails_closed_without_leaking,
     hybrid_retrieval_recovers_after_projection_rebuild,
     hybrid_retrieval_rejects_caller_ranking_internals,
     hybrid_retrieval_requires_an_available_provider, reconstructs_both_temporal_axes,
     records_and_reads_an_immutable_episode, rejects_cross_subject_idempotency_reuse,
     rejects_cross_subject_retrieval_idempotency_reuse, rejects_invalid_domain_and_timestamp_inputs,
-    replays_hybrid_receipt_before_provider_io, retrieval_candidates_are_authorized_before_ranking,
+    rejects_unregistered_write_policies, replays_hybrid_receipt_before_provider_io,
+    replays_temporal_receipt_through_nonbypass_runtime,
+    retrieval_candidates_are_authorized_before_ranking,
     retrieval_fails_closed_when_projection_is_corrupt,
     retrieval_fails_closed_when_projection_is_missing,
     retrieval_paginates_and_rejects_invalid_replays,
     retrieval_receipt_does_not_resurrect_deleted_history, retrieval_receipt_hides_expired_content,
     retrieval_recovers_after_projection_rebuild, retrieval_succeeds_after_projection_rebuild,
-    retrieves_the_effective_bitemporal_revision, saves_and_reads_a_resumable_checkpoint,
-    supersedes_the_fact_head,
+    retrieves_the_effective_bitemporal_revision, retrieves_with_the_fixed_temporal_policy,
+    saves_and_reads_a_resumable_checkpoint, supersedes_the_fact_head,
+    temporal_policy_does_not_resurrect_ineligible_successors,
+    temporal_receipt_survives_service_restart, temporal_retrieval_survives_projection_rebuild,
 };
 use palimpsest_domain::{
-    EmbeddingOutput, EmbeddingTask, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,
+    EmbeddingOutput, EmbeddingTask, PrincipalId, PrincipalScope, RecencyProfile, Sensitivity,
+    SubjectId, TenantId, temporal_factor_q63,
 };
 use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::EmbeddingProjectionCoordinator;
-use sqlx::{AssertSqlSafe, ConnectOptions, PgPool, Row, postgres::PgConnectOptions};
+use sqlx::{
+    AssertSqlSafe, ConnectOptions, PgPool, Row,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tokio::{
     net::{TcpListener, TcpStream},
     process::Command,
@@ -220,7 +231,13 @@ impl EmbeddingProvider for DeterministicEmbeddingProvider {
 
 fn fixture_embedding(task: &EmbeddingTask, content: &str) -> Vec<f32> {
     if matches!(task, EmbeddingTask::Query) {
-        assert_eq!(content, "case.retrieval:fusiontoken");
+        assert!(
+            matches!(
+                content,
+                "case.retrieval:fusiontoken" | "case.temporal:chronotoken"
+            ),
+            "unexpected conformance query embedding input"
+        );
         return vec![1.0, 0.0, 0.0, 0.0];
     }
     for (marker, vector) in [
@@ -230,6 +247,11 @@ fn fixture_embedding(task: &EmbeddingTask, content: &str) -> Vec<f32> {
         ("vector_fixture_beta_4d", [0.8, 0.6, 0.0, 0.0]),
         ("vector_fixture_gamma_4d", [0.6, 0.8, 0.0, 0.0]),
         ("vector_fixture_delta_4d", [0.0, 1.0, 0.0, 0.0]),
+        ("temporal_vector_fixture_exact_4d", [-1.0, 0.0, 0.0, 0.0]),
+        ("temporal_vector_fixture_alpha_4d", [-0.6, 0.8, 0.0, 0.0]),
+        ("temporal_vector_fixture_beta_4d", [0.8, 0.6, 0.0, 0.0]),
+        ("temporal_vector_fixture_gamma_4d", [0.6, 0.8, 0.0, 0.0]),
+        ("temporal_vector_fixture_delta_4d", [0.0, 1.0, 0.0, 0.0]),
     ] {
         if content.contains(marker) {
             return vector.to_vec();
@@ -293,6 +315,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         principal_b_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000120")?,
         principal_c_bearer_token: "principal-c-test-token".to_owned(),
         principal_c_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000220")?,
+        principal_d_same_scope_bearer_token: "principal-d-same-scope-test-token".to_owned(),
     };
     let result = async {
         palimpsest_postgres::migrate(&pool).await?;
@@ -363,6 +386,18 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     allowed_sensitivities: vec![Sensitivity::try_from("restricted".to_owned())?],
                 },
             ),
+            (
+                target.principal_d_same_scope_bearer_token.clone(),
+                PrincipalScope {
+                    principal_id: PrincipalId("principal-d".to_owned()),
+                    tenant_id: TenantId(tenant_id),
+                    subject_ids: vec![SubjectId(subject_id)],
+                    allowed_sensitivities: vec![
+                        Sensitivity::try_from("internal".to_owned())?,
+                        Sensitivity::try_from("restricted".to_owned())?,
+                    ],
+                },
+            ),
         ]));
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
@@ -390,6 +425,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             rejects_cross_subject_idempotency_reuse(&scenario_target).await?;
             rejects_invalid_domain_and_timestamp_inputs(&scenario_target).await?;
             verify_governed_write_records(&pool, &scenario_target).await?;
+            rejects_unregistered_write_policies(&scenario_target).await?;
             let retrieval_isolation =
                 retrieval_candidates_are_authorized_before_ranking(&scenario_target).await?;
             concurrent_retrievals_converge_on_one_receipt(&scenario_target).await?;
@@ -462,13 +498,22 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                 &target,
                 "hybrid-provider-unavailable-default",
             )
-            .await
+            .await?;
+            Ok::<_, anyhow::Error>(retrieval_isolation)
         }
         .await;
         server.abort();
         let _ = server.await;
-        scenario?;
-        runs_hybrid_retrieval_conformance(&pool, &migration_pool, authenticator, &target).await?;
+        let retrieval_isolation = scenario?;
+        runs_hybrid_retrieval_conformance(
+            &pool,
+            &migration_pool,
+            authenticator,
+            &target,
+            &test_database_url,
+            &retrieval_isolation,
+        )
+        .await?;
         recovers_a_committed_effect_after_response_loss(&pool, &target, &test_database_url).await
     }
     .await;
@@ -689,6 +734,182 @@ async fn install_deterministic_hybrid_fixture(pool: &PgPool) -> Result<()> {
     )
     .execute(pool)
     .await?;
+    install_temporal_metadata_fixture(pool).await?;
+    install_temporal_retrieval_policy(pool).await?;
+    Ok(())
+}
+
+async fn install_temporal_metadata_fixture(pool: &PgPool) -> Result<()> {
+    sqlx::query(
+        r#"
+        WITH requested(policy_id, profile_id, importance) AS (
+            VALUES
+                ('temporal-stable-evidence', 'stable-v1', 0.5000::numeric),
+                ('temporal-active-case-evidence', 'active-case-30d-v1', 0.5000::numeric),
+                ('temporal-important-active-case-evidence', 'active-case-30d-v1', 0.7500::numeric)
+        ), assignments AS (
+            SELECT
+                requested.policy_id,
+                profile.profile_id,
+                profile.profile_version,
+                profile.profile_sha256,
+                requested.importance,
+                jsonb_build_object(
+                    'write_policy', jsonb_build_object(
+                        'id', requested.policy_id,
+                        'version', '1'
+                    ),
+                    'recency_profile', jsonb_build_object(
+                        'id', profile.profile_id,
+                        'version', profile.profile_version,
+                        'digest', profile.profile_sha256
+                    ),
+                    'recency_anchor_source', 'revision-observed-at',
+                    'importance', requested.importance,
+                    'schema_version', 1
+                ) AS document
+            FROM requested
+            JOIN memory.recency_profiles AS profile
+              ON profile.profile_id = requested.profile_id
+             AND profile.profile_version = '1'
+        )
+        INSERT INTO memory.fact_retrieval_metadata_policies (
+            policy_id, policy_version,
+            recency_profile_id, recency_profile_version,
+            recency_profile_sha256, recency_anchor_source, importance,
+            policy_document, policy_sha256, schema_version
+        )
+        SELECT
+            policy_id, '1', profile_id, profile_version, profile_sha256,
+            'revision-observed-at', importance, document,
+            encode(sha256(convert_to(document::text, 'UTF8')), 'hex'), 1
+        FROM assignments
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn install_temporal_retrieval_policy(pool: &PgPool) -> Result<()> {
+    sqlx::query(
+        r#"
+        WITH recency AS (
+            SELECT jsonb_object_agg(
+                profile_id,
+                jsonb_build_object(
+                    'version', profile_version,
+                    'digest', profile_sha256
+                )
+                ORDER BY profile_id
+            ) AS lineage
+            FROM memory.recency_profiles
+            WHERE (profile_id, profile_version) IN (
+                ('stable-v1', '1'),
+                ('active-case-30d-v1', '1')
+            )
+        ), temporal AS (
+            SELECT
+                base.embedding_profile_id,
+                base.embedding_profile_version,
+                base.embedding_profile_sha256,
+                base.embedding_projection_profile_id,
+                base.embedding_projection_profile_version,
+                base.embedding_projection_profile_sha256,
+                base.policy_document || jsonb_build_object(
+                    'rounding', 'half-even',
+                    'tie_break', jsonb_build_array(
+                        'exact_identity_rank_asc_nulls_last',
+                        'final_score_units_desc',
+                        'exact_rank_asc_nulls_last',
+                        'lexical_rank_asc_nulls_last',
+                        'vector_rank_asc_nulls_last',
+                        'case_id_asc', 'fact_id_asc', 'revision_id_asc'
+                    ),
+                    'arithmetic', jsonb_build_object(
+                        'id', 'score-units-q63-v1',
+                        'score_scale', 12,
+                        'rounding', 'half-even',
+                        'overflow', 'reject',
+                        'operation_order', jsonb_build_array(
+                            'rrf-channel-half-even',
+                            'fused-exact-sum',
+                            'recency-half-even',
+                            'confidence-half-even',
+                            'importance-half-even',
+                            'exact-identity-bonus'
+                        )
+                    ),
+                    'temporal', jsonb_build_object(
+                        'axis', 'request.valid_at',
+                        'anchor', 'fact_revision_governance.recency_anchor_at',
+                        'age_unit', 'microsecond',
+                        'negative_age', 'clamp_zero',
+                        'profile_lineage', recency.lineage,
+                        'profiles', jsonb_build_object(
+                            'stable-v1', jsonb_build_object(
+                                'kind', 'constant',
+                                'factor_units', '1000000000000'
+                            ),
+                            'active-case-30d-v1', jsonb_build_object(
+                                'kind', 'continuous-half-life',
+                                'half_life_us', '2592000000000',
+                                'floor_units', '125000000000',
+                                'arithmetic', 'q63-exp2-v1',
+                                'constants_sha256',
+                                    '769d34b440235c889ccf0eb34d4b69bb8eb8cff5a99af1919cf475f1c8b6a7aa'
+                            )
+                        )
+                    ),
+                    'quality_factors', jsonb_build_object(
+                        'confidence', jsonb_build_object(
+                            'source', 'fact_revisions.confidence',
+                            'formula', 'identity',
+                            'minimum_units', '0',
+                            'maximum_units', '1000000000000'
+                        ),
+                        'importance', jsonb_build_object(
+                            'source', 'fact_revision_governance.importance',
+                            'formula', 'offset-plus-value',
+                            'offset_units', '500000000000',
+                            'minimum_units', '500000000000',
+                            'maximum_units', '1500000000000'
+                        )
+                    ),
+                    'exact_identity_bonus_units', jsonb_build_object(
+                        'namespace_key', '16393442623',
+                        'key', '8196721311',
+                        'none', '0'
+                    )
+                ) AS document
+            FROM memory.retrieval_policies AS base
+            CROSS JOIN recency
+            WHERE base.policy_id = 'retrieval-hybrid-v1'
+              AND base.policy_version = '1'
+              AND base.scoring_mode = 'channel-only'
+        )
+        INSERT INTO memory.retrieval_policies (
+            policy_id, policy_version, policy_document, policy_sha256,
+            schema_version, retrieval_mode,
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256,
+            scoring_mode
+        )
+        SELECT
+            'retrieval-hybrid-temporal-v1', '1', document,
+            encode(sha256(convert_to(document::text, 'UTF8')), 'hex'),
+            1, 'hybrid', embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256, embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256, 'temporal-v1'
+        FROM temporal
+        "#,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -741,6 +962,8 @@ async fn runs_hybrid_retrieval_conformance(
     migration_pool: &PgPool,
     authenticator: Arc<StaticAuthenticator>,
     target: &Target,
+    database_url: &str,
+    retrieval_isolation: &RetrievalIsolationFixture,
 ) -> Result<()> {
     let provider = Arc::new(DeterministicEmbeddingProvider::default());
     let provider_port: Arc<dyn EmbeddingProvider> = provider.clone();
@@ -748,7 +971,7 @@ async fn runs_hybrid_retrieval_conformance(
     let address = listener.local_addr()?;
     let router = palimpsest_server::app_with_embedding_provider(
         pool.clone(),
-        authenticator,
+        authenticator.clone(),
         provider_port.clone(),
     );
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
@@ -758,7 +981,8 @@ async fn runs_hybrid_retrieval_conformance(
     };
     let scenario = async {
         let fixture = creates_hybrid_fusion_fixture(&scenario_target).await?;
-        let coordinator = EmbeddingProjectionCoordinator::new(pool.clone(), provider_port);
+        let temporal_fixture = creates_temporal_retrieval_fixture(&scenario_target).await?;
+        let coordinator = EmbeddingProjectionCoordinator::new(pool.clone(), provider_port.clone());
         let initial = coordinator
             .rebuild_pending(
                 TenantId(target.tenant_id),
@@ -808,12 +1032,411 @@ async fn runs_hybrid_retrieval_conformance(
             &coordinator,
         )
         .await?;
-        verify_hybrid_failure_metadata_is_redacted(pool, target).await
+        let temporal_replay =
+            retrieves_with_the_fixed_temporal_policy(&scenario_target, &temporal_fixture).await?;
+        let first_temporal_digests =
+            temporal_receipt_digests(pool, target, temporal_replay.first_retrieval_id).await?;
+        ensure!(
+            temporal_replay.independent_retrieval_ids[1] == temporal_replay.second_retrieval_id
+        );
+        for retrieval_id in temporal_replay
+            .independent_retrieval_ids
+            .iter()
+            .copied()
+            .chain(std::iter::once(temporal_replay.paginated_retrieval_id))
+        {
+            ensure!(
+                temporal_receipt_digests(pool, target, retrieval_id).await?
+                    == first_temporal_digests,
+                "repeat or paginated temporal receipt changed durable item or manifest digests"
+            );
+        }
+        verify_temporal_persistence_rejects_tampering(
+            migration_pool,
+            target,
+            temporal_replay.first_retrieval_id,
+        )
+        .await?;
+
+        rebuild_temporal_fixture_projections(pool, target, &temporal_fixture, &coordinator).await?;
+        let rebuilt_temporal_retrieval_id = temporal_retrieval_survives_projection_rebuild(
+            &scenario_target,
+            &temporal_fixture,
+            &temporal_replay,
+        )
+        .await?;
+        let rebuilt_temporal_digests =
+            temporal_receipt_digests(pool, target, rebuilt_temporal_retrieval_id).await?;
+        ensure!(
+            first_temporal_digests == rebuilt_temporal_digests,
+            "projection rebuild changed durable temporal item or manifest digests"
+        );
+
+        let temporal_lifecycle = creates_temporal_lifecycle_fixture(&scenario_target).await?;
+        let lifecycle_rebuild = coordinator
+            .rebuild_pending(TenantId(target.tenant_id), SubjectId(target.subject_id), 10)
+            .await?;
+        ensure!(lifecycle_rebuild.attempted == 4);
+        ensure!(lifecycle_rebuild.ready == 4 && lifecycle_rebuild.failed == 0);
+        let lifecycle_replay =
+            captures_temporal_lifecycle_receipts(&scenario_target, &temporal_lifecycle).await?;
+        delete_temporal_lifecycle_successor(pool, target, &temporal_lifecycle).await?;
+        verify_nonbypass_temporal_runtime(NonbypassTemporalRuntime {
+            migration_pool,
+            database_url,
+            authenticator: authenticator.clone(),
+            provider: provider.clone(),
+            provider_port: provider_port.clone(),
+            target,
+            temporal_fixture: &temporal_fixture,
+            temporal_replay: &temporal_replay,
+            isolation_fixture: retrieval_isolation,
+            lifecycle_fixture: &temporal_lifecycle,
+            lifecycle_replay: &lifecycle_replay,
+        })
+        .await?;
+        verify_hybrid_failure_metadata_is_redacted(pool, target).await?;
+        Ok::<_, anyhow::Error>(temporal_replay)
     }
     .await;
     server.abort();
     let _ = server.await;
-    scenario
+    let temporal_replay = scenario?;
+
+    drop(authenticator);
+    drop(provider_port);
+    let restart_address = reserve_local_address().await?;
+    let mut restart_server = spawn_production_server(database_url, target, restart_address)?;
+    wait_for_listener(restart_address).await?;
+    let restart_target = Target {
+        base_url: format!("http://{restart_address}"),
+        principal_a_internal_bearer_token: target.bearer_token.clone(),
+        ..target.clone()
+    };
+    let restart_result =
+        temporal_receipt_survives_service_restart(&restart_target, &temporal_replay).await;
+    let _ = restart_server.kill().await;
+    let _ = restart_server.wait().await;
+    restart_result
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct TemporalReceiptDigests {
+    manifest_sha256: String,
+    ordered_item_sha256: Vec<(Uuid, String)>,
+}
+
+async fn temporal_receipt_digests(
+    pool: &PgPool,
+    target: &Target,
+    retrieval_id: Uuid,
+) -> Result<TemporalReceiptDigests> {
+    let mut transaction = pool.begin().await?;
+    set_retrieval_test_scope(&mut transaction, target).await?;
+    let manifest_sha256: String = sqlx::query(
+        r#"
+        SELECT manifest_sha256
+        FROM memory.retrieval_receipts
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+          AND policy_id = 'retrieval-hybrid-temporal-v1'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(retrieval_id)
+    .fetch_one(&mut *transaction)
+    .await?
+    .try_get("manifest_sha256")?;
+    let ordered_item_sha256 = sqlx::query(
+        r#"
+        SELECT revision_id, item_sha256
+        FROM memory.retrieval_manifest_items
+        WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+        ORDER BY ordinal
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(retrieval_id)
+    .fetch_all(&mut *transaction)
+    .await?
+    .into_iter()
+    .map(|row| {
+        Ok((
+            row.try_get::<Uuid, _>("revision_id")?,
+            row.try_get::<String, _>("item_sha256")?,
+        ))
+    })
+    .collect::<Result<Vec<_>>>()?;
+    ensure!(manifest_sha256.len() == 64);
+    ensure!(ordered_item_sha256.len() == 4);
+    ensure!(
+        ordered_item_sha256
+            .iter()
+            .all(|(_, item_sha256)| item_sha256.len() == 64)
+    );
+    transaction.commit().await?;
+    Ok(TemporalReceiptDigests {
+        manifest_sha256,
+        ordered_item_sha256,
+    })
+}
+
+async fn verify_temporal_persistence_rejects_tampering(
+    migration_pool: &PgPool,
+    target: &Target,
+    retrieval_id: Uuid,
+) -> Result<()> {
+    for (name, profile_id, field, malformed_value) in [
+        (
+            "active half-life",
+            "active-case-30d-v1",
+            "half_life_us",
+            json!(2592000000001_u64),
+        ),
+        (
+            "active floor",
+            "active-case-30d-v1",
+            "floor_q63_units",
+            json!(1152921504606846977_u64),
+        ),
+        (
+            "active Q63 scale",
+            "active-case-30d-v1",
+            "q63_scale_units",
+            json!(9223372036854775809_u64),
+        ),
+        (
+            "active algorithm",
+            "active-case-30d-v1",
+            "q63_algorithm",
+            json!("tampered-exp2"),
+        ),
+        (
+            "stable factor",
+            "stable-v1",
+            "factor_units",
+            json!(999999999999_u64),
+        ),
+    ] {
+        let mut transaction = migration_pool.begin().await?;
+        let malformed_profile = sqlx::query(
+            r#"
+            WITH source AS (
+                SELECT profile.*,
+                    jsonb_set(
+                        profile_document,
+                        ARRAY[$2]::text[],
+                        $3::jsonb,
+                        false
+                    ) AS malformed_document
+                FROM memory.recency_profiles AS profile
+                WHERE profile_id = $1 AND profile_version = '1'
+            )
+            INSERT INTO memory.recency_profiles (
+                profile_id, profile_version, profile_document,
+                profile_sha256, schema_version
+            )
+            SELECT profile_id, profile_version, malformed_document,
+                encode(sha256(convert_to(malformed_document::text, 'UTF8')), 'hex'),
+                schema_version
+            FROM source
+            "#,
+        )
+        .bind(profile_id)
+        .bind(field)
+        .bind(malformed_value)
+        .execute(&mut *transaction)
+        .await;
+        transaction.rollback().await?;
+        ensure!(
+            malformed_profile
+                .as_ref()
+                .err()
+                .and_then(sqlx::Error::as_database_error)
+                .and_then(|error| error.constraint())
+                == Some("recency_profile_registration_consistent"),
+            "a correctly rehashed recency profile with tampered {name} reached another constraint"
+        );
+    }
+
+    let factors = sqlx::query(
+        r#"
+        SELECT
+            memory.temporal_recency_factor_units_v1(
+                'active-case-30d-v1', '1', 1
+            )::text AS one_microsecond,
+            memory.temporal_recency_factor_units_v1(
+                'active-case-30d-v1', '1', 1296000000000
+            )::text AS fifteen_days,
+            memory.temporal_recency_factor_units_v1(
+                'active-case-30d-v1', '1', 2592000000000
+            )::text AS thirty_days,
+            memory.temporal_recency_factor_units_v1(
+                'active-case-30d-v1', '1', 7775999999999
+            )::text AS just_before_ninety_days,
+            memory.temporal_recency_factor_units_v1(
+                'active-case-30d-v1', '1', 7776000000000
+            )::text AS ninety_days
+        "#,
+    )
+    .fetch_one(migration_pool)
+    .await?;
+    for (column, age_us, exact_units) in [
+        ("one_microsecond", 1_i128, "1000000000000"),
+        ("fifteen_days", 1_296_000_000_000_i128, "707106781187"),
+        ("thirty_days", 2_592_000_000_000_i128, "500000000000"),
+        (
+            "just_before_ninety_days",
+            7_775_999_999_999_i128,
+            "125000000000",
+        ),
+        ("ninety_days", 7_776_000_000_000_i128, "125000000000"),
+    ] {
+        let sql_units = factors.try_get::<String, _>(column)?;
+        let rust_units = temporal_factor_q63(RecencyProfile::ActiveCase30dV1, age_us, 0)
+            .and_then(|factor| factor.to_score_units())
+            .map_err(|error| anyhow::anyhow!("Rust recency vector {column} failed: {error:?}"))?
+            .raw_units()
+            .to_string();
+        ensure!(
+            sql_units == exact_units,
+            "SQL recency vector {column} drifted"
+        );
+        ensure!(
+            sql_units == rust_units,
+            "SQL and Rust recency vectors disagree at {column}"
+        );
+    }
+
+    let mut policy_transaction = migration_pool.begin().await?;
+    let malformed_policy = sqlx::query(
+        r#"
+        WITH source AS (
+            SELECT policy.*,
+                jsonb_set(
+                    policy_document,
+                    '{arithmetic,operation_order}',
+                    '["exact-identity-bonus","importance-half-even"]'::jsonb
+                ) AS malformed_document
+            FROM memory.retrieval_policies AS policy
+            WHERE policy_id = 'retrieval-hybrid-temporal-v1'
+              AND policy_version = '1'
+        )
+        INSERT INTO memory.retrieval_policies (
+            policy_id, policy_version, policy_document, policy_sha256,
+            schema_version, retrieval_mode,
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256,
+            scoring_mode
+        )
+        SELECT policy_id, '2', malformed_document,
+            encode(sha256(convert_to(malformed_document::text, 'UTF8')), 'hex'),
+            schema_version, retrieval_mode,
+            embedding_profile_id, embedding_profile_version,
+            embedding_profile_sha256,
+            embedding_projection_profile_id,
+            embedding_projection_profile_version,
+            embedding_projection_profile_sha256,
+            scoring_mode
+        FROM source
+        "#,
+    )
+    .execute(&mut *policy_transaction)
+    .await;
+    policy_transaction.rollback().await?;
+    ensure!(
+        malformed_policy
+            .as_ref()
+            .err()
+            .and_then(sqlx::Error::as_database_error)
+            .and_then(|error| error.constraint())
+            == Some("retrieval_policy_registration_consistent"),
+        "a correctly rehashed policy with a malformed operation order was registered"
+    );
+
+    for (name, patch) in [
+        (
+            "partial lineage",
+            json!({
+                "ordinal": 98,
+                "final_rank": 98,
+                "cursor_token": Uuid::now_v7(),
+                "confidence_factor": null,
+                "item_sha256": "1".repeat(64)
+            }),
+        ),
+        (
+            "plausible wrong recency factor",
+            json!({
+                "ordinal": 99,
+                "final_rank": 99,
+                "cursor_token": Uuid::now_v7(),
+                "recency_factor": "0.500000000001",
+                "item_sha256": "2".repeat(64)
+            }),
+        ),
+    ] {
+        let mut transaction = migration_pool.begin().await?;
+        set_retrieval_test_scope(&mut transaction, target).await?;
+        let insert = sqlx::query(
+            r#"
+            INSERT INTO memory.retrieval_manifest_items
+            SELECT (jsonb_populate_record(item, $4::jsonb)).*
+            FROM memory.retrieval_manifest_items AS item
+            WHERE item.tenant_id = $1
+              AND item.subject_id = $2
+              AND item.retrieval_id = $3
+              AND item.recency_profile_id = 'active-case-30d-v1'
+              AND item.recency_age_us = 2592000000000
+            LIMIT 1
+            "#,
+        )
+        .bind(target.tenant_id)
+        .bind(target.subject_id)
+        .bind(retrieval_id)
+        .bind(patch)
+        .execute(&mut *transaction)
+        .await;
+        transaction.rollback().await?;
+        ensure!(insert.is_err(), "temporal manifest accepted {name}");
+    }
+    Ok(())
+}
+
+async fn rebuild_temporal_fixture_projections(
+    pool: &PgPool,
+    target: &Target,
+    fixture: &TemporalRetrievalFixture,
+    coordinator: &EmbeddingProjectionCoordinator,
+) -> Result<()> {
+    let revision_ids = [
+        fixture.exact_revision_id,
+        fixture.alpha_root_revision_id,
+        fixture.alpha_successor_revision_id,
+        fixture.beta_revision_id,
+        fixture.gamma_revision_id,
+        fixture.delta_revision_id,
+    ];
+    for revision_id in revision_ids {
+        delete_retrieval_projection(pool, target, revision_id).await?;
+    }
+    for revision_id in revision_ids {
+        rebuild_retrieval_projection(pool, target, revision_id).await?;
+    }
+    let report = coordinator
+        .rebuild_pending(
+            TenantId(target.tenant_id),
+            SubjectId(target.subject_id),
+            revision_ids.len(),
+        )
+        .await?;
+    ensure!(report.attempted == revision_ids.len());
+    ensure!(report.ready == revision_ids.len() && report.failed == 0);
+    verify_embedding_projection_rows_for_revisions(pool, target, &revision_ids).await
 }
 
 async fn exercise_concurrent_projection_claim(
@@ -1900,17 +2523,7 @@ async fn verify_retrieval_manifest_is_authorized(
     fixture: &RetrievalIsolationFixture,
 ) -> Result<()> {
     let mut transaction = pool.begin().await?;
-    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
-        .bind(target.tenant_id.to_string())
-        .execute(&mut *transaction)
-        .await?;
-    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
-        .bind(target.subject_id.to_string())
-        .execute(&mut *transaction)
-        .await?;
-    sqlx::query("SELECT set_config('palimpsest.principal_id', 'principal-a', true)")
-        .execute(&mut *transaction)
-        .await?;
+    set_retrieval_test_scope(&mut transaction, target).await?;
     let revision_ids = sqlx::query(
         r#"
         SELECT revision_id
@@ -1995,6 +2608,192 @@ async fn verify_retrieval_manifest_is_authorized(
     Ok(())
 }
 
+struct NonbypassTemporalRuntime<'a> {
+    migration_pool: &'a PgPool,
+    database_url: &'a str,
+    authenticator: Arc<StaticAuthenticator>,
+    provider: Arc<DeterministicEmbeddingProvider>,
+    provider_port: Arc<dyn EmbeddingProvider>,
+    target: &'a Target,
+    temporal_fixture: &'a TemporalRetrievalFixture,
+    temporal_replay: &'a TemporalReplayFixture,
+    isolation_fixture: &'a RetrievalIsolationFixture,
+    lifecycle_fixture: &'a TemporalLifecycleFixture,
+    lifecycle_replay: &'a TemporalLifecycleReplayFixture,
+}
+
+async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>) -> Result<()> {
+    let NonbypassTemporalRuntime {
+        migration_pool,
+        database_url,
+        authenticator,
+        provider,
+        provider_port,
+        target,
+        temporal_fixture,
+        temporal_replay,
+        isolation_fixture,
+        lifecycle_fixture,
+        lifecycle_replay,
+    } = runtime;
+    let login_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(PgConnectOptions::from_str(database_url)?)
+        .await?;
+    let login_role = sqlx::query(
+        "SELECT session_user::text AS role_name, quote_ident(session_user) AS quoted_role_name",
+    )
+    .fetch_one(&login_pool)
+    .await?;
+    let login_role_name: String = login_role.try_get("role_name")?;
+    let quoted_login_role_name: String = login_role.try_get("quoted_role_name")?;
+    login_pool.close().await;
+
+    let role_name = format!("palimpsest_test_runtime_{}", Uuid::now_v7().simple());
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE ROLE \"{role_name}\" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS"
+    )))
+    .execute(migration_pool)
+    .await?;
+
+    let verification = async {
+        sqlx::query(AssertSqlSafe(format!(
+            "GRANT \"{role_name}\" TO {quoted_login_role_name}"
+        )))
+        .execute(migration_pool)
+        .await?;
+        sqlx::raw_sql(AssertSqlSafe(format!(
+            "GRANT USAGE ON SCHEMA memory TO \"{role_name}\"; \
+             GRANT SELECT ON \
+                 memory.retrieval_policies, \
+                 memory.recency_profiles, \
+                 memory.embedding_profiles, \
+                 memory.embedding_projection_profiles, \
+                 memory.fact_retrieval_metadata_policies, \
+                 memory.fact_retention_policies, \
+                 memory.search_projection_schemas, \
+                 memory.facts, \
+                 memory.fact_revisions, \
+                 memory.fact_revision_evidence, \
+                 memory.fact_revision_governance, \
+                 memory.fact_revision_search_documents, \
+                 memory.fact_revision_embedding_projections, \
+                 memory.retrieval_idempotency_reservations, \
+                 memory.retrieval_receipts, \
+                 memory.retrieval_manifest_items, \
+                 memory.retrieval_ready_fact_revision_embeddings, \
+                 memory.authorized_retrieval_manifest \
+             TO \"{role_name}\"; \
+             GRANT INSERT ON \
+                 memory.retrieval_idempotency_reservations, \
+                 memory.retrieval_receipts, \
+                 memory.retrieval_manifest_items \
+             TO \"{role_name}\"; \
+             GRANT EXECUTE ON FUNCTION \
+                 memory.round_half_even_integer_v1(numeric, numeric), \
+                 memory.temporal_recency_factor_units_v1(text, text, numeric) \
+             TO \"{role_name}\""
+        )))
+        .execute(migration_pool)
+        .await?;
+
+        let role_statement = format!("SET ROLE \"{role_name}\"");
+        let runtime_pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(move |connection, _metadata| {
+                let role_statement = role_statement.clone();
+                Box::pin(async move {
+                    sqlx::query(AssertSqlSafe(role_statement))
+                        .execute(connection)
+                        .await?;
+                    Ok(())
+                })
+            })
+            .connect_with(PgConnectOptions::from_str(database_url)?)
+            .await?;
+        let role = sqlx::query(
+            "SELECT current_user AS role_name, session_user AS login_role_name, \
+                    rolsuper, rolbypassrls \
+             FROM pg_roles WHERE rolname = current_user",
+        )
+        .fetch_one(&runtime_pool)
+        .await?;
+        ensure!(role.try_get::<String, _>("role_name")? == role_name);
+        ensure!(role.try_get::<String, _>("login_role_name")? == login_role_name);
+        ensure!(!role.try_get::<bool, _>("rolsuper")?);
+        ensure!(!role.try_get::<bool, _>("rolbypassrls")?);
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                palimpsest_server::app_with_embedding_provider(
+                    runtime_pool.clone(),
+                    authenticator,
+                    provider_port,
+                ),
+            )
+            .await
+        });
+        let runtime_target = Target {
+            base_url: format!("http://{address}"),
+            ..target.clone()
+        };
+        let runtime_scenario = async {
+            let runtime_replay = creates_temporal_receipt_through_nonbypass_runtime(
+                &runtime_target,
+                temporal_fixture,
+                temporal_replay,
+                isolation_fixture,
+            )
+            .await?;
+            temporal_policy_does_not_resurrect_ineligible_successors(
+                &runtime_target,
+                lifecycle_fixture,
+                lifecycle_replay,
+            )
+            .await?;
+
+            provider.set_mode(EmbeddingFixtureMode::Unavailable);
+            let calls_before_replay = provider.calls();
+            let replay_result = replays_temporal_receipt_through_nonbypass_runtime(
+                &runtime_target,
+                &runtime_replay,
+            )
+            .await;
+            let calls_after_replay = provider.calls();
+            provider.set_mode(EmbeddingFixtureMode::Valid);
+            replay_result?;
+            ensure!(
+                calls_after_replay == calls_before_replay,
+                "non-bypass durable replay called the unavailable embedding provider"
+            );
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+        server.abort();
+        let _ = server.await;
+        runtime_scenario
+    }
+    .await;
+
+    let cleanup = async {
+        sqlx::raw_sql(AssertSqlSafe(format!(
+            "DROP OWNED BY \"{role_name}\"; \
+             REVOKE \"{role_name}\" FROM {quoted_login_role_name}; \
+             DROP ROLE \"{role_name}\""
+        )))
+        .execute(migration_pool)
+        .await?;
+        Ok::<(), anyhow::Error>(())
+    }
+    .await;
+    verification?;
+    cleanup?;
+    Ok(())
+}
+
 async fn delete_retrieval_revision(
     pool: &PgPool,
     target: &Target,
@@ -2030,6 +2829,33 @@ async fn delete_retrieval_revision(
     .collect::<std::result::Result<Vec<_>, _>>()?;
     ensure!(manifest_revision_ids == vec![fixture.deleted_revision_id]);
     ensure!(!manifest_revision_ids.contains(&fixture.superseded_revision_id));
+    transition_revision_to_deleted(&mut transaction, target, fixture.deleted_revision_id).await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn delete_temporal_lifecycle_successor(
+    pool: &PgPool,
+    target: &Target,
+    fixture: &TemporalLifecycleFixture,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+    set_retrieval_test_scope(&mut transaction, target).await?;
+    transition_revision_to_deleted(
+        &mut transaction,
+        target,
+        fixture.deleted_successor_revision_id,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn transition_revision_to_deleted(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    target: &Target,
+    revision_id: Uuid,
+) -> Result<()> {
     let pending = sqlx::query(
         r#"
         UPDATE memory.fact_revision_governance
@@ -2040,8 +2866,8 @@ async fn delete_retrieval_revision(
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
-    .bind(fixture.deleted_revision_id)
-    .execute(&mut *transaction)
+    .bind(revision_id)
+    .execute(&mut **transaction)
     .await?;
     ensure!(pending.rows_affected() == 1);
     let deleted = sqlx::query(
@@ -2054,11 +2880,10 @@ async fn delete_retrieval_revision(
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
-    .bind(fixture.deleted_revision_id)
-    .execute(&mut *transaction)
+    .bind(revision_id)
+    .execute(&mut **transaction)
     .await?;
     ensure!(deleted.rows_affected() == 1);
-    transaction.commit().await?;
     Ok(())
 }
 
@@ -2618,6 +3443,7 @@ fn spawn_production_server(
         .env("PALIMPSEST_PRINCIPAL_ID", "principal-a")
         .env("PALIMPSEST_TENANT_ID", target.tenant_id.to_string())
         .env("PALIMPSEST_SUBJECT_ID", target.subject_id.to_string())
+        .env("PALIMPSEST_ALLOWED_SENSITIVITIES", "internal,restricted")
         .env("PALIMPSEST_BIND", address.to_string())
         .kill_on_drop(true)
         .stdout(Stdio::null())
