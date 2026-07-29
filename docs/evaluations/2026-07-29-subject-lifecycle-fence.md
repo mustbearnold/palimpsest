@@ -2,7 +2,7 @@
 
 Date: 2026-07-29
 Issue: #29
-Status: development merge gate passed
+Status: review remediation under validation
 
 ## Claim under evaluation
 
@@ -20,8 +20,8 @@ remain issue #31.
 
 - PostgreSQL server version: 18 or newer, asserted by each integration test.
 - pgvector extension: exactly 0.8.5, asserted by each integration test.
-- Isolation authority: a fresh `NOSUPERUSER NOBYPASSRLS` runtime role with
-  forced row-level security.
+- Isolation authority: separate fresh `NOSUPERUSER NOBYPASSRLS` runtime and
+  least-privilege lifecycle-controller roles with forced row-level security.
 - Public seam: real TCP HTTP requests through the Axum adapter and PostgreSQL
   repository.
 
@@ -30,11 +30,16 @@ remain issue #31.
 | Scenario | Result |
 | --- | --- |
 | Closed trusted grant vocabulary rejects unknown names and defaults empty | Pass |
+| Missing delete grant and wrong subject scope both fail before the repository with the same not-found result | Pass |
 | Domain lifecycle permits only active to deletion-pending to deleted | Pass |
-| Database trigger rejects reactivation and transition retry is idempotent | Pass |
+| Authorized application seam safely initializes a missing row and retries concurrent serializable transitions | Pass |
+| Ordinary runtime role cannot invoke transition functions or update lifecycle rows | Pass |
+| Database trigger rejects reactivation and refuses deleted while any lease remains | Pass |
+| Every public content-producing MemoryService method requires an unforgeable matching lease permit | Pass |
 | Active HTTP response retains one UUIDv7 lease through body delivery | Pass |
 | Pending fence rejects all episode, fact, as-of, checkpoint, retrieval, and replay handlers with redacted 404 responses | Pass |
 | Response admitted before the fence drains its already-authorized body, then releases its lease | Pass |
+| Expired permits, HTTP bodies, and provider work fail closed; release cleanup retries | Pass |
 | Embedding projection retains one worker lease through its provider call and releases it afterward | Pass |
 | Pending fence rejects a new projection before the provider is called | Pass |
 | Exclusive lifecycle transition waits for an in-flight shared subject transaction | Pass |
@@ -58,15 +63,16 @@ legacy receipt upgrade, and focused subject lifecycle fence scenarios.
 
 ## Residual boundaries
 
-- Content leases expire after 30 seconds but remain durable until explicit
-  release or future deletion-worker revocation; issue #31 owns revocation and
-  the `draining` to `fenced` proof.
+- Content delivery and provider work stop at the 30-second lease deadline.
+  Lease rows remain durable until retrying cleanup succeeds, and terminal
+  lifecycle transition requires zero rows. Issue #31 owns explicit revocation,
+  target purge, and absence verification.
 - No public export or deletion endpoint exists in this change.
 - No production deployment, destructive purge, recovery exercise, or release
   claim was performed.
 
 ## Verdict
 
-The implementation satisfies issue #29's development seam and can proceed to
-independent Standards and Spec review. This report authorizes neither a
-security-sensitive release nor a first production deployment.
+The implementation is undergoing independent Standards and Spec re-review.
+This report authorizes neither a security-sensitive release nor a first
+production deployment.

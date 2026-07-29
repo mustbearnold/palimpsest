@@ -170,6 +170,14 @@ pub enum SubjectLifecycleState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SubjectLifecycle {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub state: SubjectLifecycleState,
+    pub state_version: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SubjectLifecycleTransitionError {
     pub from: SubjectLifecycleState,
     pub to: SubjectLifecycleState,

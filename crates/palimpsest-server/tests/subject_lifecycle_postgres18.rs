@@ -5,14 +5,17 @@ use axum::{
     response::Response,
 };
 use palimpsest_application::{
-    EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse,
-    RepositoryError, SubjectLifecycleRepository,
+    EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse, MemoryService,
+    RepositoryError, ServiceError, SubjectLifecycleRepository,
 };
 use palimpsest_conformance::{
     Target, creates_an_attributable_fact_revision, creates_and_replays_a_lexical_retrieval_receipt,
     saves_and_reads_a_resumable_checkpoint,
 };
-use palimpsest_domain::{PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId};
+use palimpsest_domain::{
+    OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, SubjectLifecycleState,
+    TenantId,
+};
 use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::{EmbeddingProjectionCoordinator, PostgresMemoryRepository};
 use reqwest::{Client, StatusCode};
@@ -89,6 +92,7 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
 
     let database_name = format!("palimpsest_lifecycle_{}", Uuid::now_v7().simple());
     let runtime_role = format!("palimpsest_lifecycle_{}", Uuid::now_v7().simple());
+    let controller_role = format!("p_lifecycle_ctl_{}", Uuid::now_v7().simple());
     sqlx::query(AssertSqlSafe(format!(
         "CREATE DATABASE \"{database_name}\""
     )))
@@ -107,7 +111,17 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
     .execute(&migration_admin_pool)
     .await?;
     sqlx::query(AssertSqlSafe(format!(
+        "CREATE ROLE \"{controller_role}\" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS"
+    )))
+    .execute(&migration_admin_pool)
+    .await?;
+    sqlx::query(AssertSqlSafe(format!(
         "GRANT \"{runtime_role}\" TO {quoted_login_role}"
+    )))
+    .execute(&migration_admin_pool)
+    .await?;
+    sqlx::query(AssertSqlSafe(format!(
+        "GRANT \"{controller_role}\" TO {quoted_login_role}"
     )))
     .execute(&migration_admin_pool)
     .await?;
@@ -121,7 +135,16 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
         sqlx::raw_sql(AssertSqlSafe(format!(
             "GRANT USAGE ON SCHEMA memory TO \"{runtime_role}\"; \
              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA memory TO \"{runtime_role}\"; \
-             GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA memory TO \"{runtime_role}\""
+             GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA memory TO \"{runtime_role}\"; \
+             REVOKE UPDATE, DELETE ON memory.subject_lifecycles FROM \"{runtime_role}\"; \
+             REVOKE UPDATE ON memory.subject_content_leases FROM \"{runtime_role}\"; \
+             REVOKE EXECUTE ON FUNCTION memory.transition_subject_to_deletion_pending(uuid, uuid) FROM \"{runtime_role}\"; \
+             REVOKE EXECUTE ON FUNCTION memory.transition_subject_to_deleted(uuid, uuid) FROM \"{runtime_role}\"; \
+             GRANT USAGE ON SCHEMA memory TO \"{controller_role}\"; \
+             GRANT SELECT, INSERT, UPDATE ON memory.subject_lifecycles TO \"{controller_role}\"; \
+             GRANT SELECT ON memory.subject_content_leases TO \"{controller_role}\"; \
+             GRANT EXECUTE ON FUNCTION memory.transition_subject_to_deletion_pending(uuid, uuid) TO \"{controller_role}\"; \
+             GRANT EXECUTE ON FUNCTION memory.transition_subject_to_deleted(uuid, uuid) TO \"{controller_role}\""
         )))
         .execute(&migration_pool)
         .await?;
@@ -140,6 +163,13 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             })
             .connect_with(options)
             .await?;
+        let controller_pool = runtime_pool_for_role(
+            &database_url,
+            &database_name,
+            &controller_role,
+            8,
+        )
+        .await?;
         let runtime_identity = sqlx::query(
             "SELECT current_user::text AS role_name, rolsuper, rolbypassrls \
              FROM pg_roles WHERE rolname = current_user",
@@ -149,9 +179,33 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
         ensure!(runtime_identity.try_get::<String, _>("role_name")? == runtime_role);
         ensure!(!runtime_identity.try_get::<bool, _>("rolsuper")?);
         ensure!(!runtime_identity.try_get::<bool, _>("rolbypassrls")?);
+        let controller_identity = sqlx::query(
+            "SELECT current_user::text AS role_name, rolsuper, rolbypassrls \
+             FROM pg_roles WHERE rolname = current_user",
+        )
+        .fetch_one(&controller_pool)
+        .await?;
+        ensure!(controller_identity.try_get::<String, _>("role_name")? == controller_role);
+        ensure!(!controller_identity.try_get::<bool, _>("rolsuper")?);
+        ensure!(!controller_identity.try_get::<bool, _>("rolbypassrls")?);
 
         let tenant_id = Uuid::parse_str("019be100-0000-7000-8000-000000000010")?;
         let subject_id = Uuid::parse_str("019be100-0000-7000-8000-000000000020")?;
+        let runtime_transition_error = sqlx::query(
+            "SELECT memory.transition_subject_to_deletion_pending($1, $2)",
+        )
+        .bind(tenant_id)
+        .bind(Uuid::parse_str("019be100-0000-7000-8000-000000000098")?)
+        .execute(&runtime_pool)
+        .await
+        .expect_err("ordinary runtime role invoked the privileged lifecycle transition");
+        ensure!(
+            runtime_transition_error
+                .as_database_error()
+                .and_then(|error| error.code())
+                .is_some_and(|code| code == "42501"),
+            "ordinary runtime transition failed for a reason other than privilege denial"
+        );
         let bearer_token = "lifecycle-principal-token";
         let principal = PrincipalScope {
             principal_id: PrincipalId("principal-a".to_owned()),
@@ -160,6 +214,15 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
                 SubjectId(subject_id),
                 SubjectId(Uuid::parse_str(
                     "019be100-0000-7000-8000-000000000021",
+                )?),
+                SubjectId(Uuid::parse_str(
+                    "019be100-0000-7000-8000-000000000022",
+                )?),
+                SubjectId(Uuid::parse_str(
+                    "019be100-0000-7000-8000-000000000023",
+                )?),
+                SubjectId(Uuid::parse_str(
+                    "019be100-0000-7000-8000-000000000024",
                 )?),
             ],
             allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
@@ -215,6 +278,15 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             ),
         ]));
         let lifecycle_repository = PostgresMemoryRepository::new(runtime_pool.clone());
+        let repository_port = Arc::new(lifecycle_repository.clone());
+        let controller_port = Arc::new(PostgresMemoryRepository::new(controller_pool.clone()));
+        let lifecycle_service = MemoryService::new(
+            controller_port,
+            repository_port.clone(),
+            repository_port.clone(),
+            repository_port.clone(),
+            repository_port,
+        );
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let projection_pool = runtime_pool.clone();
@@ -350,7 +422,25 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
         .await?
         .try_get(0)?;
         ensure!(active_lease_count == 1);
-        lifecycle_repository.release_content_lease(lease).await?;
+        lifecycle_repository.release_content_lease(&lease).await?;
+        let runtime_update_error = sqlx::query(
+            r#"
+            UPDATE memory.subject_lifecycles
+            SET lifecycle_state = 'deletion_pending', state_version = state_version + 1
+            WHERE tenant_id = $1 AND subject_id = $2
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(subject_id)
+        .execute(&projection_pool)
+        .await
+        .expect_err("ordinary runtime role updated the privileged lifecycle table");
+        ensure!(
+            runtime_update_error
+                .as_database_error()
+                .and_then(|error| error.code())
+                .is_some_and(|code| code == "42501")
+        );
 
         let held_client = client.clone();
         let held_url = format!("http://{address}{location}");
@@ -382,22 +472,49 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             "HTTP response body did not retain exactly one content lease"
         );
 
-        let state_version: i64 = sqlx::query_scalar(
-            "SELECT memory.transition_subject_to_deletion_pending($1, $2)",
-        )
-        .bind(tenant_id)
-        .bind(subject_id)
-        .fetch_one(&migration_pool)
-        .await?;
-        ensure!(state_version == 1);
-        let retry_state_version: i64 = sqlx::query_scalar(
-            "SELECT memory.transition_subject_to_deletion_pending($1, $2)",
-        )
-        .bind(tenant_id)
-        .bind(subject_id)
-        .fetch_one(&migration_pool)
-        .await?;
-        ensure!(retry_state_version == state_version);
+        let missing_grant = lifecycle_service
+            .fence_subject_for_deletion(&principal, TenantId(tenant_id), SubjectId(subject_id))
+            .await;
+        ensure!(matches!(missing_grant, Err(ServiceError::NotFound)));
+
+        let mut delete_principal = principal.clone();
+        delete_principal.operation_grants = vec![OperationGrant::SubjectDelete];
+        let wrong_scope = lifecycle_service
+            .fence_subject_for_deletion(
+                &delete_principal,
+                TenantId(tenant_id),
+                SubjectId(Uuid::parse_str("019be100-0000-7000-8000-000000000099")?),
+            )
+            .await;
+        ensure!(matches!(wrong_scope, Err(ServiceError::NotFound)));
+
+        let pending = lifecycle_service
+            .fence_subject_for_deletion(
+                &delete_principal,
+                TenantId(tenant_id),
+                SubjectId(subject_id),
+            )
+            .await?;
+        ensure!(pending.state == SubjectLifecycleState::DeletionPending);
+        ensure!(pending.state_version == 1);
+        let pending_retry = lifecycle_service
+            .fence_subject_for_deletion(
+                &delete_principal,
+                TenantId(tenant_id),
+                SubjectId(subject_id),
+            )
+            .await?;
+        ensure!(pending_retry == pending);
+
+        let missing_row = lifecycle_service
+            .fence_subject_for_deletion(
+                &delete_principal,
+                TenantId(tenant_id),
+                SubjectId(Uuid::parse_str("019be100-0000-7000-8000-000000000022")?),
+            )
+            .await?;
+        ensure!(missing_row.state == SubjectLifecycleState::DeletionPending);
+        ensure!(missing_row.state_version == 1);
         let reverse_transition = sqlx::query(
             r#"
             UPDATE memory.subject_lifecycles
@@ -548,6 +665,15 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             Err(RepositoryError::SubjectUnavailable)
         ));
 
+        let premature_deleted = lifecycle_service
+            .mark_subject_deleted(
+                &delete_principal,
+                TenantId(tenant_id),
+                SubjectId(subject_id),
+            )
+            .await;
+        ensure!(matches!(premature_deleted, Err(ServiceError::Conflict)));
+
         response_hold.release.notify_waiters();
         let held_response = held_response.await??;
         ensure!(held_response.status() == StatusCode::OK);
@@ -561,17 +687,39 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
 
         wait_for_lease_count(&migration_pool, tenant_id, subject_id, 0).await?;
 
+        let deleted = lifecycle_service
+            .mark_subject_deleted(
+                &delete_principal,
+                TenantId(tenant_id),
+                SubjectId(subject_id),
+            )
+            .await?;
+        ensure!(deleted.state == SubjectLifecycleState::Deleted);
+        ensure!(deleted.state_version == 2);
+
         assert_transition_waits_for_inflight_scope(
             &projection_pool,
-            &migration_pool,
             &lifecycle_repository,
-            &principal,
+            &lifecycle_service,
+            &delete_principal,
             tenant_id,
-            Uuid::parse_str("019be100-0000-7000-8000-000000000021")?,
+            Uuid::parse_str("019be100-0000-7000-8000-000000000023")?,
+        )
+        .await?;
+        assert_concurrent_fence_retries(
+            &lifecycle_service,
+            &delete_principal,
+            tenant_id,
+            Uuid::parse_str("019be100-0000-7000-8000-000000000024")?,
         )
         .await?;
 
-        let mut transaction = runtime_pool_for_role(&database_url, &database_name, &runtime_role)
+        let mut transaction = runtime_pool_for_role(
+            &database_url,
+            &database_name,
+            &runtime_role,
+            1,
+        )
             .await?
             .begin()
             .await?;
@@ -623,6 +771,7 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
 
         server.abort();
         let _ = server.await;
+        controller_pool.close().await;
         Ok::<_, anyhow::Error>(())
     }
     .await;
@@ -634,7 +783,10 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
     .execute(&migration_admin_pool)
     .await?;
     sqlx::raw_sql(AssertSqlSafe(format!(
-        "REVOKE \"{runtime_role}\" FROM {quoted_login_role}; DROP ROLE \"{runtime_role}\""
+        "REVOKE \"{runtime_role}\" FROM {quoted_login_role}; \
+         REVOKE \"{controller_role}\" FROM {quoted_login_role}; \
+         DROP ROLE \"{runtime_role}\"; \
+         DROP ROLE \"{controller_role}\""
     )))
     .execute(&migration_admin_pool)
     .await?;
@@ -686,8 +838,8 @@ async fn wait_for_lease_count(
 
 async fn assert_transition_waits_for_inflight_scope(
     runtime_pool: &PgPool,
-    migration_pool: &PgPool,
     lifecycle_repository: &PostgresMemoryRepository,
+    lifecycle_service: &MemoryService,
     principal: &PrincipalScope,
     tenant_id: Uuid,
     subject_id: Uuid,
@@ -695,7 +847,7 @@ async fn assert_transition_waits_for_inflight_scope(
     let lease = lifecycle_repository
         .acquire_content_lease(principal, TenantId(tenant_id), SubjectId(subject_id))
         .await?;
-    lifecycle_repository.release_content_lease(lease).await?;
+    lifecycle_repository.release_content_lease(&lease).await?;
 
     let mut inflight_scope = runtime_pool.begin().await?;
     sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
@@ -716,12 +868,15 @@ async fn assert_transition_waits_for_inflight_scope(
     .execute(&mut *inflight_scope)
     .await?;
 
-    let transition_pool = migration_pool.clone();
+    let transition_service = lifecycle_service.clone();
+    let transition_principal = principal.clone();
     let transition = tokio::spawn(async move {
-        sqlx::query_scalar::<_, i64>("SELECT memory.transition_subject_to_deletion_pending($1, $2)")
-            .bind(tenant_id)
-            .bind(subject_id)
-            .fetch_one(&transition_pool)
+        transition_service
+            .fence_subject_for_deletion(
+                &transition_principal,
+                TenantId(tenant_id),
+                SubjectId(subject_id),
+            )
             .await
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -730,11 +885,11 @@ async fn assert_transition_waits_for_inflight_scope(
         "deletion fence bypassed an in-flight shared subject scope"
     );
     inflight_scope.commit().await?;
-    let transition_result = tokio::time::timeout(std::time::Duration::from_secs(5), transition)
+    let lifecycle = tokio::time::timeout(std::time::Duration::from_secs(5), transition)
         .await
-        .context("deletion fence did not resume after the in-flight scope committed")??;
-    let state_version = transition_result?;
-    ensure!(state_version == 1);
+        .context("deletion fence did not resume after the in-flight scope committed")???;
+    ensure!(lifecycle.state == SubjectLifecycleState::DeletionPending);
+    ensure!(lifecycle.state_version == 1);
 
     let fenced_lease = lifecycle_repository
         .acquire_content_lease(principal, TenantId(tenant_id), SubjectId(subject_id))
@@ -746,14 +901,42 @@ async fn assert_transition_waits_for_inflight_scope(
     Ok(())
 }
 
+async fn assert_concurrent_fence_retries(
+    lifecycle_service: &MemoryService,
+    principal: &PrincipalScope,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+) -> Result<()> {
+    let start = Arc::new(tokio::sync::Barrier::new(8));
+    let mut transitions = Vec::new();
+    for _ in 0..8 {
+        let service = lifecycle_service.clone();
+        let principal = principal.clone();
+        let start = start.clone();
+        transitions.push(tokio::spawn(async move {
+            start.wait().await;
+            service
+                .fence_subject_for_deletion(&principal, TenantId(tenant_id), SubjectId(subject_id))
+                .await
+        }));
+    }
+    for transition in transitions {
+        let lifecycle = transition.await??;
+        ensure!(lifecycle.state == SubjectLifecycleState::DeletionPending);
+        ensure!(lifecycle.state_version == 1);
+    }
+    Ok(())
+}
+
 async fn runtime_pool_for_role(
     database_url: &str,
     database_name: &str,
     runtime_role: &str,
+    max_connections: u32,
 ) -> Result<PgPool> {
     let role_statement = format!("SET ROLE \"{runtime_role}\"");
     Ok(PgPoolOptions::new()
-        .max_connections(1)
+        .max_connections(max_connections)
         .after_connect(move |connection, _metadata| {
             let role_statement = role_statement.clone();
             Box::pin(async move {

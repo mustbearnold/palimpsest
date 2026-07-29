@@ -1,8 +1,12 @@
 use std::{
     collections::HashMap,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     task::{Context, Poll},
+    time::Duration,
 };
 
 use axum::{
@@ -17,20 +21,39 @@ use axum::{
     routing::{get, post, put},
 };
 use http_body::{Frame, SizeHint};
-use palimpsest_application::{MemoryService, ServiceError};
+use palimpsest_application::{
+    ContentLeasePermit, FactAsOfCoordinates, MemoryService, ServiceError,
+};
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
     CreateFact, CreateRetrieval, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId,
     FactKey, FactNamespace, FactView, PrincipalScope, Provenance, RetentionPolicyId,
     RetrievalFilters, RetrievalId, RetrievalPerspective, RetrievalPolicyId, RetrievalQuery,
-    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
-    SupersedeFact, TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId,
+    ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
     parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+static CONTENT_LEASE_RELEASE_RETRY_TOTAL: AtomicU64 = AtomicU64::new(0);
+static CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ContentLeaseCleanupCounters {
+    pub release_retries: u64,
+    pub runtime_unavailable: u64,
+}
+
+pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
+    ContentLeaseCleanupCounters {
+        release_retries: CONTENT_LEASE_RELEASE_RETRY_TOTAL.load(Ordering::Relaxed),
+        runtime_unavailable: CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL
+            .load(Ordering::Relaxed),
+    }
+}
 
 pub trait Authenticator: Send + Sync {
     fn authenticate(&self, bearer_token: &str) -> Option<PrincipalScope>;
@@ -63,32 +86,43 @@ struct AppState {
 
 struct ContentLeaseGuard {
     service: MemoryService,
-    lease: Option<SubjectContentLease>,
+    permit: Option<ContentLeasePermit>,
 }
 
 impl ContentLeaseGuard {
     fn attach(mut self, response: Response) -> Response {
         let (parts, body) = response.into_parts();
+        let expires_at = self.permit().expires_at();
         let body = Body::new(ContentLeaseBody {
             inner: Box::pin(body),
+            expires_at,
             guard: Some(Self {
                 service: self.service.clone(),
-                lease: self.lease.take(),
+                permit: self.permit.take(),
             }),
         });
         Response::from_parts(parts, body)
     }
 
     fn release(&mut self) {
-        let Some(lease) = self.lease.take() else {
+        let Some(permit) = self.permit.take() else {
             return;
         };
         let service = self.service.clone();
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                let _ = service.release_subject_content_lease(lease).await;
+                retry_content_lease_release(|| service.release_subject_content_lease(&permit))
+                    .await;
             });
+        } else {
+            CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    fn permit(&self) -> &ContentLeasePermit {
+        self.permit
+            .as_ref()
+            .expect("a content lease guard owns its permit until attached")
     }
 }
 
@@ -100,6 +134,7 @@ impl Drop for ContentLeaseGuard {
 
 struct ContentLeaseBody {
     inner: Pin<Box<Body>>,
+    expires_at: OffsetDateTime,
     guard: Option<ContentLeaseGuard>,
 }
 
@@ -111,6 +146,10 @@ impl HttpBody for ContentLeaseBody {
         mut self: Pin<&mut Self>,
         context: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        if OffsetDateTime::now_utc() >= self.expires_at {
+            self.guard.take();
+            return Poll::Ready(None);
+        }
         let result = self.inner.as_mut().poll_frame(context);
         if matches!(result, Poll::Ready(None)) {
             self.guard.take();
@@ -119,11 +158,33 @@ impl HttpBody for ContentLeaseBody {
     }
 
     fn is_end_stream(&self) -> bool {
-        self.inner.is_end_stream()
+        OffsetDateTime::now_utc() >= self.expires_at || self.inner.is_end_stream()
     }
 
     fn size_hint(&self) -> SizeHint {
-        self.inner.size_hint()
+        if OffsetDateTime::now_utc() >= self.expires_at {
+            SizeHint::with_exact(0)
+        } else {
+            self.inner.size_hint()
+        }
+    }
+}
+
+async fn retry_content_lease_release<F, Fut, Error>(mut release: F)
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), Error>>,
+{
+    let mut delay = Duration::from_millis(10);
+    loop {
+        match release().await {
+            Ok(()) => return,
+            Err(_) => {
+                CONTENT_LEASE_RELEASE_RETRY_TOTAL.fetch_add(1, Ordering::Relaxed);
+                tokio::time::sleep(delay).await;
+                delay = delay.saturating_mul(2).min(Duration::from_secs(1));
+            }
+        }
     }
 }
 
@@ -133,14 +194,14 @@ async fn acquire_content_lease(
     tenant_id: TenantId,
     subject_id: SubjectId,
 ) -> Result<ContentLeaseGuard, Problem> {
-    let lease = state
+    let permit = state
         .service
         .acquire_subject_content_lease(principal, tenant_id, subject_id)
         .await
         .map_err(Problem::from_service)?;
     Ok(ContentLeaseGuard {
         service: state.service.clone(),
-        lease: Some(lease),
+        permit: Some(permit),
     })
 }
 
@@ -323,6 +384,7 @@ async fn save_checkpoint(
     let outcome = state
         .service
         .save_checkpoint(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             precondition,
@@ -368,7 +430,14 @@ async fn get_checkpoint(
     let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let view = state
         .service
-        .get_checkpoint(&principal, tenant_id, subject_id, agent_id, thread_id)
+        .get_checkpoint(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            agent_id,
+            thread_id,
+        )
         .await
         .map_err(Problem::from_service)?;
     let response = checkpoint_response(StatusCode::OK, view, None, false)?;
@@ -392,6 +461,7 @@ async fn append_episode(
     let episode = state
         .service
         .append_episode(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             AppendEpisode {
@@ -435,7 +505,13 @@ async fn get_episode(
 
     let episode = state
         .service
-        .get_episode(&principal, tenant_id, subject_id, episode_id)
+        .get_episode(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            episode_id,
+        )
         .await
         .map_err(Problem::from_service)?;
     let response = resource_response(StatusCode::OK, episode, None, false)?;
@@ -466,6 +542,7 @@ async fn create_fact(
     let outcome = state
         .service
         .create_fact(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             CreateFact {
@@ -521,7 +598,13 @@ async fn get_current_fact(
     let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let view = state
         .service
-        .get_current_fact(&principal, tenant_id, subject_id, fact_id)
+        .get_current_fact(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            fact_id,
+        )
         .await
         .map_err(Problem::from_service)?;
     let response = fact_response(StatusCode::OK, view, None, false)?;
@@ -553,6 +636,7 @@ async fn supersede_fact(
     let outcome = state
         .service
         .supersede_fact(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             expected_head_revision_id,
@@ -610,12 +694,15 @@ async fn get_fact_as_of(
     let view = state
         .service
         .get_fact_as_of(
+            content_lease.permit(),
             &principal,
             tenant_id,
             subject_id,
             fact_id,
-            valid_at,
-            recorded_at,
+            FactAsOfCoordinates {
+                valid_at,
+                recorded_at,
+            },
         )
         .await
         .map_err(Problem::from_service)?;
@@ -659,6 +746,7 @@ async fn create_retrieval(
     let outcome = state
         .service
         .create_retrieval(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             CreateRetrieval {
@@ -715,6 +803,7 @@ async fn get_retrieval(
     let receipt = state
         .service
         .get_retrieval(
+            content_lease.permit(),
             &principal,
             tenant_id,
             subject_id,
@@ -1246,5 +1335,53 @@ impl IntoResponse for Problem {
                 .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
         }
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering as AtomicOrdering},
+        task::Waker,
+    };
+
+    #[test]
+    fn expired_content_lease_never_yields_buffered_response_content() {
+        let mut body = Box::pin(ContentLeaseBody {
+            inner: Box::pin(Body::from("must-not-cross-expired-content-lease")),
+            expires_at: OffsetDateTime::now_utc() - time::Duration::SECOND,
+            guard: None,
+        });
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(matches!(
+            body.as_mut().poll_frame(&mut context),
+            Poll::Ready(None)
+        ));
+        assert!(body.is_end_stream());
+        assert_eq!(body.size_hint().exact(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn lease_release_retries_until_cleanup_succeeds() {
+        let counters_before = content_lease_cleanup_counters();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed_attempts = attempts.clone();
+        retry_content_lease_release(move || {
+            let attempts = attempts.clone();
+            async move {
+                if attempts.fetch_add(1, AtomicOrdering::SeqCst) < 2 {
+                    Err(())
+                } else {
+                    Ok(())
+                }
+            }
+        })
+        .await;
+        assert_eq!(observed_attempts.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(
+            content_lease_cleanup_counters().release_retries,
+            counters_before.release_retries + 2
+        );
     }
 }

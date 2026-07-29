@@ -1259,9 +1259,13 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
         repository.clone(),
         repository,
     );
+    let content_lease = service
+        .acquire_subject_content_lease(&principal, tenant_id, subject_id)
+        .await?;
 
     let replay = service
         .create_retrieval(
+            &content_lease,
             &principal,
             IDEMPOTENCY_KEY.to_owned(),
             CreateRetrieval {
@@ -1311,6 +1315,7 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
 
     let fetched = service
         .get_retrieval(
+            &content_lease,
             &principal,
             tenant_id,
             subject_id,
@@ -1322,5 +1327,8 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
         fetched == replay.receipt,
         "GET changed the migrated receipt"
     );
+    service
+        .release_subject_content_lease(&content_lease)
+        .await?;
     Ok(())
 }

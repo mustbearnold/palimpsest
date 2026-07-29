@@ -15,9 +15,9 @@ use palimpsest_domain::{
     RecencyProfile, RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalEmbeddingLineage,
     RetrievalId, RetrievalItem, RetrievalPerspective, RetrievalPolicy, RetrievalPolicyId,
     RetrievalQueryEmbeddingLineage, RetrievalReceipt, RetrievalScore, RevisionId, ScoreUnits,
-    Sensitivity, SourceType, SubjectContentLease, SubjectId, TemporalOrderKey, TemporalScoreInput,
-    TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
-    score_temporal_retrieval,
+    Sensitivity, SourceType, SubjectContentLease, SubjectId, SubjectLifecycle,
+    SubjectLifecycleState, TemporalOrderKey, TemporalScoreInput, TenantId, ThreadId, ValidTime,
+    WritePolicy, WritePolicyId, WritePolicyVersion, score_temporal_retrieval,
 };
 use pgvector::Vector;
 use sha2::{Digest, Sha256};
@@ -88,10 +88,12 @@ impl EmbeddingProjectionCoordinator {
         let lease = lifecycle_repository
             .acquire_content_lease(&principal, tenant_id, subject_id)
             .await?;
-        let rebuild = self
-            .rebuild_pending_with_lease(tenant_id, subject_id, batch_size)
-            .await;
-        let release = lifecycle_repository.release_content_lease(lease).await;
+        let rebuild = run_with_content_lease_deadline(
+            lease.expires_at,
+            self.rebuild_pending_with_lease(tenant_id, subject_id, batch_size),
+        )
+        .await;
+        let release = lifecycle_repository.release_content_lease(&lease).await;
         match (rebuild, release) {
             (Ok(report), Ok(())) => Ok(report),
             (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
@@ -535,6 +537,27 @@ impl EmbeddingProjectionCoordinator {
         transaction.commit().await.map_err(unexpected)?;
         Ok(result.rows_affected() == 1)
     }
+}
+
+fn remaining_content_lease_duration(
+    expires_at: OffsetDateTime,
+) -> Result<std::time::Duration, RepositoryError> {
+    let remaining = expires_at - OffsetDateTime::now_utc();
+    if remaining <= time::Duration::ZERO {
+        Ok(std::time::Duration::ZERO)
+    } else {
+        std::time::Duration::try_from(remaining).map_err(unexpected)
+    }
+}
+
+async fn run_with_content_lease_deadline<T>(
+    expires_at: OffsetDateTime,
+    future: impl std::future::Future<Output = Result<T, RepositoryError>>,
+) -> Result<T, RepositoryError> {
+    let remaining = remaining_content_lease_duration(expires_at)?;
+    tokio::time::timeout(remaining, future)
+        .await
+        .map_err(|_| RepositoryError::Unexpected("projection content lease expired".to_owned()))?
 }
 
 fn embedding_vector_sha256(values: &[f32]) -> String {
@@ -3131,7 +3154,7 @@ impl SubjectLifecycleRepository for PostgresMemoryRepository {
 
     async fn release_content_lease(
         &self,
-        lease: SubjectContentLease,
+        lease: &SubjectContentLease,
     ) -> Result<(), RepositoryError> {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope_context(&mut transaction, lease.tenant_id, lease.subject_id).await?;
@@ -3153,6 +3176,94 @@ impl SubjectLifecycleRepository for PostgresMemoryRepository {
         .map_err(unexpected)?;
         transaction.commit().await.map_err(unexpected)?;
         Ok(())
+    }
+
+    async fn transition_to_deletion_pending(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        self.transition_subject_lifecycle(
+            tenant_id,
+            subject_id,
+            SubjectLifecycleState::DeletionPending,
+        )
+        .await
+    }
+
+    async fn transition_to_deleted(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        self.transition_subject_lifecycle(tenant_id, subject_id, SubjectLifecycleState::Deleted)
+            .await
+    }
+}
+
+impl PostgresMemoryRepository {
+    async fn transition_subject_lifecycle(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        target: SubjectLifecycleState,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        const MAX_SERIALIZATION_ATTEMPTS: usize = 3;
+        for attempt in 1..=MAX_SERIALIZATION_ATTEMPTS {
+            match self
+                .transition_subject_lifecycle_once(tenant_id, subject_id, target)
+                .await
+            {
+                Err(RepositoryError::SerializationRetry)
+                    if attempt < MAX_SERIALIZATION_ATTEMPTS => {}
+                outcome => return outcome,
+            }
+        }
+        unreachable!("the bounded lifecycle serialization retry loop always returns")
+    }
+
+    async fn transition_subject_lifecycle_once(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        target: SubjectLifecycleState,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+            .execute(&mut *transaction)
+            .await
+            .map_err(map_lifecycle_sqlx)?;
+        set_scope_context(&mut transaction, tenant_id, subject_id).await?;
+        let state_version = match target {
+            SubjectLifecycleState::DeletionPending => sqlx::query_scalar::<_, i64>(
+                "SELECT memory.transition_subject_to_deletion_pending($1, $2)",
+            )
+            .bind(tenant_id.0)
+            .bind(subject_id.0)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(map_lifecycle_sqlx)?,
+            SubjectLifecycleState::Deleted => {
+                sqlx::query_scalar::<_, i64>("SELECT memory.transition_subject_to_deleted($1, $2)")
+                    .bind(tenant_id.0)
+                    .bind(subject_id.0)
+                    .fetch_one(&mut *transaction)
+                    .await
+                    .map_err(map_lifecycle_sqlx)?
+            }
+            SubjectLifecycleState::Active => {
+                return Err(RepositoryError::Unexpected(
+                    "active is not a lifecycle transition target".to_owned(),
+                ));
+            }
+        };
+        transaction.commit().await.map_err(map_lifecycle_sqlx)?;
+        Ok(SubjectLifecycle {
+            tenant_id,
+            subject_id,
+            state: target,
+            state_version: u64::try_from(state_version).map_err(unexpected)?,
+        })
     }
 }
 
@@ -4719,6 +4830,18 @@ fn map_retrieval_sqlx(error: sqlx::Error) -> RepositoryError {
     }
 }
 
+fn map_lifecycle_sqlx(error: sqlx::Error) -> RepositoryError {
+    let code = error
+        .as_database_error()
+        .and_then(|database_error| database_error.code());
+    match code.as_deref() {
+        Some("40001") => RepositoryError::SerializationRetry,
+        Some("P0002") => RepositoryError::NotFound,
+        Some("23000" | "55000") => RepositoryError::Conflict,
+        _ => unexpected(error),
+    }
+}
+
 fn map_checkpoint_sqlx(error: sqlx::Error) -> RepositoryError {
     let Some(database_error) = error.as_database_error() else {
         return unexpected(error);
@@ -4756,4 +4879,21 @@ fn map_checkpoint_sqlx(error: sqlx::Error) -> RepositoryError {
 
 fn unexpected(error: impl std::fmt::Display) -> RepositoryError {
     RepositoryError::Unexpected(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn projection_work_is_cancelled_at_the_content_lease_deadline() {
+        let result = run_with_content_lease_deadline::<()>(
+            OffsetDateTime::now_utc() + time::Duration::milliseconds(10),
+            std::future::pending(),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(RepositoryError::Unexpected(message)) if message == "projection content lease expired")
+        );
+    }
 }

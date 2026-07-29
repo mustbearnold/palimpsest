@@ -37,6 +37,15 @@ BEGIN
         RAISE EXCEPTION 'subject lifecycle version must advance by one'
             USING ERRCODE = '23000';
     END IF;
+    IF NEW.lifecycle_state = 'deleted' AND EXISTS (
+        SELECT 1
+        FROM memory.subject_content_leases AS lease
+        WHERE lease.tenant_id = OLD.tenant_id
+          AND lease.subject_id = OLD.subject_id
+    ) THEN
+        RAISE EXCEPTION 'subject lifecycle cannot reach deleted while content leases remain'
+            USING ERRCODE = '55000';
+    END IF;
     NEW.updated_at := clock_timestamp();
     RETURN NEW;
 END;
@@ -130,6 +139,55 @@ CREATE TRIGGER reject_subject_content_lease_update
 BEFORE UPDATE ON memory.subject_content_leases
 FOR EACH ROW
 EXECUTE FUNCTION memory.reject_subject_content_lease_update();
+
+CREATE FUNCTION memory.transition_subject_to_deleted(
+    candidate_tenant_id uuid,
+    candidate_subject_id uuid
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog, memory
+AS $$
+DECLARE
+    current_state text;
+    current_version bigint;
+BEGIN
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(
+            candidate_tenant_id::text || ':' || candidate_subject_id::text,
+            0
+        )
+    );
+
+    SELECT lifecycle_state, state_version
+    INTO current_state, current_version
+    FROM memory.subject_lifecycles
+    WHERE tenant_id = candidate_tenant_id
+      AND subject_id = candidate_subject_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'subject lifecycle does not exist'
+            USING ERRCODE = 'P0002';
+    ELSIF current_state = 'deletion_pending' THEN
+        UPDATE memory.subject_lifecycles
+        SET lifecycle_state = 'deleted',
+            state_version = state_version + 1
+        WHERE tenant_id = candidate_tenant_id
+          AND subject_id = candidate_subject_id
+        RETURNING state_version INTO current_version;
+    ELSIF current_state <> 'deleted' THEN
+        RAISE EXCEPTION 'active subject cannot transition directly to deleted'
+            USING ERRCODE = '55000';
+    END IF;
+
+    RETURN current_version;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION memory.transition_subject_to_deleted(uuid, uuid)
+FROM PUBLIC;
 
 INSERT INTO memory.subject_lifecycles (
     tenant_id, subject_id, lifecycle_state, state_version

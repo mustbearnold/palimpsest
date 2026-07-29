@@ -6,9 +6,9 @@ use palimpsest_domain::{
     CompleteEffectTransition, CreateFact, CreateRetrieval, EffectId, EffectTransition,
     EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode, EpisodeId, FactId,
     FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
-    NewPreparedEffect, NewRetrieval, PrincipalScope, RetrievalFilters, RetrievalId,
+    NewPreparedEffect, NewRetrieval, OperationGrant, PrincipalScope, RetrievalFilters, RetrievalId,
     RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity,
-    SubjectContentLease, SubjectId, SupersedeFact, TenantId, ThreadId,
+    SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact, TenantId, ThreadId,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -163,8 +163,20 @@ pub trait SubjectLifecycleRepository: Send + Sync {
 
     async fn release_content_lease(
         &self,
-        lease: SubjectContentLease,
+        lease: &SubjectContentLease,
     ) -> Result<(), RepositoryError>;
+
+    async fn transition_to_deletion_pending(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, RepositoryError>;
+
+    async fn transition_to_deleted(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, RepositoryError>;
 }
 
 #[derive(Clone, Debug)]
@@ -303,6 +315,23 @@ pub enum ServiceError {
     Unavailable,
 }
 
+#[derive(Debug)]
+pub struct ContentLeasePermit {
+    lease: SubjectContentLease,
+}
+
+impl ContentLeasePermit {
+    pub fn expires_at(&self) -> time::OffsetDateTime {
+        self.lease.expires_at
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FactAsOfCoordinates {
+    pub valid_at: time::OffsetDateTime,
+    pub recorded_at: time::OffsetDateTime,
+}
+
 #[derive(Clone)]
 pub struct MemoryService {
     lifecycles: Arc<dyn SubjectLifecycleRepository>,
@@ -341,32 +370,71 @@ impl MemoryService {
         principal: &PrincipalScope,
         tenant_id: TenantId,
         subject_id: SubjectId,
-    ) -> Result<SubjectContentLease, ServiceError> {
+    ) -> Result<ContentLeasePermit, ServiceError> {
         authorize(principal, tenant_id, subject_id)?;
-        self.lifecycles
+        let lease = self
+            .lifecycles
             .acquire_content_lease(principal, tenant_id, subject_id)
             .await
-            .map_err(map_repository)
+            .map_err(map_repository)?;
+        Ok(ContentLeasePermit { lease })
     }
 
     pub async fn release_subject_content_lease(
         &self,
-        lease: SubjectContentLease,
+        permit: &ContentLeasePermit,
     ) -> Result<(), ServiceError> {
         self.lifecycles
-            .release_content_lease(lease)
+            .release_content_lease(&permit.lease)
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn fence_subject_for_deletion(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::SubjectDelete,
+        )?;
+        self.lifecycles
+            .transition_to_deletion_pending(tenant_id, subject_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn mark_subject_deleted(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::SubjectDelete,
+        )?;
+        self.lifecycles
+            .transition_to_deleted(tenant_id, subject_id)
             .await
             .map_err(map_repository)
     }
 
     pub async fn save_checkpoint(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         idempotency_key: String,
         precondition: CheckpointPrecondition,
         command: SaveCheckpoint,
     ) -> Result<CheckpointMutationOutcome, ServiceError> {
-        authorize(principal, command.tenant_id, command.subject_id)?;
+        authorize_content(permit, principal, command.tenant_id, command.subject_id)?;
         validate_idempotency_key(&idempotency_key)?;
         validate_checkpoint(&command, precondition)?;
 
@@ -417,59 +485,67 @@ impl MemoryService {
             })
             .collect();
 
-        self.checkpoints
-            .save(
-                NewCheckpointRevision {
-                    tenant_id: command.tenant_id,
-                    subject_id: command.subject_id,
-                    agent_id: command.agent_id,
-                    thread_id: command.thread_id,
-                    case_id: command.case_id,
-                    checkpoint_id: palimpsest_domain::CheckpointId(Uuid::now_v7()),
-                    revision_id: CheckpointRevisionId(Uuid::now_v7()),
-                    parent_revision_id: command.parent_revision_id,
-                    precondition,
-                    state: command.state,
-                    state_schema_version: command.state_schema_version,
-                    effect_transitions,
-                    provenance: command.provenance,
-                    sensitivity: command.sensitivity,
-                    retention_policy_id: command.retention_policy_id,
-                    writer_principal_id: principal.principal_id.clone(),
-                    schema_version: 1,
-                    state_sha256,
-                },
-                IdempotencyRequest {
-                    key: idempotency_key,
-                    fingerprint,
-                },
-            )
-            .await
-            .map_err(map_repository)
+        await_content_operation(permit, async {
+            self.checkpoints
+                .save(
+                    NewCheckpointRevision {
+                        tenant_id: command.tenant_id,
+                        subject_id: command.subject_id,
+                        agent_id: command.agent_id,
+                        thread_id: command.thread_id,
+                        case_id: command.case_id,
+                        checkpoint_id: palimpsest_domain::CheckpointId(Uuid::now_v7()),
+                        revision_id: CheckpointRevisionId(Uuid::now_v7()),
+                        parent_revision_id: command.parent_revision_id,
+                        precondition,
+                        state: command.state,
+                        state_schema_version: command.state_schema_version,
+                        effect_transitions,
+                        provenance: command.provenance,
+                        sensitivity: command.sensitivity,
+                        retention_policy_id: command.retention_policy_id,
+                        writer_principal_id: principal.principal_id.clone(),
+                        schema_version: 1,
+                        state_sha256,
+                    },
+                    IdempotencyRequest {
+                        key: idempotency_key,
+                        fingerprint,
+                    },
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn get_checkpoint(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         tenant_id: TenantId,
         subject_id: SubjectId,
         agent_id: AgentId,
         thread_id: ThreadId,
     ) -> Result<CheckpointView, ServiceError> {
-        authorize(principal, tenant_id, subject_id)?;
-        self.checkpoints
-            .get_current(tenant_id, subject_id, agent_id, thread_id)
-            .await
-            .map_err(map_repository)
+        authorize_content(permit, principal, tenant_id, subject_id)?;
+        await_content_operation(permit, async {
+            self.checkpoints
+                .get_current(tenant_id, subject_id, agent_id, thread_id)
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn append_episode(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         idempotency_key: String,
         command: AppendEpisode,
     ) -> Result<AppendOutcome, ServiceError> {
-        authorize(principal, command.tenant_id, command.subject_id)?;
+        authorize_content(permit, principal, command.tenant_id, command.subject_id)?;
         validate_append(&command)?;
 
         let fingerprint_input = json!({
@@ -507,39 +583,47 @@ impl MemoryService {
             payload_sha256,
         };
 
-        self.episodes
-            .append(
-                episode,
-                IdempotencyRequest {
-                    key: idempotency_key,
-                    fingerprint,
-                },
-            )
-            .await
-            .map_err(map_repository)
+        await_content_operation(permit, async {
+            self.episodes
+                .append(
+                    episode,
+                    IdempotencyRequest {
+                        key: idempotency_key,
+                        fingerprint,
+                    },
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn get_episode(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         tenant_id: TenantId,
         subject_id: SubjectId,
         episode_id: EpisodeId,
     ) -> Result<Episode, ServiceError> {
-        authorize(principal, tenant_id, subject_id)?;
-        self.episodes
-            .get(tenant_id, subject_id, episode_id)
-            .await
-            .map_err(map_repository)
+        authorize_content(permit, principal, tenant_id, subject_id)?;
+        await_content_operation(permit, async {
+            self.episodes
+                .get(tenant_id, subject_id, episode_id)
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn create_fact(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         idempotency_key: String,
         command: CreateFact,
     ) -> Result<FactMutationOutcome, ServiceError> {
-        authorize(principal, command.tenant_id, command.subject_id)?;
+        authorize_content(permit, principal, command.tenant_id, command.subject_id)?;
         validate_create_fact(&command)?;
 
         let fingerprint_input = json!({
@@ -588,40 +672,48 @@ impl MemoryService {
             schema_version: 1,
             value_sha256,
         };
-        self.facts
-            .create(
-                fact,
-                IdempotencyRequest {
-                    key: idempotency_key,
-                    fingerprint,
-                },
-            )
-            .await
-            .map_err(map_repository)
+        await_content_operation(permit, async {
+            self.facts
+                .create(
+                    fact,
+                    IdempotencyRequest {
+                        key: idempotency_key,
+                        fingerprint,
+                    },
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn get_current_fact(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         tenant_id: TenantId,
         subject_id: SubjectId,
         fact_id: FactId,
     ) -> Result<FactView, ServiceError> {
-        authorize(principal, tenant_id, subject_id)?;
-        self.facts
-            .get_current(tenant_id, subject_id, fact_id)
-            .await
-            .map_err(map_repository)
+        authorize_content(permit, principal, tenant_id, subject_id)?;
+        await_content_operation(permit, async {
+            self.facts
+                .get_current(tenant_id, subject_id, fact_id)
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn supersede_fact(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         idempotency_key: String,
         expected_head_revision_id: RevisionId,
         command: SupersedeFact,
     ) -> Result<FactMutationOutcome, ServiceError> {
-        authorize(principal, command.tenant_id, command.subject_id)?;
+        authorize_content(permit, principal, command.tenant_id, command.subject_id)?;
         validate_fact_revision(FactRevisionValidation {
             value: &command.value,
             valid_time: &command.valid_time,
@@ -658,59 +750,72 @@ impl MemoryService {
             serde_json::to_vec(&command.value)
                 .map_err(|error| ServiceError::Invalid(error.to_string()))?,
         ));
-        self.facts
-            .supersede(
-                NewFactRevision {
-                    tenant_id: command.tenant_id,
-                    subject_id: command.subject_id,
-                    fact_id: command.fact_id,
-                    revision_id: RevisionId(Uuid::now_v7()),
-                    supersedes_revision_id: command.supersedes_revision_id,
-                    expected_head_revision_id,
-                    value: command.value,
-                    observed_at: command.observed_at,
-                    valid_time: command.valid_time,
-                    evidence_episode_ids: command.evidence_episode_ids,
-                    write_policy: command.write_policy,
-                    confidence: command.confidence,
-                    sensitivity: command.sensitivity,
-                    retention_policy_id: command.retention_policy_id,
-                    writer_principal_id: principal.principal_id.clone(),
-                    schema_version: 1,
-                    value_sha256,
-                },
-                IdempotencyRequest {
-                    key: idempotency_key,
-                    fingerprint,
-                },
-            )
-            .await
-            .map_err(map_repository)
+        await_content_operation(permit, async {
+            self.facts
+                .supersede(
+                    NewFactRevision {
+                        tenant_id: command.tenant_id,
+                        subject_id: command.subject_id,
+                        fact_id: command.fact_id,
+                        revision_id: RevisionId(Uuid::now_v7()),
+                        supersedes_revision_id: command.supersedes_revision_id,
+                        expected_head_revision_id,
+                        value: command.value,
+                        observed_at: command.observed_at,
+                        valid_time: command.valid_time,
+                        evidence_episode_ids: command.evidence_episode_ids,
+                        write_policy: command.write_policy,
+                        confidence: command.confidence,
+                        sensitivity: command.sensitivity,
+                        retention_policy_id: command.retention_policy_id,
+                        writer_principal_id: principal.principal_id.clone(),
+                        schema_version: 1,
+                        value_sha256,
+                    },
+                    IdempotencyRequest {
+                        key: idempotency_key,
+                        fingerprint,
+                    },
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn get_fact_as_of(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         tenant_id: TenantId,
         subject_id: SubjectId,
         fact_id: FactId,
-        valid_at: time::OffsetDateTime,
-        recorded_at: time::OffsetDateTime,
+        coordinates: FactAsOfCoordinates,
     ) -> Result<FactView, ServiceError> {
-        authorize(principal, tenant_id, subject_id)?;
-        self.facts
-            .get_as_of(tenant_id, subject_id, fact_id, valid_at, recorded_at)
-            .await
-            .map_err(map_repository)
+        authorize_content(permit, principal, tenant_id, subject_id)?;
+        await_content_operation(permit, async {
+            self.facts
+                .get_as_of(
+                    tenant_id,
+                    subject_id,
+                    fact_id,
+                    coordinates.valid_at,
+                    coordinates.recorded_at,
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn create_retrieval(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         idempotency_key: String,
         command: CreateRetrieval,
     ) -> Result<RetrievalMutationOutcome, ServiceError> {
-        authorize(principal, command.tenant_id, command.subject_id)?;
+        authorize_content(permit, principal, command.tenant_id, command.subject_id)?;
         validate_idempotency_key(&idempotency_key)?;
         if !(1..=50).contains(&command.page_size) {
             return Err(ServiceError::Unprocessable(
@@ -784,28 +889,32 @@ impl MemoryService {
             fingerprint,
         };
 
-        let embedding_profile = match self
-            .retrievals
-            .prepare_receipt(&retrieval, &idempotency)
-            .await
-            .map_err(map_repository)?
-        {
+        let preparation = await_content_operation(permit, async {
+            self.retrievals
+                .prepare_receipt(&retrieval, &idempotency)
+                .await
+                .map_err(map_repository)
+        })
+        .await?;
+        let embedding_profile = match preparation {
             RetrievalPreparation::Replay(outcome) => return Ok(outcome),
             RetrievalPreparation::Execute { embedding_profile } => embedding_profile,
         };
         let query_embedding = if let Some(profile) = embedding_profile {
-            let response = self
-                .embeddings
-                .embed(EmbeddingRequest {
-                    profile: profile.clone(),
-                    task: EmbeddingTask::Query,
-                    inputs: vec![EmbeddingInput {
-                        input_sha256: retrieval.query_sha256.clone(),
-                        content: retrieval.query.as_str().to_owned(),
-                    }],
-                })
-                .await
-                .map_err(|_| ServiceError::Unavailable)?;
+            let response = await_content_operation(permit, async {
+                self.embeddings
+                    .embed(EmbeddingRequest {
+                        profile: profile.clone(),
+                        task: EmbeddingTask::Query,
+                        inputs: vec![EmbeddingInput {
+                            input_sha256: retrieval.query_sha256.clone(),
+                            content: retrieval.query.as_str().to_owned(),
+                        }],
+                    })
+                    .await
+                    .map_err(|_| ServiceError::Unavailable)
+            })
+            .await?;
             let mut outputs =
                 validate_embedding_response(&profile, &[retrieval.query_sha256.as_str()], response)
                     .map_err(|_| ServiceError::Unavailable)?;
@@ -817,21 +926,25 @@ impl MemoryService {
             None
         };
 
-        self.retrievals
-            .create_receipt(retrieval, idempotency, query_embedding)
-            .await
-            .map_err(map_repository)
+        await_content_operation(permit, async {
+            self.retrievals
+                .create_receipt(retrieval, idempotency, query_embedding)
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 
     pub async fn get_retrieval(
         &self,
+        permit: &ContentLeasePermit,
         principal: &PrincipalScope,
         tenant_id: TenantId,
         subject_id: SubjectId,
         retrieval_id: RetrievalId,
         cursor: Option<String>,
     ) -> Result<RetrievalReceipt, ServiceError> {
-        authorize(principal, tenant_id, subject_id)?;
+        authorize_content(permit, principal, tenant_id, subject_id)?;
         if cursor
             .as_ref()
             .is_some_and(|value| value.is_empty() || value.len() > 2048)
@@ -849,17 +962,20 @@ impl MemoryService {
             subject_id,
             &allowed_sensitivities,
         )?;
-        self.retrievals
-            .get_receipt(
-                principal,
-                tenant_id,
-                subject_id,
-                retrieval_id,
-                cursor,
-                authorization_scope_sha256,
-            )
-            .await
-            .map_err(map_repository)
+        await_content_operation(permit, async {
+            self.retrievals
+                .get_receipt(
+                    principal,
+                    tenant_id,
+                    subject_id,
+                    retrieval_id,
+                    cursor,
+                    authorization_scope_sha256,
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await
     }
 }
 
@@ -977,6 +1093,52 @@ fn authorize(
     subject_id: SubjectId,
 ) -> Result<(), ServiceError> {
     if principal.authorizes(tenant_id, subject_id) {
+        Ok(())
+    } else {
+        Err(ServiceError::NotFound)
+    }
+}
+
+fn authorize_content(
+    permit: &ContentLeasePermit,
+    principal: &PrincipalScope,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+) -> Result<(), ServiceError> {
+    authorize(principal, tenant_id, subject_id)?;
+    if permit.lease.tenant_id == tenant_id
+        && permit.lease.subject_id == subject_id
+        && permit.lease.principal_id == principal.principal_id
+        && time::OffsetDateTime::now_utc() < permit.lease.expires_at
+    {
+        Ok(())
+    } else {
+        Err(ServiceError::NotFound)
+    }
+}
+
+async fn await_content_operation<T>(
+    permit: &ContentLeasePermit,
+    future: impl std::future::Future<Output = Result<T, ServiceError>>,
+) -> Result<T, ServiceError> {
+    let remaining = permit.lease.expires_at - time::OffsetDateTime::now_utc();
+    let remaining = if remaining <= time::Duration::ZERO {
+        std::time::Duration::ZERO
+    } else {
+        std::time::Duration::try_from(remaining).map_err(|_| ServiceError::Unavailable)?
+    };
+    tokio::time::timeout(remaining, future)
+        .await
+        .map_err(|_| ServiceError::Unavailable)?
+}
+
+fn authorize_operation(
+    principal: &PrincipalScope,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    operation: OperationGrant,
+) -> Result<(), ServiceError> {
+    if principal.authorizes(tenant_id, subject_id) && principal.authorizes_operation(operation) {
         Ok(())
     } else {
         Err(ServiceError::NotFound)
@@ -1161,5 +1323,43 @@ fn map_repository(error: RepositoryError) -> ServiceError {
         RepositoryError::WritePolicyRejected => ServiceError::WritePolicyRejected,
         RepositoryError::SerializationRetry => ServiceError::Unavailable,
         RepositoryError::Unexpected(_) => ServiceError::Unavailable,
+    }
+}
+
+#[cfg(test)]
+mod content_lease_tests {
+    use super::*;
+    use palimpsest_domain::{ContentLeaseId, PrincipalId};
+
+    #[test]
+    fn expired_or_mismatched_permits_cannot_authorize_content_operations() {
+        let tenant_id = TenantId(Uuid::now_v7());
+        let subject_id = SubjectId(Uuid::now_v7());
+        let principal = PrincipalScope {
+            principal_id: PrincipalId("permit-test-principal".to_owned()),
+            tenant_id,
+            subject_ids: vec![subject_id],
+            allowed_sensitivities: vec![],
+            operation_grants: vec![],
+        };
+        let permit = ContentLeasePermit {
+            lease: SubjectContentLease {
+                tenant_id,
+                subject_id,
+                lease_id: ContentLeaseId(Uuid::now_v7()),
+                principal_id: principal.principal_id.clone(),
+                acquired_at: time::OffsetDateTime::now_utc() - time::Duration::SECOND,
+                expires_at: time::OffsetDateTime::now_utc() - time::Duration::MILLISECOND,
+            },
+        };
+
+        assert!(matches!(
+            authorize_content(&permit, &principal, tenant_id, subject_id),
+            Err(ServiceError::NotFound)
+        ));
+        assert!(matches!(
+            authorize_content(&permit, &principal, tenant_id, SubjectId(Uuid::now_v7())),
+            Err(ServiceError::NotFound)
+        ));
     }
 }
