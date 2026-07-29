@@ -31,8 +31,8 @@ struct CorpusManifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Scenario {
     pub id: String,
-    pub category: String,
-    pub split: String,
+    pub category: ScenarioCategory,
+    pub split: CorpusSplit,
     pub query: String,
     pub expected_disposition: ExpectedDisposition,
     pub relevant_ids: Vec<String>,
@@ -41,6 +41,24 @@ pub struct Scenario {
     pub case_id: String,
     pub perspective: PerspectiveFixture,
     pub facts: Vec<FactFixture>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScenarioCategory {
+    AbstentionConflictReady,
+    ExactName,
+    IsolationLifecycle,
+    StableVersusDecaying,
+    StaleDistractor,
+    TemporalContradiction,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CorpusSplit {
+    Calibration,
+    Gate,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -251,13 +269,8 @@ fn validate_corpus(corpus: &Corpus) -> Result<()> {
             "duplicate scenario {}",
             scenario.id
         );
-        *category_counts
-            .entry(scenario.category.as_str())
-            .or_insert(0usize) += 1;
-        *split_counts
-            .entry(scenario.split.as_str())
-            .or_insert(0usize) += 1;
-        ensure!(matches!(scenario.split.as_str(), "calibration" | "gate"));
+        *category_counts.entry(scenario.category).or_insert(0usize) += 1;
+        *split_counts.entry(scenario.split).or_insert(0usize) += 1;
         ensure!(!scenario.query.is_empty());
         ensure!(Uuid::parse_str(&scenario.case_id).is_ok());
         ensure!(
@@ -291,16 +304,16 @@ fn validate_corpus(corpus: &Corpus) -> Result<()> {
     ensure!(
         category_counts
             == BTreeMap::from([
-                ("abstention-conflict-ready", 16),
-                ("exact-name", 24),
-                ("isolation-lifecycle", 32),
-                ("stable-versus-decaying", 16),
-                ("stale-distractor", 16),
-                ("temporal-contradiction", 24),
+                (ScenarioCategory::AbstentionConflictReady, 16),
+                (ScenarioCategory::ExactName, 24),
+                (ScenarioCategory::IsolationLifecycle, 32),
+                (ScenarioCategory::StableVersusDecaying, 16),
+                (ScenarioCategory::StaleDistractor, 16),
+                (ScenarioCategory::TemporalContradiction, 24),
             ])
     );
-    ensure!(split_counts.get("calibration") == Some(&32));
-    ensure!(split_counts.get("gate") == Some(&96));
+    ensure!(split_counts.get(&CorpusSplit::Calibration) == Some(&32));
+    ensure!(split_counts.get(&CorpusSplit::Gate) == Some(&96));
     Ok(())
 }
 
@@ -460,9 +473,9 @@ pub async fn evaluate_frozen_corpus(
                     calibration: calculate_metrics(
                         corpus,
                         &baseline.scenarios,
-                        Some("calibration"),
+                        Some(CorpusSplit::Calibration),
                     )?,
-                    gate: calculate_metrics(corpus, &baseline.scenarios, Some("gate"))?,
+                    gate: calculate_metrics(corpus, &baseline.scenarios, Some(CorpusSplit::Gate))?,
                     all: calculate_metrics(corpus, &baseline.scenarios, None)?,
                 },
             ))
@@ -912,7 +925,7 @@ fn vector_only_prediction(hybrid: &ScenarioPrediction) -> ScenarioPrediction {
 fn calculate_metrics(
     corpus: &Corpus,
     predictions: &[ScenarioPrediction],
-    split: Option<&str>,
+    split: Option<CorpusSplit>,
 ) -> Result<Metrics> {
     ensure!(corpus.scenarios.len() == predictions.len());
     let by_id = predictions
@@ -942,10 +955,10 @@ fn calculate_metrics(
             .iter()
             .position(|id| scenario.relevant_ids.contains(id))
             .map(|i| i + 1);
-        if scenario.category == "exact-name" {
+        if scenario.category == ScenarioCategory::ExactName {
             exact_hits.push(first_relevant_rank == Some(1));
         }
-        if scenario.category == "temporal-contradiction" {
+        if scenario.category == ScenarioCategory::TemporalContradiction {
             temporal_hits.push(first_relevant_rank == Some(1));
         }
         if scenario.expected_disposition == ExpectedDisposition::Abstained {
@@ -962,8 +975,10 @@ fn calculate_metrics(
             let recall = hits as f64 / scenario.relevant_ids.len() as f64;
             recalls.push(recall);
             if matches!(
-                scenario.category.as_str(),
-                "temporal-contradiction" | "stale-distractor" | "stable-versus-decaying"
+                scenario.category,
+                ScenarioCategory::TemporalContradiction
+                    | ScenarioCategory::StaleDistractor
+                    | ScenarioCategory::StableVersusDecaying
             ) {
                 temporal_recalls.push(recall);
             }

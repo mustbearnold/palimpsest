@@ -25,7 +25,7 @@ def fact(
     namespace: str,
     key: str,
     text: str,
-    vector: str,
+    embedding_fixture_role: str,
     sensitivity: str = "internal",
     retention_policy_id: str = "standard",
     observed_at: str = BASE_VALID,
@@ -41,7 +41,7 @@ def fact(
         "namespace": namespace,
         "key": key,
         "text": text,
-        "embedding_fixture_role": vector,
+        "embedding_fixture_role": embedding_fixture_role,
         "sensitivity": sensitivity,
         "retention_policy_id": retention_policy_id,
         "observed_at": observed_at,
@@ -79,8 +79,8 @@ def scenario(category: str, index: int, ordinal: int, calibration_count: int) ->
         key = token
         common["query"] = f"{namespace}:{key}"
         common["facts"] = [
-            fact(sid, "relevant", namespace=namespace, key=key, text="canonical identity", vector="near"),
-            fact(sid, "distractor", namespace=namespace, key=f"other-{index:03d}", text=f"{token} {token}", vector="distractor"),
+            fact(sid, "relevant", namespace=namespace, key=key, text="canonical identity", embedding_fixture_role="near"),
+            fact(sid, "distractor", namespace=namespace, key=f"other-{index:03d}", text=f"{token} {token}", embedding_fixture_role="distractor"),
         ]
         common["expected_candidate_ids"] = [f"{sid}-relevant", f"{sid}-distractor"]
     elif category == "temporal-contradiction":
@@ -89,9 +89,9 @@ def scenario(category: str, index: int, ordinal: int, calibration_count: int) ->
         common["perspective"] = "before-successor" if index % 2 else "after-successor"
         common["relevant_ids"] = [f"{sid}-{expected}"]
         common["facts"] = [
-            fact(sid, "root", namespace=namespace, key=f"state-{index:03d}", text=f"{token} earlier evidence", vector="near", observed_at="2026-04-01T00:00:00Z", valid_from="2026-04-01T00:00:00Z", confidence=0.9),
-            fact(sid, "relevant", namespace=namespace, key=f"state-{index:03d}", text=f"{token} corrected evidence", vector="relevant", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z", confidence=1.0, supersedes=root_id),
-            fact(sid, "distractor", namespace=namespace, key=f"stale-{index:03d}", text=f"{token} {token}", vector="distractor", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z", write_policy_id="temporal-active-case-evidence"),
+            fact(sid, "root", namespace=namespace, key=f"state-{index:03d}", text=f"{token} earlier evidence", embedding_fixture_role="near", observed_at="2026-04-01T00:00:00Z", valid_from="2026-04-01T00:00:00Z", confidence=0.9),
+            fact(sid, "relevant", namespace=namespace, key=f"state-{index:03d}", text=f"{token} corrected evidence", embedding_fixture_role="relevant", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z", confidence=1.0, supersedes=root_id),
+            fact(sid, "distractor", namespace=namespace, key=f"stale-{index:03d}", text=f"{token} {token}", embedding_fixture_role="distractor", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z", write_policy_id="temporal-active-case-evidence"),
         ]
         common["expected_candidate_ids"] = (
             [f"{sid}-root"]
@@ -100,14 +100,14 @@ def scenario(category: str, index: int, ordinal: int, calibration_count: int) ->
         )
     elif category == "stale-distractor":
         common["facts"] = [
-            fact(sid, "relevant", namespace=namespace, key=f"recent-{index:03d}", text=f"{token} current", vector="relevant", observed_at=BASE_VALID, valid_from=BASE_VALID, write_policy_id="temporal-active-case-evidence"),
-            fact(sid, "distractor", namespace=namespace, key=f"stale-{index:03d}", text=f"{token} {token} {token}", vector="near", observed_at="2026-04-01T00:00:00Z", valid_from="2026-04-01T00:00:00Z", write_policy_id="temporal-active-case-evidence"),
+            fact(sid, "relevant", namespace=namespace, key=f"recent-{index:03d}", text=f"{token} current", embedding_fixture_role="relevant", observed_at=BASE_VALID, valid_from=BASE_VALID, write_policy_id="temporal-active-case-evidence"),
+            fact(sid, "distractor", namespace=namespace, key=f"stale-{index:03d}", text=f"{token} {token} {token}", embedding_fixture_role="near", observed_at="2026-04-01T00:00:00Z", valid_from="2026-04-01T00:00:00Z", write_policy_id="temporal-active-case-evidence"),
         ]
         common["expected_candidate_ids"] = [f"{sid}-relevant", f"{sid}-distractor"]
     elif category == "stable-versus-decaying":
         common["facts"] = [
-            fact(sid, "relevant", namespace=namespace, key=f"stable-{index:03d}", text=f"{token} durable", vector="relevant", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z"),
-            fact(sid, "distractor", namespace=namespace, key=f"active-{index:03d}", text=f"{token} {token}", vector="near", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z", write_policy_id="temporal-active-case-evidence"),
+            fact(sid, "relevant", namespace=namespace, key=f"stable-{index:03d}", text=f"{token} durable", embedding_fixture_role="relevant", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z"),
+            fact(sid, "distractor", namespace=namespace, key=f"active-{index:03d}", text=f"{token} {token}", embedding_fixture_role="near", observed_at="2026-03-01T00:00:00Z", valid_from="2026-03-01T00:00:00Z", write_policy_id="temporal-active-case-evidence"),
         ]
         common["expected_candidate_ids"] = [f"{sid}-relevant", f"{sid}-distractor"]
     elif category == "abstention-conflict-ready":
@@ -115,7 +115,7 @@ def scenario(category: str, index: int, ordinal: int, calibration_count: int) ->
         common["relevant_ids"] = []
         common["forbidden_ids"] = [f"{sid}-trap"]
         common["facts"] = [
-            fact(sid, "trap", namespace=namespace, key=f"conflict-{index:03d}", text=f"{token} unresolved alternatives", vector="trap", sensitivity="restricted"),
+            fact(sid, "trap", namespace=namespace, key=f"conflict-{index:03d}", text=f"{token} unresolved alternatives", embedding_fixture_role="trap", sensitivity="restricted"),
         ]
     elif category == "isolation-lifecycle":
         trap_group = (index - 1) // 8
@@ -124,8 +124,8 @@ def scenario(category: str, index: int, ordinal: int, calibration_count: int) ->
         lifecycle = "active" if trap_group < 3 else ("deleted" if index <= 28 else "expired")
         common["forbidden_ids"] = [f"{sid}-trap"]
         common["facts"] = [
-            fact(sid, "relevant", namespace=namespace, key=f"allowed-{index:03d}", text=f"{token} authorized", vector="relevant"),
-            fact(sid, "trap", scope=trap_scope, namespace=namespace, key=f"trap-{index:03d}", text=f"{token} {token} private trap", vector="trap", sensitivity=trap_sensitivity, retention_policy_id="retrieval-test-1s-v1" if lifecycle == "expired" else "standard", lifecycle=lifecycle),
+            fact(sid, "relevant", namespace=namespace, key=f"allowed-{index:03d}", text=f"{token} authorized", embedding_fixture_role="relevant"),
+            fact(sid, "trap", scope=trap_scope, namespace=namespace, key=f"trap-{index:03d}", text=f"{token} {token} private trap", embedding_fixture_role="trap", sensitivity=trap_sensitivity, retention_policy_id="retrieval-test-1s-v1" if lifecycle == "expired" else "standard", lifecycle=lifecycle),
         ]
         common["expected_candidate_ids"] = [f"{sid}-relevant"]
     else:
