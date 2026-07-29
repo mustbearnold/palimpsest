@@ -1,0 +1,22 @@
+{
+  "baselines": [
+    "exact-fts-only",
+    "exact-vector-only",
+    "hybrid-without-temporal",
+    "full-policy"
+  ],
+  "calibration_count": 32,
+  "corpus_sha256": "7c066db8c7eb082ed13feaf3738bb11a291dda11162266731f687dbd8c523635",
+  "embedder": {
+    "id": "embedding-conformance-4d-v1",
+    "kind": "deterministic-fixture",
+    "version": "1"
+  },
+  "gate_count": 96,
+  "projection": {
+    "schema_version": 1
+  },
+  "scenario_count": 128,
+  "seed": "8e44ecfd3d80dbf7cf1ca0efd09b21cd9c14a43e146d4b2ce4e43847e61c8bfd",
+  "version": "retrieval-corpus-manifest-v1"
+}
