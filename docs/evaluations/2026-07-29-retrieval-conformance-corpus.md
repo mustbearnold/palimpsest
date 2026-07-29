@@ -1,6 +1,6 @@
 # Frozen retrieval conformance corpus and correctness report — 2026-07-29
 
-Status: implementation evidence refreshed; final Standards and Spec re-reviews pending
+Status: implementation evidence complete; Standards and Spec re-reviews clean
 
 ## Scope and attribution
 
