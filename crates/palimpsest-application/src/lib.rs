@@ -52,6 +52,8 @@ pub enum RepositoryError {
     InvalidEffectTransition,
     #[error("retention policy rejected the checkpoint")]
     RetentionPolicyRejected,
+    #[error("fact write policy is not registered for retrieval metadata")]
+    WritePolicyRejected,
     #[error("transaction serialization must be retried")]
     SerializationRetry,
     #[error("repository failure: {0}")]
@@ -274,6 +276,8 @@ pub enum ServiceError {
     InvalidEffectTransition,
     #[error("retention policy rejected the checkpoint")]
     RetentionPolicyRejected,
+    #[error("fact write policy is not registered")]
+    WritePolicyRejected,
     #[error("checkpoint exceeds the supported size")]
     CheckpointTooLarge,
     #[error("retrieval request exceeds the supported size")]
@@ -681,7 +685,7 @@ impl MemoryService {
         );
         if !matches!(
             policy_id.as_str(),
-            "retrieval-lexical-v1" | "retrieval-hybrid-v1"
+            "retrieval-lexical-v1" | "retrieval-hybrid-v1" | "retrieval-hybrid-temporal-v1"
         ) {
             return Err(ServiceError::Unprocessable(
                 "policy_id is not supported".to_owned(),
@@ -1108,6 +1112,7 @@ fn map_repository(error: RepositoryError) -> ServiceError {
         RepositoryError::EffectKeyConflict => ServiceError::EffectKeyConflict,
         RepositoryError::InvalidEffectTransition => ServiceError::InvalidEffectTransition,
         RepositoryError::RetentionPolicyRejected => ServiceError::RetentionPolicyRejected,
+        RepositoryError::WritePolicyRejected => ServiceError::WritePolicyRejected,
         RepositoryError::SerializationRetry => ServiceError::Unavailable,
         RepositoryError::Unexpected(_) => ServiceError::Unavailable,
     }

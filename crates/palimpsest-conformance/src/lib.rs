@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use reqwest::{Client, StatusCode, header};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -25,6 +25,7 @@ pub struct Target {
     pub principal_b_subject_id: Uuid,
     pub principal_c_bearer_token: String,
     pub principal_c_subject_id: Uuid,
+    pub principal_d_same_scope_bearer_token: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1606,6 +1607,61 @@ pub struct HybridReplayFixture {
     pub receipt: Value,
 }
 
+#[derive(Clone, Debug)]
+pub struct TemporalRetrievalFixture {
+    pub exact_revision_id: Uuid,
+    pub alpha_root_revision_id: Uuid,
+    pub alpha_successor_revision_id: Uuid,
+    pub beta_revision_id: Uuid,
+    pub gamma_revision_id: Uuid,
+    pub delta_revision_id: Uuid,
+    pub alpha_root_recorded_at: String,
+    pub alpha_successor_recorded_at: String,
+}
+
+#[derive(Debug)]
+pub struct TemporalReplayFixture {
+    pub first_retrieval_id: Uuid,
+    pub second_retrieval_id: Uuid,
+    pub independent_retrieval_ids: Vec<Uuid>,
+    pub paginated_retrieval_id: Uuid,
+    request_body: Value,
+    first_receipt: RetrievalReceipt,
+}
+
+#[derive(Clone, Debug)]
+pub struct TemporalRuntimeReplayFixture {
+    pub retrieval_id: Uuid,
+    request_body: Value,
+    receipt: Value,
+}
+
+#[derive(Clone, Debug)]
+pub struct TemporalLifecycleFixture {
+    pub deleted_case_id: Uuid,
+    pub deleted_root_revision_id: Uuid,
+    pub deleted_successor_revision_id: Uuid,
+    pub expired_case_id: Uuid,
+    pub expired_root_revision_id: Uuid,
+    pub expired_successor_revision_id: Uuid,
+}
+
+#[derive(Debug)]
+pub struct TemporalLifecycleReplayFixture {
+    receipts: Vec<TemporalLifecycleReceiptFixture>,
+}
+
+#[derive(Debug)]
+struct TemporalLifecycleReceiptFixture {
+    name: &'static str,
+    retrieval_id: Uuid,
+    idempotency_key: String,
+    request_body: Value,
+    root_revision_id: Uuid,
+    successor_revision_id: Uuid,
+    private_marker: &'static str,
+}
+
 pub async fn hybrid_retrieval_requires_an_available_provider(target: &Target) -> Result<()> {
     let response = Client::new()
         .post(retrievals_url(target))
@@ -1627,6 +1683,9 @@ pub async fn hybrid_retrieval_rejects_caller_ranking_internals(target: &Target) 
         ("model", json!("caller-selected-model")),
         ("weights", json!({"vector": 999})),
         ("candidate_limit", json!(999)),
+        ("recency_profile", json!("active-case-30d-v1")),
+        ("recency_anchor_at", json!("2026-06-30T00:00:00Z")),
+        ("importance", json!(1)),
     ] {
         let mut body = hybrid_request_body();
         body.as_object_mut()
@@ -1659,6 +1718,137 @@ pub async fn hybrid_retrieval_rejects_caller_ranking_internals(target: &Target) 
             );
         }
     }
+    Ok(())
+}
+
+pub async fn rejects_unregistered_write_policies(target: &Target) -> Result<()> {
+    let client = Client::new();
+    let episode_url = format!(
+        "{}/v1/tenants/{}/subjects/{}/episodes",
+        target.base_url.trim_end_matches('/'),
+        target.tenant_id,
+        target.subject_id
+    );
+    let facts_url = format!(
+        "{}/v1/tenants/{}/subjects/{}/facts",
+        target.base_url.trim_end_matches('/'),
+        target.tenant_id,
+        target.subject_id
+    );
+    let unknown_case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000590")?;
+    let unknown_episode_response = client
+        .post(&episode_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "unknown-write-policy-create-episode")
+        .json(&json!({
+            "case_id": unknown_case_id,
+            "kind": "retrieval-fixture",
+            "observed_at": "2026-06-01T00:00:00Z",
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": "unknown-write-policy-create"
+            },
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+            "payload": {"purpose": "unknown-write-policy-create"}
+        }))
+        .send()
+        .await?;
+    ensure!(unknown_episode_response.status() == StatusCode::CREATED);
+    let unknown_episode: Episode = unknown_episode_response.json().await?;
+    let unknown_create = client
+        .post(&facts_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "unknown-write-policy-create-fact")
+        .json(&json!({
+            "case_id": unknown_case_id,
+            "namespace": "case.policy",
+            "key": "unknown-create",
+            "value": {"state": "should-not-persist"},
+            "observed_at": "2026-06-01T00:00:00Z",
+            "valid_time": {"from": "2026-06-01T00:00:00Z", "until": null},
+            "evidence_episode_ids": [unknown_episode.episode_id],
+            "write_policy": {"id": "unregistered-future-policy", "version": "1"},
+            "confidence": 1.0,
+            "sensitivity": "internal",
+            "retention_policy_id": "standard"
+        }))
+        .send()
+        .await?;
+    assert_write_policy_rejected(unknown_create).await?;
+
+    let known = create_marker_fact(
+        &client,
+        target,
+        MarkerFactFixture {
+            bearer_token: &target.bearer_token,
+            tenant_id: target.tenant_id,
+            subject_id: target.subject_id,
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000591")?,
+            name: "unknown-policy-supersede",
+            marker: "policy-registration-evidence",
+            secret: "known-head",
+            sensitivity: "internal",
+            retention_policy_id: "standard",
+        },
+    )
+    .await?;
+    let known_revision = known
+        .revision
+        .as_ref()
+        .context("known-policy fixture omitted its revision")?;
+    let successor_episode_response = client
+        .post(&episode_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "unknown-write-policy-supersede-episode")
+        .json(&json!({
+            "case_id": known.case_id,
+            "kind": "retrieval-fixture",
+            "observed_at": "2026-06-02T00:00:00Z",
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": "unknown-write-policy-supersede"
+            },
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+            "payload": {"purpose": "unknown-write-policy-supersede"}
+        }))
+        .send()
+        .await?;
+    ensure!(successor_episode_response.status() == StatusCode::CREATED);
+    let successor_episode: Episode = successor_episode_response.json().await?;
+    let unknown_supersede = client
+        .put(format!("{facts_url}/{}", known.fact_id))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "unknown-write-policy-supersede-fact")
+        .header(header::IF_MATCH, format!("\"{}\"", known.head_revision_id))
+        .json(&json!({
+            "supersedes_revision_id": known_revision.revision_id,
+            "value": {"state": "should-not-supersede"},
+            "observed_at": "2026-06-02T00:00:00Z",
+            "valid_time": {"from": "2026-06-02T00:00:00Z", "until": null},
+            "evidence_episode_ids": [successor_episode.episode_id],
+            "write_policy": {"id": "unregistered-future-policy", "version": "1"},
+            "confidence": 1.0,
+            "sensitivity": "internal",
+            "retention_policy_id": "standard"
+        }))
+        .send()
+        .await?;
+    assert_write_policy_rejected(unknown_supersede).await
+}
+
+async fn assert_write_policy_rejected(response: reqwest::Response) -> Result<()> {
+    ensure!(
+        response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+        "unknown write policy returned {}, expected 422",
+        response.status()
+    );
+    let problem: Value = response.json().await?;
+    ensure!(problem["code"] == "write_policy_rejected");
+    ensure!(problem["status"] == 422);
     Ok(())
 }
 
@@ -1757,6 +1947,961 @@ pub async fn creates_hybrid_fusion_fixture(target: &Target) -> Result<HybridFusi
         delta_revision_id: fact_revision_id(&delta)?,
         forbidden_revision_id: fact_revision_id(&forbidden)?,
     })
+}
+
+pub async fn creates_temporal_retrieval_fixture(
+    target: &Target,
+) -> Result<TemporalRetrievalFixture> {
+    let client = Client::new();
+    let exact = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-exact",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000501")?,
+            namespace: "case.allowed",
+            key: "case.temporal:chronotoken",
+            marker: "chronotoken",
+            vector_fixture: "temporal_vector_fixture_exact_4d",
+            observed_at: "2026-04-01T00:00:00Z",
+            valid_from: "2026-04-01T00:00:00Z",
+            write_policy_id: "temporal-important-active-case-evidence",
+            confidence: 1.0,
+        },
+    )
+    .await?;
+    let beta = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-beta-stale",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000503")?,
+            namespace: "case.temporal",
+            key: "beta",
+            marker: "case.temporal:chronotoken case.temporal:chronotoken",
+            vector_fixture: "temporal_vector_fixture_beta_4d",
+            observed_at: "2026-04-01T00:00:00Z",
+            valid_from: "2026-04-01T00:00:00Z",
+            write_policy_id: "temporal-active-case-evidence",
+            confidence: 1.0,
+        },
+    )
+    .await?;
+    let gamma = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-gamma-recent",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000504")?,
+            namespace: "case.temporal",
+            key: "gamma",
+            marker: "case.temporal:chronotoken",
+            vector_fixture: "temporal_vector_fixture_gamma_4d",
+            observed_at: "2026-05-31T00:00:00Z",
+            valid_from: "2026-05-31T00:00:00Z",
+            write_policy_id: "temporal-active-case-evidence",
+            confidence: 1.0,
+        },
+    )
+    .await?;
+    let delta = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-delta-future",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000505")?,
+            namespace: "case.temporal",
+            key: "delta",
+            marker: "future vector-only candidate",
+            vector_fixture: "temporal_vector_fixture_delta_4d",
+            observed_at: "2099-01-01T00:00:00Z",
+            valid_from: "2099-01-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 1.0,
+        },
+    )
+    .await?;
+    // Create alpha last so its first recorded-time coordinate includes every
+    // independent fact while still excluding the later alpha successor.
+    let alpha_root = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-alpha-root",
+            case_id: Uuid::parse_str("019be000-0000-7000-8000-000000000502")?,
+            namespace: "case.temporal",
+            key: "alpha",
+            marker: "case.temporal:chronotoken case.temporal:chronotoken case.temporal:chronotoken",
+            vector_fixture: "temporal_vector_fixture_alpha_4d",
+            observed_at: "2026-04-01T00:00:00Z",
+            valid_from: "2026-04-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 0.8,
+        },
+    )
+    .await?;
+    let alpha_successor = supersede_temporal_fact(
+        &client,
+        target,
+        &alpha_root,
+        TemporalSuccessorFixture {
+            name: "temporal-alpha-successor",
+            marker: "case.temporal:chronotoken case.temporal:chronotoken case.temporal:chronotoken",
+            vector_fixture: "temporal_vector_fixture_alpha_4d",
+            observed_at: "2026-03-01T00:00:00Z",
+            valid_from: "2026-03-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 0.8,
+            retention_policy_id: "standard",
+        },
+    )
+    .await?;
+    let alpha_root_revision = alpha_root
+        .revision
+        .as_ref()
+        .context("temporal alpha root has no revision")?;
+    let alpha_successor_revision = alpha_successor
+        .revision
+        .as_ref()
+        .context("temporal alpha successor has no revision")?;
+
+    Ok(TemporalRetrievalFixture {
+        exact_revision_id: fact_revision_id(&exact)?,
+        alpha_root_revision_id: alpha_root_revision.revision_id,
+        alpha_successor_revision_id: alpha_successor_revision.revision_id,
+        beta_revision_id: fact_revision_id(&beta)?,
+        gamma_revision_id: fact_revision_id(&gamma)?,
+        // A future-valid fact has no effective revision in the create response,
+        // but its immutable head still identifies the inserted revision.
+        delta_revision_id: delta.head_revision_id,
+        alpha_root_recorded_at: alpha_root_revision.recorded_at.clone(),
+        alpha_successor_recorded_at: alpha_successor_revision.recorded_at.clone(),
+    })
+}
+
+pub async fn retrieves_with_the_fixed_temporal_policy(
+    target: &Target,
+    fixture: &TemporalRetrievalFixture,
+) -> Result<TemporalReplayFixture> {
+    let root_request = temporal_fixed_request_body(&fixture.alpha_root_recorded_at);
+    let root_receipt = create_temporal_receipt(
+        target,
+        "temporal-policy-before-late-evidence",
+        &root_request,
+    )
+    .await?;
+    assert_temporal_receipt(&root_receipt, fixture, fixture.alpha_root_revision_id)?;
+
+    let successor_request = temporal_fixed_request_body(&fixture.alpha_successor_recorded_at);
+    let successor_receipt = create_temporal_receipt(
+        target,
+        "temporal-policy-after-late-evidence",
+        &successor_request,
+    )
+    .await?;
+    assert_temporal_receipt(
+        &successor_receipt,
+        fixture,
+        fixture.alpha_successor_revision_id,
+    )?;
+
+    for key in ["case.temporal:chronotoken", "beta", "gamma"] {
+        let before = root_receipt
+            .items
+            .iter()
+            .find(|item| item.key == key)
+            .with_context(|| format!("recorded-time root receipt omitted {key}"))?;
+        let after = successor_receipt
+            .items
+            .iter()
+            .find(|item| item.key == key)
+            .with_context(|| format!("recorded-time successor receipt omitted {key}"))?;
+        ensure!(
+            before.scores == after.scores,
+            "changing recorded time changed the valid-time score for {key}"
+        );
+    }
+
+    let mut independent_retrieval_ids = vec![successor_receipt.retrieval_id];
+    for repeat in 1..10 {
+        let independent_receipt = create_temporal_receipt(
+            target,
+            &format!("temporal-policy-after-late-evidence-repeat-{repeat}"),
+            &successor_request,
+        )
+        .await?;
+        assert_temporal_receipt(
+            &independent_receipt,
+            fixture,
+            fixture.alpha_successor_revision_id,
+        )?;
+        ensure!(
+            !independent_retrieval_ids.contains(&independent_receipt.retrieval_id),
+            "independent temporal requests reused one retrieval ID"
+        );
+        ensure!(
+            successor_receipt.policy == independent_receipt.policy,
+            "independent temporal requests changed the pinned policy"
+        );
+        ensure!(
+            successor_receipt.items == independent_receipt.items,
+            "independent temporal requests changed ordered IDs or score explanations"
+        );
+        independent_retrieval_ids.push(independent_receipt.retrieval_id);
+    }
+
+    let get_response = Client::new()
+        .get(format!(
+            "{}/{}",
+            retrievals_url(target),
+            successor_receipt.retrieval_id
+        ))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .send()
+        .await?;
+    ensure!(get_response.status() == StatusCode::OK);
+    let got: RetrievalReceipt = get_response.json().await?;
+    ensure!(
+        serde_json::to_value(&got)? == serde_json::to_value(&successor_receipt)?,
+        "receipt GET changed the durable temporal representation"
+    );
+
+    let mut paginated_request = successor_request.clone();
+    paginated_request["page_size"] = json!(2);
+    let first_page = create_temporal_receipt(
+        target,
+        "temporal-policy-after-late-evidence-paginated",
+        &paginated_request,
+    )
+    .await?;
+    ensure!(first_page.items.len() == 2);
+    let cursor = first_page
+        .next_cursor
+        .as_deref()
+        .context("temporal first page omitted its durable cursor")?;
+    let next_page_response = Client::new()
+        .get(format!(
+            "{}/{}?cursor={cursor}",
+            retrievals_url(target),
+            first_page.retrieval_id
+        ))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .send()
+        .await?;
+    ensure!(next_page_response.status() == StatusCode::OK);
+    let next_page: RetrievalReceipt = next_page_response.json().await?;
+    ensure!(next_page.items.len() == 2);
+    ensure!(next_page.next_cursor.is_none());
+    let paginated_items = first_page
+        .items
+        .iter()
+        .chain(&next_page.items)
+        .cloned()
+        .collect::<Vec<_>>();
+    ensure!(
+        paginated_items == successor_receipt.items,
+        "temporal pagination changed order, scores, or item identity"
+    );
+
+    let empty = create_temporal_receipt(
+        target,
+        "temporal-policy-fixed-abstention",
+        &temporal_request_body(
+            json!({
+                "kind": "as_of",
+                "valid_at": "2026-06-30T00:00:00Z",
+                "recorded_at": fixture.alpha_successor_recorded_at
+            }),
+            json!(["019be000-0000-7000-8000-000000000599"]),
+        ),
+    )
+    .await?;
+    ensure!(empty.status == "abstained");
+    ensure!(empty.items.is_empty());
+    ensure!(empty.policy == successor_receipt.policy);
+    ensure!(empty.valid_at == "2026-06-30T00:00:00Z");
+    ensure!(empty.recorded_at == fixture.alpha_successor_recorded_at);
+
+    let current = create_temporal_receipt(
+        target,
+        "temporal-policy-current-effective",
+        &temporal_request_body(json!({"kind": "current"}), temporal_fixture_case_ids()),
+    )
+    .await?;
+    ensure!(current.status == "results");
+    ensure!(current.policy == successor_receipt.policy);
+    ensure!(
+        current
+            .items
+            .iter()
+            .any(|item| item.revision_id == fixture.alpha_successor_revision_id),
+        "current temporal retrieval omitted the late alpha successor"
+    );
+    ensure!(
+        current.items.iter().all(|item| {
+            item.revision_id != fixture.alpha_root_revision_id
+                && item.revision_id != fixture.delta_revision_id
+        }),
+        "current temporal retrieval returned an ineffective root or future-valid revision"
+    );
+
+    Ok(TemporalReplayFixture {
+        first_retrieval_id: successor_receipt.retrieval_id,
+        second_retrieval_id: independent_retrieval_ids[1],
+        independent_retrieval_ids,
+        paginated_retrieval_id: first_page.retrieval_id,
+        request_body: successor_request,
+        first_receipt: successor_receipt,
+    })
+}
+
+pub async fn creates_temporal_receipt_through_nonbypass_runtime(
+    target: &Target,
+    fixture: &TemporalRetrievalFixture,
+    reference: &TemporalReplayFixture,
+    isolation: &RetrievalIsolationFixture,
+) -> Result<TemporalRuntimeReplayFixture> {
+    let client = Client::new();
+    let retrievals = retrievals_url(target);
+    let response = client
+        .post(&retrievals)
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "temporal-policy-nonbypass-runtime")
+        .json(&reference.request_body)
+        .send()
+        .await?;
+    ensure!(
+        response.status() == StatusCode::CREATED,
+        "non-bypass temporal retrieval returned {}",
+        response.status()
+    );
+    let receipt: RetrievalReceipt = response.json().await?;
+    assert_temporal_receipt(&receipt, fixture, fixture.alpha_successor_revision_id)?;
+    ensure!(
+        receipt.policy == reference.first_receipt.policy
+            && receipt.items == reference.first_receipt.items,
+        "non-bypass temporal execution changed the policy, order, or score explanation"
+    );
+
+    let receipt_value = serde_json::to_value(&receipt)?;
+    let get_response = client
+        .get(format!("{retrievals}/{}", receipt.retrieval_id))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .send()
+        .await?;
+    ensure!(get_response.status() == StatusCode::OK);
+    ensure!(
+        get_response.json::<Value>().await? == receipt_value,
+        "non-bypass receipt GET changed the durable representation"
+    );
+
+    let same_scope_other_principal = client
+        .get(format!("{retrievals}/{}", receipt.retrieval_id))
+        .bearer_auth(&target.principal_d_same_scope_bearer_token)
+        .send()
+        .await?;
+    ensure!(
+        same_scope_other_principal.status() == StatusCode::NOT_FOUND,
+        "a same-scope principal read another principal's non-bypass receipt"
+    );
+
+    let lexical_response = client
+        .post(&retrievals)
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "retrieval-isolation-nonbypass-runtime")
+        .json(&json!({
+            "query": "cobalt-otter-731",
+            "perspective": {"kind": "current"},
+            "page_size": 50
+        }))
+        .send()
+        .await?;
+    ensure!(lexical_response.status() == StatusCode::CREATED);
+    let lexical_receipt: RetrievalReceipt = lexical_response.json().await?;
+    ensure!(lexical_receipt.items.len() == 1);
+    ensure!(lexical_receipt.items[0].revision_id == isolation.allowed_revision_id);
+    ensure!(
+        isolation
+            .forbidden_revision_ids
+            .iter()
+            .all(|revision_id| lexical_receipt
+                .items
+                .iter()
+                .all(|item| item.revision_id != *revision_id)),
+        "non-bypass candidate generation admitted a forbidden revision"
+    );
+    let lexical_json = serde_json::to_string(&lexical_receipt)?;
+    for hidden in [
+        "restricted-hidden-value",
+        "cross-subject-hidden-value",
+        "cross-tenant-hidden-value",
+    ] {
+        ensure!(
+            !lexical_json.contains(hidden),
+            "non-bypass candidate response disclosed {hidden}"
+        );
+    }
+
+    let mut paginated_request = reference.request_body.clone();
+    paginated_request["page_size"] = json!(2);
+    let first_page_response = client
+        .post(&retrievals)
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header(
+            "Idempotency-Key",
+            "temporal-policy-nonbypass-runtime-paginated",
+        )
+        .json(&paginated_request)
+        .send()
+        .await?;
+    ensure!(first_page_response.status() == StatusCode::CREATED);
+    let first_page: RetrievalReceipt = first_page_response.json().await?;
+    ensure!(first_page.items.len() == 2);
+    let cursor = first_page
+        .next_cursor
+        .as_deref()
+        .context("non-bypass temporal receipt omitted its cursor")?;
+    let next_page_response = client
+        .get(format!(
+            "{retrievals}/{}?cursor={cursor}",
+            first_page.retrieval_id
+        ))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .send()
+        .await?;
+    ensure!(next_page_response.status() == StatusCode::OK);
+    let next_page: RetrievalReceipt = next_page_response.json().await?;
+    ensure!(next_page.items.len() == 2 && next_page.next_cursor.is_none());
+    ensure!(
+        first_page
+            .items
+            .iter()
+            .chain(&next_page.items)
+            .eq(receipt.items.iter()),
+        "non-bypass temporal pagination changed durable order or scores"
+    );
+
+    Ok(TemporalRuntimeReplayFixture {
+        retrieval_id: receipt.retrieval_id,
+        request_body: reference.request_body.clone(),
+        receipt: receipt_value,
+    })
+}
+
+pub async fn replays_temporal_receipt_through_nonbypass_runtime(
+    target: &Target,
+    fixture: &TemporalRuntimeReplayFixture,
+) -> Result<()> {
+    let response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "temporal-policy-nonbypass-runtime")
+        .json(&fixture.request_body)
+        .send()
+        .await?;
+    ensure!(response.status() == StatusCode::CREATED);
+    ensure!(
+        response
+            .headers()
+            .get("Idempotency-Replayed")
+            .is_some_and(|value| value == "true"),
+        "non-bypass temporal replay was not identified"
+    );
+    ensure!(
+        response.json::<Value>().await? == fixture.receipt,
+        "non-bypass temporal replay changed the durable representation"
+    );
+    Ok(())
+}
+
+async fn create_temporal_receipt(
+    target: &Target,
+    idempotency_key: &str,
+    request_body: &Value,
+) -> Result<RetrievalReceipt> {
+    let response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", idempotency_key)
+        .json(request_body)
+        .send()
+        .await?;
+    if response.status() != StatusCode::CREATED {
+        let status = response.status();
+        let problem = response.text().await?;
+        bail!("temporal retrieval returned {status}, expected 201: {problem}");
+    }
+    response.json().await.map_err(Into::into)
+}
+
+fn temporal_fixed_request_body(recorded_at: &str) -> Value {
+    temporal_request_body(
+        json!({
+            "kind": "as_of",
+            "valid_at": "2026-06-30T00:00:00Z",
+            "recorded_at": recorded_at
+        }),
+        temporal_fixture_case_ids(),
+    )
+}
+
+fn temporal_fixture_case_ids() -> Value {
+    json!([
+        "019be000-0000-7000-8000-000000000501",
+        "019be000-0000-7000-8000-000000000502",
+        "019be000-0000-7000-8000-000000000503",
+        "019be000-0000-7000-8000-000000000504",
+        "019be000-0000-7000-8000-000000000505"
+    ])
+}
+
+fn temporal_request_body(perspective: Value, case_ids: Value) -> Value {
+    json!({
+        "query": "case.temporal:chronotoken",
+        "perspective": perspective,
+        "page_size": 10,
+        "policy_id": "retrieval-hybrid-temporal-v1",
+        "filters": {"case_ids": case_ids}
+    })
+}
+
+fn assert_temporal_receipt(
+    receipt: &RetrievalReceipt,
+    fixture: &TemporalRetrievalFixture,
+    expected_alpha_revision_id: Uuid,
+) -> Result<()> {
+    ensure!(receipt.status == "results");
+    ensure!(receipt.policy.id == "retrieval-hybrid-temporal-v1");
+    ensure!(receipt.policy.version == "1");
+    ensure!(receipt.policy.digest.len() == 64);
+    ensure!(receipt.valid_at == "2026-06-30T00:00:00Z");
+    ensure!(receipt.items.len() == 4);
+    let expected = [
+        (
+            "case.temporal:chronotoken",
+            fixture.exact_revision_id,
+            "0.047891458496",
+            "0.125000000000",
+            "1.000000000000",
+            "1.250000000000",
+            "-0.041905026184",
+            "0.000000000000",
+            "0.001496608078",
+            "0.008196721311",
+            "0.015679761701",
+        ),
+        (
+            "alpha",
+            expected_alpha_revision_id,
+            "0.032266458496",
+            "1.000000000000",
+            "0.800000000000",
+            "1.000000000000",
+            "0.000000000000",
+            "-0.006453291699",
+            "0.000000000000",
+            "0.000000000000",
+            "0.025813166797",
+        ),
+        (
+            "gamma",
+            fixture.gamma_revision_id,
+            "0.031754032258",
+            "0.500000000000",
+            "1.000000000000",
+            "1.000000000000",
+            "-0.015877016129",
+            "0.000000000000",
+            "0.000000000000",
+            "0.000000000000",
+            "0.015877016129",
+        ),
+        (
+            "beta",
+            fixture.beta_revision_id,
+            "0.032522474881",
+            "0.125000000000",
+            "1.000000000000",
+            "1.000000000000",
+            "-0.028457165521",
+            "0.000000000000",
+            "0.000000000000",
+            "0.000000000000",
+            "0.004065309360",
+        ),
+    ];
+    for (index, item) in receipt.items.iter().enumerate() {
+        let (
+            key,
+            revision_id,
+            fused,
+            recency,
+            confidence,
+            importance,
+            temporal,
+            confidence_adjustment,
+            importance_adjustment,
+            bonus,
+            final_score,
+        ) = expected[index];
+        ensure!(item.key == key, "temporal item {index} had the wrong key");
+        ensure!(
+            item.revision_id == revision_id,
+            "{key} had the wrong revision"
+        );
+        assert_score(item, "fused_score", fused)?;
+        assert_score(item, "recency_factor", recency)?;
+        assert_score(item, "confidence_factor", confidence)?;
+        assert_score(item, "importance_factor", importance)?;
+        assert_score(item, "temporal_adjustment", temporal)?;
+        assert_score(item, "confidence_adjustment", confidence_adjustment)?;
+        assert_score(item, "importance_adjustment", importance_adjustment)?;
+        assert_score(item, "exact_identity_bonus", bonus)?;
+        assert_score(item, "final_score", final_score)?;
+        assert_score(item, "final_rank", &(index + 1).to_string())?;
+    }
+    ensure!(
+        receipt
+            .items
+            .iter()
+            .all(|item| item.revision_id != fixture.delta_revision_id),
+        "future-valid delta entered the historical candidate set"
+    );
+    let response_json = serde_json::to_string(receipt)?;
+    let hidden_alpha_revision_id = if expected_alpha_revision_id == fixture.alpha_root_revision_id {
+        fixture.alpha_successor_revision_id
+    } else {
+        fixture.alpha_root_revision_id
+    };
+    ensure!(
+        !response_json.contains(&hidden_alpha_revision_id.to_string()),
+        "the ineffective alpha revision leaked into the temporal receipt"
+    );
+    Ok(())
+}
+
+pub async fn temporal_retrieval_survives_projection_rebuild(
+    target: &Target,
+    fixture: &TemporalRetrievalFixture,
+    replay: &TemporalReplayFixture,
+) -> Result<Uuid> {
+    let rebuilt_receipt = create_temporal_receipt(
+        target,
+        "temporal-policy-after-projection-rebuild",
+        &replay.request_body,
+    )
+    .await?;
+    assert_temporal_receipt(
+        &rebuilt_receipt,
+        fixture,
+        fixture.alpha_successor_revision_id,
+    )?;
+    ensure!(
+        rebuilt_receipt.policy == replay.first_receipt.policy,
+        "projection rebuild changed the temporal policy"
+    );
+    ensure!(
+        rebuilt_receipt.items == replay.first_receipt.items,
+        "projection rebuild changed temporal order, values, or scores"
+    );
+
+    let replay_response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "temporal-policy-after-late-evidence")
+        .json(&replay.request_body)
+        .send()
+        .await?;
+    ensure!(replay_response.status() == StatusCode::CREATED);
+    ensure!(
+        replay_response
+            .headers()
+            .get("Idempotency-Replayed")
+            .is_some_and(|value| value == "true"),
+        "temporal receipt replay was not identified after projection rebuild"
+    );
+    let replayed: RetrievalReceipt = replay_response.json().await?;
+    ensure!(
+        serde_json::to_value(replayed)? == serde_json::to_value(&replay.first_receipt)?,
+        "projection rebuild changed the first durable temporal receipt replay"
+    );
+
+    Ok(rebuilt_receipt.retrieval_id)
+}
+
+pub async fn temporal_receipt_survives_service_restart(
+    target: &Target,
+    replay: &TemporalReplayFixture,
+) -> Result<()> {
+    let get_response = Client::new()
+        .get(format!(
+            "{}/{}",
+            retrievals_url(target),
+            replay.first_retrieval_id
+        ))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .send()
+        .await?;
+    ensure!(get_response.status() == StatusCode::OK);
+    let got: RetrievalReceipt = get_response.json().await?;
+    ensure!(
+        got.retrieval_id == replay.first_receipt.retrieval_id
+            && got.policy == replay.first_receipt.policy
+            && got.items == replay.first_receipt.items
+            && got.valid_at == replay.first_receipt.valid_at
+            && got.recorded_at == replay.first_receipt.recorded_at,
+        "process restart changed temporal receipt identity, policy, coordinates, or items"
+    );
+
+    let replay_response = Client::new()
+        .post(retrievals_url(target))
+        .bearer_auth(&target.principal_a_internal_bearer_token)
+        .header("Idempotency-Key", "temporal-policy-after-late-evidence")
+        .json(&replay.request_body)
+        .send()
+        .await?;
+    ensure!(replay_response.status() == StatusCode::CREATED);
+    ensure!(
+        replay_response
+            .headers()
+            .get("Idempotency-Replayed")
+            .is_some_and(|value| value == "true"),
+        "service restart did not identify the durable temporal replay"
+    );
+    let replayed: RetrievalReceipt = replay_response.json().await?;
+    ensure!(
+        replayed.retrieval_id == replay.first_receipt.retrieval_id
+            && replayed.policy == replay.first_receipt.policy
+            && replayed.items == replay.first_receipt.items
+            && replayed.valid_at == replay.first_receipt.valid_at
+            && replayed.recorded_at == replay.first_receipt.recorded_at,
+        "process restart changed the durable temporal replay"
+    );
+    Ok(())
+}
+
+pub async fn creates_temporal_lifecycle_fixture(
+    target: &Target,
+) -> Result<TemporalLifecycleFixture> {
+    let client = Client::new();
+    let deleted_case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000506")?;
+    let deleted_root = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-deleted-root",
+            case_id: deleted_case_id,
+            namespace: "case.temporal.lifecycle",
+            key: "deleted-successor",
+            marker: "case.temporal:chronotoken temporal-deleted-root-private",
+            vector_fixture: "temporal_vector_fixture_beta_4d",
+            observed_at: "2026-04-01T00:00:00Z",
+            valid_from: "2026-04-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 1.0,
+        },
+    )
+    .await?;
+    let deleted_successor = supersede_temporal_fact(
+        &client,
+        target,
+        &deleted_root,
+        TemporalSuccessorFixture {
+            name: "temporal-deleted-successor",
+            marker: "case.temporal:chronotoken temporal-deleted-successor-private",
+            vector_fixture: "temporal_vector_fixture_beta_4d",
+            observed_at: "2026-05-01T00:00:00Z",
+            valid_from: "2026-05-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 1.0,
+            retention_policy_id: "standard",
+        },
+    )
+    .await?;
+
+    let expired_case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000507")?;
+    let expired_root = create_temporal_fact(
+        &client,
+        target,
+        TemporalFactFixture {
+            name: "temporal-expired-root",
+            case_id: expired_case_id,
+            namespace: "case.temporal.lifecycle",
+            key: "expired-successor",
+            marker: "case.temporal:chronotoken temporal-expired-root-private",
+            vector_fixture: "temporal_vector_fixture_gamma_4d",
+            observed_at: "2026-04-01T00:00:00Z",
+            valid_from: "2026-04-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 1.0,
+        },
+    )
+    .await?;
+    let expired_successor = supersede_temporal_fact(
+        &client,
+        target,
+        &expired_root,
+        TemporalSuccessorFixture {
+            name: "temporal-expired-successor",
+            marker: "case.temporal:chronotoken temporal-expired-successor-private",
+            vector_fixture: "temporal_vector_fixture_gamma_4d",
+            observed_at: "2026-05-01T00:00:00Z",
+            valid_from: "2026-05-01T00:00:00Z",
+            write_policy_id: "temporal-stable-evidence",
+            confidence: 1.0,
+            retention_policy_id: "retrieval-test-1s-v1",
+        },
+    )
+    .await?;
+    ensure!(
+        deleted_successor
+            .revision
+            .as_ref()
+            .is_some_and(|revision| { revision.revision_id == deleted_successor.head_revision_id }),
+        "deleted lifecycle successor was not initially effective"
+    );
+    ensure!(
+        expired_successor
+            .revision
+            .as_ref()
+            .is_some_and(|revision| { revision.revision_id == expired_successor.head_revision_id }),
+        "expiring lifecycle successor was not initially effective"
+    );
+
+    Ok(TemporalLifecycleFixture {
+        deleted_case_id,
+        deleted_root_revision_id: fact_revision_id(&deleted_root)?,
+        deleted_successor_revision_id: deleted_successor.head_revision_id,
+        expired_case_id,
+        expired_root_revision_id: fact_revision_id(&expired_root)?,
+        expired_successor_revision_id: expired_successor.head_revision_id,
+    })
+}
+
+pub async fn temporal_policy_does_not_resurrect_ineligible_successors(
+    target: &Target,
+    fixture: &TemporalLifecycleFixture,
+    replay: &TemporalLifecycleReplayFixture,
+) -> Result<()> {
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    for receipt_fixture in &replay.receipts {
+        let get_response = Client::new()
+            .get(format!(
+                "{}/{}",
+                retrievals_url(target),
+                receipt_fixture.retrieval_id
+            ))
+            .bearer_auth(&target.principal_a_internal_bearer_token)
+            .send()
+            .await?;
+        ensure!(get_response.status() == StatusCode::OK);
+        assert_temporal_lifecycle_receipt_hidden(get_response.json().await?, receipt_fixture)?;
+
+        let replay_response = Client::new()
+            .post(retrievals_url(target))
+            .bearer_auth(&target.principal_a_internal_bearer_token)
+            .header("Idempotency-Key", &receipt_fixture.idempotency_key)
+            .json(&receipt_fixture.request_body)
+            .send()
+            .await?;
+        ensure!(replay_response.status() == StatusCode::CREATED);
+        ensure!(
+            replay_response
+                .headers()
+                .get("Idempotency-Replayed")
+                .is_some_and(|value| value == "true"),
+            "ineligible temporal {} receipt was not replayed",
+            receipt_fixture.name
+        );
+        assert_temporal_lifecycle_receipt_hidden(replay_response.json().await?, receipt_fixture)?;
+    }
+
+    for (name, case_id, root_revision_id, successor_revision_id, private_marker) in [
+        (
+            "deleted",
+            fixture.deleted_case_id,
+            fixture.deleted_root_revision_id,
+            fixture.deleted_successor_revision_id,
+            "temporal-deleted",
+        ),
+        (
+            "expired",
+            fixture.expired_case_id,
+            fixture.expired_root_revision_id,
+            fixture.expired_successor_revision_id,
+            "temporal-expired",
+        ),
+    ] {
+        let receipt = create_temporal_receipt(
+            target,
+            &format!("temporal-policy-{name}-successor-no-resurrection"),
+            &temporal_request_body(json!({"kind": "current"}), json!([case_id])),
+        )
+        .await?;
+        ensure!(receipt.status == "abstained");
+        ensure!(receipt.items.is_empty());
+        ensure!(receipt.policy.id == "retrieval-hybrid-temporal-v1");
+        let response_json = serde_json::to_string(&receipt)?;
+        ensure!(!response_json.contains(&root_revision_id.to_string()));
+        ensure!(!response_json.contains(&successor_revision_id.to_string()));
+        ensure!(!response_json.contains(private_marker));
+    }
+    Ok(())
+}
+
+pub async fn captures_temporal_lifecycle_receipts(
+    target: &Target,
+    fixture: &TemporalLifecycleFixture,
+) -> Result<TemporalLifecycleReplayFixture> {
+    let mut receipts = Vec::new();
+    for (name, case_id, root_revision_id, successor_revision_id, private_marker) in [
+        (
+            "deleted",
+            fixture.deleted_case_id,
+            fixture.deleted_root_revision_id,
+            fixture.deleted_successor_revision_id,
+            "temporal-deleted",
+        ),
+        (
+            "expired",
+            fixture.expired_case_id,
+            fixture.expired_root_revision_id,
+            fixture.expired_successor_revision_id,
+            "temporal-expired",
+        ),
+    ] {
+        let idempotency_key = format!("temporal-policy-{name}-successor-before-ineligible");
+        let request_body = temporal_request_body(json!({"kind": "current"}), json!([case_id]));
+        let receipt = create_temporal_receipt(target, &idempotency_key, &request_body).await?;
+        ensure!(receipt.status == "results");
+        ensure!(receipt.items.len() == 1);
+        ensure!(receipt.items[0].revision_id == successor_revision_id);
+        ensure!(receipt.items[0].revision_id != root_revision_id);
+        receipts.push(TemporalLifecycleReceiptFixture {
+            name,
+            retrieval_id: receipt.retrieval_id,
+            idempotency_key,
+            request_body,
+            root_revision_id,
+            successor_revision_id,
+            private_marker,
+        });
+    }
+    Ok(TemporalLifecycleReplayFixture { receipts })
+}
+
+fn assert_temporal_lifecycle_receipt_hidden(
+    receipt: RetrievalReceipt,
+    fixture: &TemporalLifecycleReceiptFixture,
+) -> Result<()> {
+    ensure!(receipt.status == "abstained");
+    ensure!(receipt.items.is_empty());
+    ensure!(receipt.policy.id == "retrieval-hybrid-temporal-v1");
+    let response_json = serde_json::to_string(&receipt)?;
+    ensure!(!response_json.contains(&fixture.root_revision_id.to_string()));
+    ensure!(!response_json.contains(&fixture.successor_revision_id.to_string()));
+    ensure!(!response_json.contains(fixture.private_marker));
+    Ok(())
 }
 
 pub async fn creates_deterministic_hybrid_fusion_receipts(
@@ -2302,6 +3447,23 @@ pub async fn retrieval_candidates_are_authorized_before_ranking(
     ensure!(
         !serde_json::to_string(&reauthorized)?.contains("restricted-hidden-value"),
         "receipt reauthorization disclosed a revoked sensitivity"
+    );
+
+    let same_scope_other_principal = client
+        .get(&full_receipt_url)
+        .bearer_auth(&target.principal_d_same_scope_bearer_token)
+        .send()
+        .await?;
+    ensure!(
+        same_scope_other_principal.status() == StatusCode::NOT_FOUND,
+        "same-scope principal rehydrated another principal's receipt"
+    );
+    ensure!(
+        !same_scope_other_principal
+            .text()
+            .await?
+            .contains("restricted-hidden-value"),
+        "same-scope cloaked response disclosed another principal's content"
     );
 
     let hidden_response = client
@@ -3571,6 +4733,30 @@ struct HybridFactFixture<'a> {
     sensitivity: &'a str,
 }
 
+struct TemporalFactFixture<'a> {
+    name: &'a str,
+    case_id: Uuid,
+    namespace: &'a str,
+    key: &'a str,
+    marker: &'a str,
+    vector_fixture: &'a str,
+    observed_at: &'a str,
+    valid_from: &'a str,
+    write_policy_id: &'a str,
+    confidence: f64,
+}
+
+struct TemporalSuccessorFixture<'a> {
+    name: &'a str,
+    marker: &'a str,
+    vector_fixture: &'a str,
+    observed_at: &'a str,
+    valid_from: &'a str,
+    write_policy_id: &'a str,
+    confidence: f64,
+    retention_policy_id: &'a str,
+}
+
 async fn create_hybrid_fact(
     client: &Client,
     target: &Target,
@@ -3639,6 +4825,140 @@ async fn create_hybrid_fact(
         .await?;
     ensure!(fact_response.status() == StatusCode::CREATED);
     fact_response.json().await.map_err(Into::into)
+}
+
+async fn create_temporal_fact(
+    client: &Client,
+    target: &Target,
+    fixture: TemporalFactFixture<'_>,
+) -> Result<FactView> {
+    let episode_response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/episodes",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header(
+            "Idempotency-Key",
+            format!("{}-episode-create", fixture.name),
+        )
+        .json(&json!({
+            "case_id": fixture.case_id,
+            "kind": "temporal-retrieval-fixture",
+            "observed_at": fixture.observed_at,
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": format!("{}-episode", fixture.name)
+            },
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+            "payload": {"marker": fixture.marker}
+        }))
+        .send()
+        .await?;
+    ensure!(episode_response.status() == StatusCode::CREATED);
+    let episode: Episode = episode_response.json().await?;
+    let fact_response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/facts",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", format!("{}-fact-create", fixture.name))
+        .json(&json!({
+            "case_id": fixture.case_id,
+            "namespace": fixture.namespace,
+            "key": fixture.key,
+            "value": {
+                "marker": fixture.marker,
+                "vector_fixture": fixture.vector_fixture,
+                "version": "root"
+            },
+            "observed_at": fixture.observed_at,
+            "valid_time": {"from": fixture.valid_from, "until": null},
+            "evidence_episode_ids": [episode.episode_id],
+            "write_policy": {"id": fixture.write_policy_id, "version": "1"},
+            "confidence": fixture.confidence,
+            "sensitivity": "internal",
+            "retention_policy_id": "standard"
+        }))
+        .send()
+        .await?;
+    ensure!(fact_response.status() == StatusCode::CREATED);
+    fact_response.json().await.map_err(Into::into)
+}
+
+async fn supersede_temporal_fact(
+    client: &Client,
+    target: &Target,
+    root: &FactView,
+    fixture: TemporalSuccessorFixture<'_>,
+) -> Result<FactView> {
+    let root_revision = root
+        .revision
+        .as_ref()
+        .context("temporal successor root has no revision")?;
+    let episode_response = client
+        .post(format!(
+            "{}/v1/tenants/{}/subjects/{}/episodes",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", format!("{}-episode", fixture.name))
+        .json(&json!({
+            "case_id": root.case_id,
+            "kind": "temporal-retrieval-fixture",
+            "observed_at": fixture.observed_at,
+            "provenance": {
+                "source_type": "conformance",
+                "source_uri": null,
+                "external_id": format!("{}-episode", fixture.name)
+            },
+            "sensitivity": "internal",
+            "retention_policy_id": fixture.retention_policy_id,
+            "payload": {"marker": fixture.marker}
+        }))
+        .send()
+        .await?;
+    ensure!(episode_response.status() == StatusCode::CREATED);
+    let episode: Episode = episode_response.json().await?;
+    let response = client
+        .put(format!(
+            "{}/v1/tenants/{}/subjects/{}/facts/{}",
+            target.base_url.trim_end_matches('/'),
+            target.tenant_id,
+            target.subject_id,
+            root.fact_id
+        ))
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", fixture.name)
+        .header(header::IF_MATCH, format!("\"{}\"", root.head_revision_id))
+        .json(&json!({
+            "supersedes_revision_id": root_revision.revision_id,
+            "value": {
+                "marker": fixture.marker,
+                "vector_fixture": fixture.vector_fixture,
+                "version": "successor"
+            },
+            "observed_at": fixture.observed_at,
+            "valid_time": {"from": fixture.valid_from, "until": null},
+            "evidence_episode_ids": [episode.episode_id],
+            "write_policy": {"id": fixture.write_policy_id, "version": "1"},
+            "confidence": fixture.confidence,
+            "sensitivity": "internal",
+            "retention_policy_id": fixture.retention_policy_id
+        }))
+        .send()
+        .await?;
+    ensure!(response.status() == StatusCode::OK);
+    response.json().await.map_err(Into::into)
 }
 
 fn fact_revision_id(view: &FactView) -> Result<Uuid> {

@@ -9,13 +9,14 @@ use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
     CheckpointSnapshot, CheckpointView, EffectId, EffectKey, EffectKind, EffectReceipt,
     EffectRecoveryMode, EffectStatus, EmbeddingInput, EmbeddingProfile, EmbeddingTask, Episode,
-    EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace, FactRevision, FactView,
-    NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewRetrieval, PrincipalId,
-    PrincipalScope, Provenance, RetentionPolicyId, RetrievalAuthorizationReceipt,
-    RetrievalEmbeddingLineage, RetrievalId, RetrievalItem, RetrievalPerspective, RetrievalPolicy,
-    RetrievalPolicyId, RetrievalQueryEmbeddingLineage, RetrievalReceipt, RetrievalScore,
-    RevisionId, Sensitivity, SourceType, SubjectId, TenantId, ThreadId, ValidTime, WritePolicy,
-    WritePolicyId, WritePolicyVersion,
+    EpisodeId, EpisodeKind, ExactIdentityTier, FactId, FactKey, FactNamespace, FactRevision,
+    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewRetrieval,
+    PrincipalId, PrincipalScope, Provenance, Q63_EXP2_CONSTANTS_SHA256, RecencyProfile,
+    RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalEmbeddingLineage, RetrievalId,
+    RetrievalItem, RetrievalPerspective, RetrievalPolicy, RetrievalPolicyId,
+    RetrievalQueryEmbeddingLineage, RetrievalReceipt, RetrievalScore, RevisionId, ScoreUnits,
+    Sensitivity, SourceType, SubjectId, TemporalOrderKey, TemporalScoreInput, TenantId, ThreadId,
+    ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion, score_temporal_retrieval,
 };
 use pgvector::Vector;
 use sha2::{Digest, Sha256};
@@ -538,6 +539,22 @@ fn hybrid_policy_plan(
             })
     }
 
+    let scoring_mode: String = required_column(row, "scoring_mode")?;
+    let temporal_scoring = match scoring_mode.as_str() {
+        "channel-only" => false,
+        "temporal-v1" => true,
+        _ => {
+            return Err(RepositoryError::Unexpected(
+                "hybrid retrieval scoring mode is unsupported".to_owned(),
+            ));
+        }
+    };
+    let expected_rounding = if temporal_scoring {
+        "half-even"
+    } else {
+        "half-away-from-zero"
+    };
+
     if document
         .pointer("/fusion/method")
         .and_then(|value| value.as_str())
@@ -561,7 +578,7 @@ fn hybrid_policy_plan(
         || document
             .pointer("/rounding")
             .and_then(|value| value.as_str())
-            != Some("half-away-from-zero")
+            != Some(expected_rounding)
         || integer(document, "/fusion/weights/exact")? != 1
         || integer(document, "/fusion/weights/lexical")? != 1
         || integer(document, "/fusion/weights/vector")? != 1
@@ -581,6 +598,7 @@ fn hybrid_policy_plan(
         fts_rank_normalization: integer(document, "/fts_rank_normalization")?,
         score_scale: integer(document, "/score_scale")?,
         rrf_k: integer(document, "/fusion/k")?,
+        temporal_scoring,
         profile: EmbeddingProfile {
             id: required_column(row, "profile_id")?,
             version: required_column(row, "profile_version")?,
@@ -607,16 +625,29 @@ fn hybrid_policy_plan(
         projection_profile_version: required_column(row, "embedding_projection_profile_version")?,
         projection_profile_sha256: required_column(row, "embedding_projection_profile_sha256")?,
     };
-    let expected_tie_break = serde_json::json!([
-        "fused_score_desc",
-        "exact_identity_rank_asc_nulls_last",
-        "exact_rank_asc_nulls_last",
-        "lexical_rank_asc_nulls_last",
-        "vector_rank_asc_nulls_last",
-        "case_id_asc",
-        "fact_id_asc",
-        "revision_id_asc"
-    ]);
+    let expected_tie_break = if temporal_scoring {
+        serde_json::json!([
+            "exact_identity_rank_asc_nulls_last",
+            "final_score_units_desc",
+            "exact_rank_asc_nulls_last",
+            "lexical_rank_asc_nulls_last",
+            "vector_rank_asc_nulls_last",
+            "case_id_asc",
+            "fact_id_asc",
+            "revision_id_asc"
+        ])
+    } else {
+        serde_json::json!([
+            "fused_score_desc",
+            "exact_identity_rank_asc_nulls_last",
+            "exact_rank_asc_nulls_last",
+            "lexical_rank_asc_nulls_last",
+            "vector_rank_asc_nulls_last",
+            "case_id_asc",
+            "fact_id_asc",
+            "revision_id_asc"
+        ])
+    };
     let expected_channel_tie_breaks = serde_json::json!({
         "exact": [
             "exact_identity_rank_asc",
@@ -637,6 +668,13 @@ fn hybrid_policy_plan(
             "revision_id_asc"
         ]
     });
+    let temporal_policy_supported = if temporal_scoring {
+        let stable_profile_sha256: String = required_column(row, "stable_recency_profile_sha256")?;
+        let active_profile_sha256: String = required_column(row, "active_recency_profile_sha256")?;
+        temporal_policy_is_supported(document, &stable_profile_sha256, &active_profile_sha256)
+    } else {
+        true
+    };
     if !(1..=50).contains(&plan.exact_candidate_limit)
         || !(1..=50).contains(&plan.lexical_candidate_limit)
         || !(1..=50).contains(&plan.vector_candidate_limit)
@@ -674,12 +712,71 @@ fn hybrid_policy_plan(
             .pointer("/projection_profile/digest")
             .and_then(serde_json::Value::as_str)
             != Some(plan.projection_profile_sha256.as_str())
+        || !temporal_policy_supported
     {
         return Err(RepositoryError::Unexpected(
             "hybrid retrieval policy is unsupported".to_owned(),
         ));
     }
     Ok(plan)
+}
+
+fn temporal_policy_is_supported(
+    document: &serde_json::Value,
+    stable_profile_sha256: &str,
+    active_profile_sha256: &str,
+) -> bool {
+    let value = |pointer: &str| document.pointer(pointer).and_then(|value| value.as_str());
+    let integer = |pointer: &str| document.pointer(pointer).and_then(|value| value.as_i64());
+    let expected_operation_order = serde_json::json!([
+        "rrf-channel-half-even",
+        "fused-exact-sum",
+        "recency-half-even",
+        "confidence-half-even",
+        "importance-half-even",
+        "exact-identity-bonus"
+    ]);
+    let expected_profile_lineage = serde_json::json!({
+        "active-case-30d-v1": {
+            "version": "1",
+            "digest": active_profile_sha256
+        },
+        "stable-v1": {
+            "version": "1",
+            "digest": stable_profile_sha256
+        }
+    });
+    value("/arithmetic/id") == Some("score-units-q63-v1")
+        && integer("/arithmetic/score_scale") == Some(12)
+        && value("/arithmetic/rounding") == Some("half-even")
+        && value("/arithmetic/overflow") == Some("reject")
+        && document.pointer("/arithmetic/operation_order") == Some(&expected_operation_order)
+        && value("/temporal/axis") == Some("request.valid_at")
+        && value("/temporal/anchor") == Some("fact_revision_governance.recency_anchor_at")
+        && value("/temporal/age_unit") == Some("microsecond")
+        && value("/temporal/negative_age") == Some("clamp_zero")
+        && document.pointer("/temporal/profile_lineage") == Some(&expected_profile_lineage)
+        && value("/temporal/profiles/stable-v1/kind") == Some("constant")
+        && value("/temporal/profiles/stable-v1/factor_units") == Some("1000000000000")
+        && value("/temporal/profiles/active-case-30d-v1/kind") == Some("continuous-half-life")
+        && value("/temporal/profiles/active-case-30d-v1/half_life_us") == Some("2592000000000")
+        && value("/temporal/profiles/active-case-30d-v1/floor_units") == Some("125000000000")
+        && value("/temporal/profiles/active-case-30d-v1/arithmetic") == Some("q63-exp2-v1")
+        && value("/temporal/profiles/active-case-30d-v1/constants_sha256")
+            == Some(Q63_EXP2_CONSTANTS_SHA256)
+        && value("/quality_factors/confidence/source") == Some("fact_revisions.confidence")
+        && value("/quality_factors/confidence/formula") == Some("identity")
+        && value("/quality_factors/confidence/minimum_units") == Some("0")
+        && value("/quality_factors/confidence/maximum_units") == Some("1000000000000")
+        && value("/quality_factors/importance/source")
+            == Some("fact_revision_governance.importance")
+        && value("/quality_factors/importance/formula") == Some("offset-plus-value")
+        && value("/quality_factors/importance/offset_units") == Some("500000000000")
+        && value("/quality_factors/importance/minimum_units") == Some("500000000000")
+        && value("/quality_factors/importance/maximum_units") == Some("1500000000000")
+        && value("/exact_identity_bonus_units/namespace_key") == Some("16393442623")
+        && value("/exact_identity_bonus_units/key") == Some("8196721311")
+        && value("/exact_identity_bonus_units/none") == Some("0")
 }
 
 #[derive(Debug)]
@@ -707,6 +804,7 @@ struct HybridPolicyPlan {
     fts_rank_normalization: i32,
     score_scale: i32,
     rrf_k: i32,
+    temporal_scoring: bool,
     profile: EmbeddingProfile,
     projection_profile_id: String,
     projection_profile_version: String,
@@ -733,7 +831,26 @@ struct HybridCandidate {
     projection_sha256: String,
     embedding_input_sha256: String,
     embedding_vector_sha256: String,
+    temporal: Option<TemporalCandidate>,
     item_sha256: String,
+}
+
+#[derive(Clone, Debug)]
+struct TemporalCandidate {
+    recency_profile_id: String,
+    recency_profile_version: String,
+    recency_profile_sha256: String,
+    recency_anchor_at: OffsetDateTime,
+    recency_age_us: String,
+    recency_factor: String,
+    confidence_factor: String,
+    importance_factor: String,
+    temporal_adjustment: String,
+    confidence_adjustment: String,
+    importance_adjustment: String,
+    exact_identity_bonus: String,
+    final_score: String,
+    order_key: TemporalOrderKey,
 }
 
 impl PostgresMemoryRepository {
@@ -847,7 +964,7 @@ impl PostgresMemoryRepository {
         let policy = sqlx::query(
             r#"
             SELECT policy.policy_id, policy.policy_version, policy.policy_sha256,
-                policy.retrieval_mode, policy.policy_document,
+                policy.retrieval_mode, policy.scoring_mode, policy.policy_document,
                 (policy_document ->> 'candidate_limit')::integer AS candidate_limit,
                 (policy_document ->> 'fts_rank_normalization')::integer
                     AS fts_rank_normalization,
@@ -863,12 +980,22 @@ impl PostgresMemoryRepository {
                 profile.provider_contract_schema_version, profile.profile_sha256,
                 policy.embedding_projection_profile_id,
                 policy.embedding_projection_profile_version,
-                policy.embedding_projection_profile_sha256
+                policy.embedding_projection_profile_sha256,
+                stable_recency.profile_sha256
+                    AS stable_recency_profile_sha256,
+                active_recency.profile_sha256
+                    AS active_recency_profile_sha256
             FROM memory.retrieval_policies AS policy
             LEFT JOIN memory.embedding_profiles AS profile
               ON profile.profile_id = policy.embedding_profile_id
              AND profile.profile_version = policy.embedding_profile_version
              AND profile.profile_sha256 = policy.embedding_profile_sha256
+            LEFT JOIN memory.recency_profiles AS stable_recency
+              ON stable_recency.profile_id = 'stable-v1'
+             AND stable_recency.profile_version = '1'
+            LEFT JOIN memory.recency_profiles AS active_recency
+              ON active_recency.profile_id = 'active-case-30d-v1'
+             AND active_recency.profile_version = '1'
             WHERE policy.policy_id = $1 AND policy.policy_version = '1'
             "#,
         )
@@ -1333,6 +1460,8 @@ impl PostgresMemoryRepository {
                     fact.namespace,
                     fact.fact_key,
                     revision.value,
+                    revision.observed_at,
+                    revision.confidence,
                     revision.sensitivity,
                     revision.content_sha256
                 FROM memory.fact_revisions AS revision
@@ -1352,7 +1481,18 @@ impl PostgresMemoryRepository {
                     revision.revision_id
             ),
             authorized AS MATERIALIZED (
-                SELECT effective.*
+                SELECT effective.*,
+                    governance.recency_profile_id,
+                    governance.recency_profile_version,
+                    governance.recency_profile_sha256,
+                    governance.recency_anchor_at,
+                    governance.importance,
+                    greatest(
+                        0::numeric,
+                        extract(epoch FROM (
+                            $4::timestamptz - governance.recency_anchor_at
+                        )) * 1000000
+                    )::numeric(30, 0) AS recency_age_us
                 FROM effective
                 JOIN memory.fact_revision_governance AS governance
                   ON governance.tenant_id = effective.tenant_id
@@ -1539,6 +1679,13 @@ impl PostgresMemoryRepository {
                             $26
                         )
                     END AS vector_rrf,
+                    eligible.recency_profile_id,
+                    eligible.recency_profile_version,
+                    eligible.recency_profile_sha256,
+                    eligible.recency_anchor_at,
+                    eligible.recency_age_us,
+                    eligible.confidence,
+                    eligible.importance,
                     eligible.content_sha256,
                     eligible.projection_sha256,
                     eligible.embedding_input_sha256,
@@ -1596,10 +1743,13 @@ impl PostgresMemoryRepository {
                     round(fused_score, $26)::text AS fused_score,
                     content_sha256, projection_sha256,
                     embedding_input_sha256, embedding_vector_sha256,
+                    recency_profile_id, recency_profile_version,
+                    recency_profile_sha256, recency_anchor_at,
+                    recency_age_us, confidence, importance,
                     final_rank
                 FROM ranked
                 ORDER BY final_rank
-                LIMIT $28
+                LIMIT CASE WHEN $29 THEN 150 ELSE $28 END
             )
             SELECT coverage.coverage_missing,
                 candidate.fact_id IS NOT NULL AS candidate_present,
@@ -1613,6 +1763,13 @@ impl PostgresMemoryRepository {
                 candidate.projection_sha256,
                 candidate.embedding_input_sha256,
                 candidate.embedding_vector_sha256,
+                candidate.recency_profile_id,
+                candidate.recency_profile_version,
+                candidate.recency_profile_sha256,
+                candidate.recency_anchor_at,
+                candidate.recency_age_us::text AS recency_age_us,
+                (candidate.confidence * 10000)::bigint AS confidence_basis_points,
+                (candidate.importance * 10000)::bigint AS importance_basis_points,
                 candidate.final_rank
             FROM coverage
             LEFT JOIN limited AS candidate
@@ -1648,6 +1805,7 @@ impl PostgresMemoryRepository {
         .bind(plan.score_scale)
         .bind(plan.rrf_k)
         .bind(plan.manifest_limit)
+        .bind(plan.temporal_scoring)
         .fetch_all(&mut **transaction)
         .await
         .map_err(unexpected)?;
@@ -1669,8 +1827,24 @@ impl PostgresMemoryRepository {
                 .try_get::<bool, _>("candidate_present")
                 .map_err(unexpected)?
             {
-                candidates.push(hybrid_candidate_from_row(row)?);
+                candidates.push(hybrid_candidate_from_row(row, plan.temporal_scoring)?);
             }
+        }
+        if plan.temporal_scoring {
+            candidates.sort_by(|left, right| {
+                left.temporal
+                    .as_ref()
+                    .expect("temporal policy creates temporal candidates")
+                    .order_key
+                    .cmp(
+                        &right
+                            .temporal
+                            .as_ref()
+                            .expect("temporal policy creates temporal candidates")
+                            .order_key,
+                    )
+            });
+            candidates.truncate(usize::try_from(plan.manifest_limit).map_err(unexpected)?);
         }
         let manifest_sha256 = hex::encode(Sha256::digest(
             candidates
@@ -1764,6 +1938,12 @@ impl PostgresMemoryRepository {
                     embedding_profile_sha256,
                     embedding_projection_profile_sha256,
                     embedding_input_sha256, embedding_vector_sha256,
+                    recency_profile_id, recency_profile_version,
+                    recency_profile_sha256, recency_anchor_at,
+                    recency_age_us, recency_factor, confidence_factor,
+                    importance_factor, temporal_adjustment,
+                    confidence_adjustment, importance_adjustment,
+                    exact_identity_bonus,
                     schema_version
                 )
                 VALUES (
@@ -1771,8 +1951,12 @@ impl PostgresMemoryRepository {
                     $9, $10, $11, COALESCE($12::numeric, 0),
                     $13, $14::numeric, $15::numeric,
                     $16::numeric, $17::numeric, $18::numeric,
-                    $19::numeric, $5, $19::numeric,
-                    $20, $21, $22, $23, $24, $25, $26, 1
+                    $19::numeric, $5, $27::numeric,
+                    $20, $21, $22, $23, $24, $25, $26,
+                    $28, $29, $30, $31, $32::numeric,
+                    $33::numeric, $34::numeric, $35::numeric,
+                    $36::numeric, $37::numeric, $38::numeric, $39::numeric,
+                    $40
                 )
                 "#,
             )
@@ -1802,6 +1986,91 @@ impl PostgresMemoryRepository {
             .bind(&plan.projection_profile_sha256)
             .bind(&candidate.embedding_input_sha256)
             .bind(&candidate.embedding_vector_sha256)
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map_or(candidate.fused_score.as_str(), |value| {
+                        value.final_score.as_str()
+                    }),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.recency_profile_id.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.recency_profile_version.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.recency_profile_sha256.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.recency_anchor_at),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.recency_age_us.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.recency_factor.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.confidence_factor.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.importance_factor.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.temporal_adjustment.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.confidence_adjustment.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.importance_adjustment.as_str()),
+            )
+            .bind(
+                candidate
+                    .temporal
+                    .as_ref()
+                    .map(|value| value.exact_identity_bonus.as_str()),
+            )
+            .bind(if candidate.temporal.is_some() {
+                2_i32
+            } else {
+                1_i32
+            })
             .execute(&mut **transaction)
             .await
             .map_err(unexpected)?;
@@ -3666,47 +3935,179 @@ fn lexical_candidate_from_row(row: &PgRow) -> Result<LexicalCandidate, Repositor
     })
 }
 
-fn hybrid_candidate_from_row(row: &PgRow) -> Result<HybridCandidate, RepositoryError> {
+fn hybrid_candidate_from_row(
+    row: &PgRow,
+    temporal_scoring: bool,
+) -> Result<HybridCandidate, RepositoryError> {
     let case_id = row.try_get("case_id").map_err(unexpected)?;
     let fact_id = row.try_get("fact_id").map_err(unexpected)?;
     let revision_id = row.try_get("revision_id").map_err(unexpected)?;
-    let exact_identity_rank = row.try_get("exact_identity_rank").map_err(unexpected)?;
-    let exact_rank = row.try_get("exact_rank").map_err(unexpected)?;
-    let lexical_rank = row.try_get("lexical_rank").map_err(unexpected)?;
+    let exact_identity_rank: Option<i16> =
+        row.try_get("exact_identity_rank").map_err(unexpected)?;
+    let exact_rank: Option<i64> = row.try_get("exact_rank").map_err(unexpected)?;
+    let lexical_rank: Option<i64> = row.try_get("lexical_rank").map_err(unexpected)?;
     let lexical_score = row.try_get("lexical_score").map_err(unexpected)?;
-    let vector_rank = row.try_get("vector_rank").map_err(unexpected)?;
+    let vector_rank: Option<i64> = row.try_get("vector_rank").map_err(unexpected)?;
     let vector_distance = row.try_get("vector_distance").map_err(unexpected)?;
     let vector_similarity = row.try_get("vector_similarity").map_err(unexpected)?;
-    let exact_rrf = row.try_get("exact_rrf").map_err(unexpected)?;
-    let lexical_rrf = row.try_get("lexical_rrf").map_err(unexpected)?;
-    let vector_rrf = row.try_get("vector_rrf").map_err(unexpected)?;
-    let fused_score = row.try_get("fused_score").map_err(unexpected)?;
+    let mut exact_rrf: String = row.try_get("exact_rrf").map_err(unexpected)?;
+    let mut lexical_rrf: String = row.try_get("lexical_rrf").map_err(unexpected)?;
+    let mut vector_rrf: String = row.try_get("vector_rrf").map_err(unexpected)?;
+    let mut fused_score: String = row.try_get("fused_score").map_err(unexpected)?;
     let source_content_sha256 = row.try_get("content_sha256").map_err(unexpected)?;
     let projection_sha256 = row.try_get("projection_sha256").map_err(unexpected)?;
     let embedding_input_sha256 = row.try_get("embedding_input_sha256").map_err(unexpected)?;
     let embedding_vector_sha256 = row.try_get("embedding_vector_sha256").map_err(unexpected)?;
+    let temporal = if temporal_scoring {
+        let recency_profile_id: String = row.try_get("recency_profile_id").map_err(unexpected)?;
+        let recency_profile_version: String =
+            row.try_get("recency_profile_version").map_err(unexpected)?;
+        let recency_profile_sha256: String =
+            row.try_get("recency_profile_sha256").map_err(unexpected)?;
+        let recency_profile = match (
+            recency_profile_id.as_str(),
+            recency_profile_version.as_str(),
+        ) {
+            ("stable-v1", "1") => RecencyProfile::StableV1,
+            ("active-case-30d-v1", "1") => RecencyProfile::ActiveCase30dV1,
+            _ => {
+                return Err(RepositoryError::Unexpected(
+                    "temporal retrieval recency profile is unsupported".to_owned(),
+                ));
+            }
+        };
+        let recency_anchor_at = row.try_get("recency_anchor_at").map_err(unexpected)?;
+        let recency_age_us: String = row.try_get("recency_age_us").map_err(unexpected)?;
+        let age_us = recency_age_us.parse::<i128>().map_err(unexpected)?;
+        let confidence_basis_points: i64 =
+            row.try_get("confidence_basis_points").map_err(unexpected)?;
+        let importance_basis_points: i64 =
+            row.try_get("importance_basis_points").map_err(unexpected)?;
+        let confidence_factor = ScoreUnits::from_ratio(i128::from(confidence_basis_points), 10_000)
+            .map_err(score_math_unexpected)?;
+        let importance = ScoreUnits::from_ratio(i128::from(importance_basis_points), 10_000)
+            .map_err(score_math_unexpected)?;
+        let exact_identity = match exact_identity_rank {
+            Some(1) => ExactIdentityTier::NamespaceAndKey,
+            Some(2) => ExactIdentityTier::KeyOnly,
+            None => ExactIdentityTier::None,
+            Some(_) => {
+                return Err(RepositoryError::Unexpected(
+                    "temporal retrieval exact identity rank is invalid".to_owned(),
+                ));
+            }
+        };
+        let score = score_temporal_retrieval(TemporalScoreInput {
+            exact_rank: temporal_rank(exact_rank)?,
+            lexical_rank: temporal_rank(lexical_rank)?,
+            vector_rank: temporal_rank(vector_rank)?,
+            recency_profile,
+            valid_at_us: age_us,
+            recency_anchor_at_us: 0,
+            confidence_factor,
+            importance,
+            exact_identity,
+        })
+        .map_err(score_math_unexpected)?;
+        exact_rrf = score.exact_rrf.to_string();
+        lexical_rrf = score.lexical_rrf.to_string();
+        vector_rrf = score.vector_rrf.to_string();
+        fused_score = score.fused_score.to_string();
+        Some(TemporalCandidate {
+            recency_profile_id,
+            recency_profile_version,
+            recency_profile_sha256,
+            recency_anchor_at,
+            recency_age_us,
+            recency_factor: score.recency_factor.to_string(),
+            confidence_factor: score.confidence_factor.to_string(),
+            importance_factor: score.importance_factor.to_string(),
+            temporal_adjustment: score.temporal_adjustment.to_string(),
+            confidence_adjustment: score.confidence_adjustment.to_string(),
+            importance_adjustment: score.importance_adjustment.to_string(),
+            exact_identity_bonus: score.exact_identity_bonus.to_string(),
+            final_score: score.final_score.to_string(),
+            order_key: TemporalOrderKey {
+                exact_identity_rank: exact_identity_rank
+                    .map(u32::try_from)
+                    .transpose()
+                    .map_err(unexpected)?,
+                final_score: score.final_score,
+                exact_rank: temporal_rank(exact_rank)?,
+                lexical_rank: temporal_rank(lexical_rank)?,
+                vector_rank: temporal_rank(vector_rank)?,
+                case_id: CaseId(case_id),
+                fact_id: FactId(fact_id),
+                revision_id: RevisionId(revision_id),
+            },
+        })
+    } else {
+        None
+    };
+    let mut item_document = serde_json::json!({
+        "case_id": case_id,
+        "fact_id": fact_id,
+        "revision_id": revision_id,
+        "exact_identity_rank": exact_identity_rank,
+        "exact_rank": exact_rank,
+        "lexical_rank": lexical_rank,
+        "lexical_score": lexical_score,
+        "vector_rank": vector_rank,
+        "vector_distance": vector_distance,
+        "vector_similarity": vector_similarity,
+        "exact_rrf": exact_rrf,
+        "lexical_rrf": lexical_rrf,
+        "vector_rrf": vector_rrf,
+        "fused_score": fused_score,
+        "source_content_sha256": source_content_sha256,
+        "projection_sha256": projection_sha256,
+        "embedding_input_sha256": embedding_input_sha256,
+        "embedding_vector_sha256": embedding_vector_sha256,
+    });
+    if let Some(temporal) = &temporal {
+        let object = item_document.as_object_mut().ok_or_else(|| {
+            RepositoryError::Unexpected("temporal item document is invalid".to_owned())
+        })?;
+        object.insert(
+            "recency_profile_id".to_owned(),
+            serde_json::json!(temporal.recency_profile_id),
+        );
+        object.insert(
+            "recency_profile_version".to_owned(),
+            serde_json::json!(temporal.recency_profile_version),
+        );
+        object.insert(
+            "recency_profile_sha256".to_owned(),
+            serde_json::json!(temporal.recency_profile_sha256),
+        );
+        object.insert(
+            "recency_anchor_at_unix_nanos".to_owned(),
+            serde_json::json!(
+                temporal
+                    .recency_anchor_at
+                    .unix_timestamp_nanos()
+                    .to_string()
+            ),
+        );
+        object.insert(
+            "recency_age_us".to_owned(),
+            serde_json::json!(temporal.recency_age_us),
+        );
+        for (name, value) in [
+            ("recency_factor", &temporal.recency_factor),
+            ("confidence_factor", &temporal.confidence_factor),
+            ("importance_factor", &temporal.importance_factor),
+            ("temporal_adjustment", &temporal.temporal_adjustment),
+            ("confidence_adjustment", &temporal.confidence_adjustment),
+            ("importance_adjustment", &temporal.importance_adjustment),
+            ("exact_identity_bonus", &temporal.exact_identity_bonus),
+            ("final_score", &temporal.final_score),
+        ] {
+            object.insert(name.to_owned(), serde_json::json!(value));
+        }
+    }
     let item_sha256 = hex::encode(Sha256::digest(
-        serde_json::to_vec(&serde_json::json!({
-            "case_id": case_id,
-            "fact_id": fact_id,
-            "revision_id": revision_id,
-            "exact_identity_rank": exact_identity_rank,
-            "exact_rank": exact_rank,
-            "lexical_rank": lexical_rank,
-            "lexical_score": lexical_score,
-            "vector_rank": vector_rank,
-            "vector_distance": vector_distance,
-            "vector_similarity": vector_similarity,
-            "exact_rrf": exact_rrf,
-            "lexical_rrf": lexical_rrf,
-            "vector_rrf": vector_rrf,
-            "fused_score": fused_score,
-            "source_content_sha256": source_content_sha256,
-            "projection_sha256": projection_sha256,
-            "embedding_input_sha256": embedding_input_sha256,
-            "embedding_vector_sha256": embedding_vector_sha256,
-        }))
-        .map_err(unexpected)?,
+        serde_json::to_vec(&item_document).map_err(unexpected)?,
     ));
     Ok(HybridCandidate {
         case_id,
@@ -3727,8 +4128,18 @@ fn hybrid_candidate_from_row(row: &PgRow) -> Result<HybridCandidate, RepositoryE
         projection_sha256,
         embedding_input_sha256,
         embedding_vector_sha256,
+        temporal,
         item_sha256,
     })
+}
+
+fn temporal_rank(rank: Option<i64>) -> Result<Option<u32>, RepositoryError> {
+    rank.map(|rank| u32::try_from(rank).map_err(unexpected))
+        .transpose()
+}
+
+fn score_math_unexpected(error: palimpsest_domain::ScoreMathError) -> RepositoryError {
+    RepositoryError::Unexpected(format!("temporal retrieval score is invalid: {error:?}"))
 }
 
 async fn select_retrieval_receipt(
@@ -3752,6 +4163,10 @@ async fn select_retrieval_receipt(
             query_input_sha256, query_vector_sha256
         FROM memory.retrieval_receipts
         WHERE tenant_id = $1 AND subject_id = $2 AND retrieval_id = $3
+          AND principal_id = NULLIF(
+              current_setting('palimpsest.principal_id', true),
+              ''
+          )
         "#,
     )
     .bind(tenant_id.0)
@@ -3775,6 +4190,10 @@ async fn select_retrieval_receipt(
             WHERE tenant_id = $1
               AND subject_id = $2
               AND retrieval_id = $3
+              AND principal_id = NULLIF(
+                  current_setting('palimpsest.principal_id', true),
+                  ''
+              )
               AND cursor_token = $4
             "#,
         )
@@ -3807,6 +4226,18 @@ async fn select_retrieval_receipt(
             manifest.lexical_rrf_contribution::text AS lexical_rrf_contribution,
             manifest.vector_rrf_contribution::text AS vector_rrf_contribution,
             manifest.fused_score::text AS fused_score,
+            manifest.recency_profile_id,
+            manifest.recency_profile_version,
+            manifest.recency_profile_sha256,
+            manifest.recency_anchor_at,
+            manifest.recency_age_us::text AS recency_age_us,
+            manifest.recency_factor::text AS recency_factor,
+            manifest.confidence_factor::text AS confidence_factor,
+            manifest.importance_factor::text AS importance_factor,
+            manifest.temporal_adjustment::text AS temporal_adjustment,
+            manifest.confidence_adjustment::text AS confidence_adjustment,
+            manifest.importance_adjustment::text AS importance_adjustment,
+            manifest.exact_identity_bonus::text AS exact_identity_bonus,
             manifest.embedding_input_sha256,
             manifest.embedding_vector_sha256,
             receipt.embedding_profile_id,
@@ -4016,6 +4447,26 @@ fn retrieval_item_from_row(row: &PgRow) -> Result<RetrievalItem, RepositoryError
             value: fused_score,
         });
     }
+    if row
+        .try_get::<Option<String>, _>("recency_profile_id")
+        .map_err(unexpected)?
+        .is_some()
+    {
+        for (component, column) in [
+            ("recency_factor", "recency_factor"),
+            ("confidence_factor", "confidence_factor"),
+            ("importance_factor", "importance_factor"),
+            ("temporal_adjustment", "temporal_adjustment"),
+            ("confidence_adjustment", "confidence_adjustment"),
+            ("importance_adjustment", "importance_adjustment"),
+            ("exact_identity_bonus", "exact_identity_bonus"),
+        ] {
+            scores.push(RetrievalScore {
+                component: component.to_owned(),
+                value: required_column(row, column)?,
+            });
+        }
+    }
     scores.extend([
         RetrievalScore {
             component: "final_rank".to_owned(),
@@ -4085,6 +4536,13 @@ fn episode_from_row(row: &PgRow) -> Result<Episode, RepositoryError> {
 }
 
 fn map_sqlx(error: sqlx::Error) -> RepositoryError {
+    if error
+        .as_database_error()
+        .and_then(|database_error| database_error.constraint())
+        == Some("fact_retrieval_metadata_policy_known")
+    {
+        return RepositoryError::WritePolicyRejected;
+    }
     if error
         .as_database_error()
         .and_then(|database_error| database_error.code())
