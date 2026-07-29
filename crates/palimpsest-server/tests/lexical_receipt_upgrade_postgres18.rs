@@ -19,7 +19,10 @@ const PRE_VECTOR_MIGRATIONS: [&str; 6] = [
     include_str!("../../../migrations/0006_authorized_lexical_retrieval.sql"),
 ];
 const VECTOR_MIGRATION: &str = include_str!("../../../migrations/0007_exact_vector_retrieval.sql");
-const TEMPORAL_MIGRATION_FILE: &str = "0008_deterministic_temporal_retrieval.sql";
+const CURRENT_MIGRATION_FILES: [&str; 2] = [
+    "0008_deterministic_temporal_retrieval.sql",
+    "0009_subject_lifecycle_fence.sql",
+];
 
 const TENANT_ID: &str = "019be100-0000-7000-8000-000000000010";
 const SUBJECT_ID: &str = "019be100-0000-7000-8000-000000000020";
@@ -96,7 +99,7 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
         let legacy_hybrid =
             load_receipt_evidence(&migration_pool, Uuid::parse_str(HYBRID_RETRIEVAL_ID)?).await?;
 
-        apply_temporal_migration(&migration_pool).await?;
+        apply_current_migrations(&migration_pool).await?;
         verify_preserved_database_contract(&migration_pool, &legacy).await?;
         verify_preserved_hybrid_contract(&migration_pool, &legacy_hybrid).await?;
         verify_temporal_schema_contract(&migration_pool, &legacy, &legacy_hybrid).await?;
@@ -137,16 +140,18 @@ async fn apply_migrations(pool: &PgPool, migrations: &[&'static str]) -> Result<
     Ok(())
 }
 
-async fn apply_temporal_migration(pool: &PgPool) -> Result<()> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../migrations")
-        .join(TEMPORAL_MIGRATION_FILE);
-    let migration = fs::read_to_string(&path)
-        .with_context(|| format!("read temporal migration {}", path.display()))?;
-    // The only dynamic input is repository-owned migration text from the fixed path above.
-    sqlx::raw_sql(AssertSqlSafe(migration))
-        .execute(pool)
-        .await?;
+async fn apply_current_migrations(pool: &PgPool) -> Result<()> {
+    for file_name in CURRENT_MIGRATION_FILES {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../migrations")
+            .join(file_name);
+        let migration = fs::read_to_string(&path)
+            .with_context(|| format!("read current migration {}", path.display()))?;
+        // The only dynamic input is repository-owned migration text from fixed names above.
+        sqlx::raw_sql(AssertSqlSafe(migration))
+            .execute(pool)
+            .await?;
+    }
     Ok(())
 }
 
@@ -1244,9 +1249,11 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
         tenant_id,
         subject_ids: vec![subject_id],
         allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
+        operation_grants: vec![],
     };
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let service = MemoryService::new(
+        repository.clone(),
         repository.clone(),
         repository.clone(),
         repository.clone(),

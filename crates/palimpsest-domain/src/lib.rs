@@ -29,6 +29,7 @@ uuid_id!(EpisodeId);
 uuid_id!(FactId);
 uuid_id!(RevisionId);
 uuid_id!(RetrievalId);
+uuid_id!(ContentLeaseId);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextValueError {
@@ -143,12 +144,74 @@ pub struct EmbeddingOutput {
 #[serde(transparent)]
 pub struct PrincipalId(pub String);
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationGrant {
+    CanonicalHistoryExport,
+    SubjectDelete,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubjectContentLease {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub lease_id: ContentLeaseId,
+    pub principal_id: PrincipalId,
+    pub acquired_at: OffsetDateTime,
+    pub expires_at: OffsetDateTime,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubjectLifecycleState {
+    Active,
+    DeletionPending,
+    Deleted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SubjectLifecycleTransitionError {
+    pub from: SubjectLifecycleState,
+    pub to: SubjectLifecycleState,
+}
+
+impl std::fmt::Display for SubjectLifecycleTransitionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "subject lifecycle cannot transition from {:?} to {:?}",
+            self.from, self.to
+        )
+    }
+}
+
+impl std::error::Error for SubjectLifecycleTransitionError {}
+
+impl SubjectLifecycleState {
+    pub fn transition_to(self, next: Self) -> Result<Self, SubjectLifecycleTransitionError> {
+        if self == next
+            || matches!(
+                (self, next),
+                (Self::Active, Self::DeletionPending) | (Self::DeletionPending, Self::Deleted)
+            )
+        {
+            Ok(next)
+        } else {
+            Err(SubjectLifecycleTransitionError {
+                from: self,
+                to: next,
+            })
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrincipalScope {
     pub principal_id: PrincipalId,
     pub tenant_id: TenantId,
     pub subject_ids: Vec<SubjectId>,
     pub allowed_sensitivities: Vec<Sensitivity>,
+    pub operation_grants: Vec<OperationGrant>,
 }
 
 impl PrincipalScope {
@@ -158,6 +221,68 @@ impl PrincipalScope {
 
     pub fn authorizes_sensitivity(&self, sensitivity: &Sensitivity) -> bool {
         self.allowed_sensitivities.contains(sensitivity)
+    }
+
+    pub fn authorizes_operation(&self, operation: OperationGrant) -> bool {
+        self.operation_grants.contains(&operation)
+    }
+}
+
+#[cfg(test)]
+mod principal_scope_tests {
+    use super::*;
+
+    #[test]
+    fn operation_grants_are_closed_and_independent_from_subject_scope() {
+        let scope = PrincipalScope {
+            principal_id: PrincipalId("principal-a".to_owned()),
+            tenant_id: TenantId(Uuid::nil()),
+            subject_ids: vec![SubjectId(Uuid::nil())],
+            allowed_sensitivities: vec![],
+            operation_grants: vec![OperationGrant::CanonicalHistoryExport],
+        };
+
+        assert!(scope.authorizes_operation(OperationGrant::CanonicalHistoryExport));
+        assert!(!scope.authorizes_operation(OperationGrant::SubjectDelete));
+        assert!(serde_json::from_str::<OperationGrant>("\"subject_delete\"").is_ok());
+        assert!(serde_json::from_str::<OperationGrant>("\"controller_override\"").is_err());
+    }
+}
+
+#[cfg(test)]
+mod subject_lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_transitions_are_monotonic_and_never_reactivate() {
+        assert_eq!(
+            SubjectLifecycleState::Active.transition_to(SubjectLifecycleState::DeletionPending),
+            Ok(SubjectLifecycleState::DeletionPending)
+        );
+        assert_eq!(
+            SubjectLifecycleState::DeletionPending.transition_to(SubjectLifecycleState::Deleted),
+            Ok(SubjectLifecycleState::Deleted)
+        );
+        assert_eq!(
+            SubjectLifecycleState::DeletionPending
+                .transition_to(SubjectLifecycleState::DeletionPending),
+            Ok(SubjectLifecycleState::DeletionPending)
+        );
+        assert!(
+            SubjectLifecycleState::Active
+                .transition_to(SubjectLifecycleState::Deleted)
+                .is_err()
+        );
+        assert!(
+            SubjectLifecycleState::DeletionPending
+                .transition_to(SubjectLifecycleState::Active)
+                .is_err()
+        );
+        assert!(
+            SubjectLifecycleState::Deleted
+                .transition_to(SubjectLifecycleState::Active)
+                .is_err()
+        );
     }
 }
 

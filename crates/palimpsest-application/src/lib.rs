@@ -8,7 +8,7 @@ use palimpsest_domain::{
     FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
     NewPreparedEffect, NewRetrieval, PrincipalScope, RetrievalFilters, RetrievalId,
     RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity,
-    SubjectId, SupersedeFact, TenantId, ThreadId,
+    SubjectContentLease, SubjectId, SupersedeFact, TenantId, ThreadId,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -24,6 +24,8 @@ const MAX_RETRIEVAL_FILTER_VALUES: usize = 100;
 pub enum RepositoryError {
     #[error("record not found")]
     NotFound,
+    #[error("subject content is unavailable")]
+    SubjectUnavailable,
     #[error("record conflicts with existing data")]
     Conflict,
     #[error("idempotency key was reused for a different request")]
@@ -148,6 +150,21 @@ pub trait RetrievalRepository: Send + Sync {
         cursor: Option<String>,
         authorization_scope_sha256: String,
     ) -> Result<RetrievalReceipt, RepositoryError>;
+}
+
+#[async_trait]
+pub trait SubjectLifecycleRepository: Send + Sync {
+    async fn acquire_content_lease(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectContentLease, RepositoryError>;
+
+    async fn release_content_lease(
+        &self,
+        lease: SubjectContentLease,
+    ) -> Result<(), RepositoryError>;
 }
 
 #[derive(Clone, Debug)]
@@ -288,6 +305,7 @@ pub enum ServiceError {
 
 #[derive(Clone)]
 pub struct MemoryService {
+    lifecycles: Arc<dyn SubjectLifecycleRepository>,
     episodes: Arc<dyn EpisodeRepository>,
     facts: Arc<dyn FactRepository>,
     checkpoints: Arc<dyn CheckpointRepository>,
@@ -297,12 +315,14 @@ pub struct MemoryService {
 
 impl MemoryService {
     pub fn new(
+        lifecycles: Arc<dyn SubjectLifecycleRepository>,
         episodes: Arc<dyn EpisodeRepository>,
         facts: Arc<dyn FactRepository>,
         checkpoints: Arc<dyn CheckpointRepository>,
         retrievals: Arc<dyn RetrievalRepository>,
     ) -> Self {
         Self {
+            lifecycles,
             episodes,
             facts,
             checkpoints,
@@ -314,6 +334,29 @@ impl MemoryService {
     pub fn with_embedding_provider(mut self, embeddings: Arc<dyn EmbeddingProvider>) -> Self {
         self.embeddings = embeddings;
         self
+    }
+
+    pub async fn acquire_subject_content_lease(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectContentLease, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        self.lifecycles
+            .acquire_content_lease(principal, tenant_id, subject_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn release_subject_content_lease(
+        &self,
+        lease: SubjectContentLease,
+    ) -> Result<(), ServiceError> {
+        self.lifecycles
+            .release_content_lease(lease)
+            .await
+            .map_err(map_repository)
     }
 
     pub async fn save_checkpoint(
@@ -1100,7 +1143,7 @@ fn validate_fact_revision(input: FactRevisionValidation<'_>) -> Result<(), Servi
 
 fn map_repository(error: RepositoryError) -> ServiceError {
     match error {
-        RepositoryError::NotFound => ServiceError::NotFound,
+        RepositoryError::NotFound | RepositoryError::SubjectUnavailable => ServiceError::NotFound,
         RepositoryError::Conflict => ServiceError::Conflict,
         RepositoryError::IdempotencyKeyReused => ServiceError::IdempotencyKeyReused,
         RepositoryError::IdempotencyInProgress => ServiceError::IdempotencyInProgress,

@@ -973,11 +973,13 @@ name = "palimpsest-http"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "http-body",
  "palimpsest-application",
  "palimpsest-domain",
  "serde",
  "serde_json",
  "time",
+ "tokio",
  "uuid",
 ]
 

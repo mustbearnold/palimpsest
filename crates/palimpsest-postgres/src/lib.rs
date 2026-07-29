@@ -3,20 +3,21 @@ use palimpsest_application::{
     AppendOutcome, CheckpointMutationOutcome, CheckpointRepository, EmbeddingProvider,
     EmbeddingRequest, EpisodeRepository, FactMutationOutcome, FactRepository, IdempotencyRequest,
     RepositoryError, RetrievalMutationOutcome, RetrievalPreparation, RetrievalQueryEmbedding,
-    RetrievalRepository, validate_embedding_response,
+    RetrievalRepository, SubjectLifecycleRepository, validate_embedding_response,
 };
 use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
-    CheckpointSnapshot, CheckpointView, EffectId, EffectKey, EffectKind, EffectReceipt,
-    EffectRecoveryMode, EffectStatus, EmbeddingInput, EmbeddingProfile, EmbeddingTask, Episode,
-    EpisodeId, EpisodeKind, ExactIdentityTier, FactId, FactKey, FactNamespace, FactRevision,
-    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewRetrieval,
-    PrincipalId, PrincipalScope, Provenance, Q63_EXP2_CONSTANTS_SHA256, RecencyProfile,
-    RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalEmbeddingLineage, RetrievalId,
-    RetrievalItem, RetrievalPerspective, RetrievalPolicy, RetrievalPolicyId,
+    CheckpointSnapshot, CheckpointView, ContentLeaseId, EffectId, EffectKey, EffectKind,
+    EffectReceipt, EffectRecoveryMode, EffectStatus, EmbeddingInput, EmbeddingProfile,
+    EmbeddingTask, Episode, EpisodeId, EpisodeKind, ExactIdentityTier, FactId, FactKey,
+    FactNamespace, FactRevision, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode,
+    NewFact, NewRetrieval, PrincipalId, PrincipalScope, Provenance, Q63_EXP2_CONSTANTS_SHA256,
+    RecencyProfile, RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalEmbeddingLineage,
+    RetrievalId, RetrievalItem, RetrievalPerspective, RetrievalPolicy, RetrievalPolicyId,
     RetrievalQueryEmbeddingLineage, RetrievalReceipt, RetrievalScore, RevisionId, ScoreUnits,
-    Sensitivity, SourceType, SubjectId, TemporalOrderKey, TemporalScoreInput, TenantId, ThreadId,
-    ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion, score_temporal_retrieval,
+    Sensitivity, SourceType, SubjectContentLease, SubjectId, TemporalOrderKey, TemporalScoreInput,
+    TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    score_temporal_retrieval,
 };
 use pgvector::Vector;
 use sha2::{Digest, Sha256};
@@ -75,6 +76,37 @@ impl EmbeddingProjectionCoordinator {
         if batch_size == 0 {
             return Ok(ProjectionRebuildReport::default());
         }
+
+        let lifecycle_repository = PostgresMemoryRepository::new(self.pool.clone());
+        let principal = PrincipalScope {
+            principal_id: PrincipalId("worker:embedding-projection".to_owned()),
+            tenant_id,
+            subject_ids: vec![subject_id],
+            allowed_sensitivities: vec![],
+            operation_grants: vec![],
+        };
+        let lease = lifecycle_repository
+            .acquire_content_lease(&principal, tenant_id, subject_id)
+            .await?;
+        let rebuild = self
+            .rebuild_pending_with_lease(tenant_id, subject_id, batch_size)
+            .await;
+        let release = lifecycle_repository.release_content_lease(lease).await;
+        match (rebuild, release) {
+            (Ok(report), Ok(())) => Ok(report),
+            (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
+            (Err(rebuild_error), Err(release_error)) => Err(RepositoryError::Unexpected(format!(
+                "projection rebuild failed ({rebuild_error}); content lease release also failed ({release_error})"
+            ))),
+        }
+    }
+
+    async fn rebuild_pending_with_lease(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        batch_size: usize,
+    ) -> Result<ProjectionRebuildReport, RepositoryError> {
         let limit = i64::try_from(batch_size).map_err(unexpected)?;
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, tenant_id, subject_id).await?;
@@ -3044,6 +3076,87 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 }
 
 #[async_trait]
+impl SubjectLifecycleRepository for PostgresMemoryRepository {
+    async fn acquire_content_lease(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectContentLease, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope(&mut transaction, tenant_id, subject_id).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO memory.subject_lifecycles (
+                tenant_id, subject_id, lifecycle_state, state_version
+            )
+            VALUES ($1, $2, 'active', 0)
+            ON CONFLICT (tenant_id, subject_id) DO NOTHING
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+
+        let lease_id = ContentLeaseId(uuid::Uuid::now_v7());
+        let row = sqlx::query(
+            r#"
+            INSERT INTO memory.subject_content_leases (
+                tenant_id, subject_id, lease_id, principal_id, expires_at
+            )
+            VALUES ($1, $2, $3, $4, clock_timestamp() + interval '30 seconds')
+            RETURNING acquired_at, expires_at
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .bind(lease_id.0)
+        .bind(&principal.principal_id.0)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        let lease = SubjectContentLease {
+            tenant_id,
+            subject_id,
+            lease_id,
+            principal_id: principal.principal_id.clone(),
+            acquired_at: row.try_get("acquired_at").map_err(unexpected)?,
+            expires_at: row.try_get("expires_at").map_err(unexpected)?,
+        };
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(lease)
+    }
+
+    async fn release_content_lease(
+        &self,
+        lease: SubjectContentLease,
+    ) -> Result<(), RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope_context(&mut transaction, lease.tenant_id, lease.subject_id).await?;
+        sqlx::query(
+            r#"
+            DELETE FROM memory.subject_content_leases
+            WHERE tenant_id = $1
+              AND subject_id = $2
+              AND lease_id = $3
+              AND principal_id = $4
+            "#,
+        )
+        .bind(lease.tenant_id.0)
+        .bind(lease.subject_id.0)
+        .bind(lease.lease_id.0)
+        .bind(&lease.principal_id.0)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl EpisodeRepository for PostgresMemoryRepository {
     async fn append(
         &self,
@@ -3857,6 +3970,40 @@ async fn record_governed_write(
 }
 
 async fn set_scope(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+) -> Result<(), RepositoryError> {
+    set_scope_context(transaction, tenant_id, subject_id).await?;
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock_shared(\
+            hashtextextended($1::text || ':' || $2::text, 0)\
+        )",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .execute(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    let lifecycle_state = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT lifecycle_state
+        FROM memory.subject_lifecycles
+        WHERE tenant_id = $1 AND subject_id = $2
+        "#,
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    if lifecycle_state.is_some_and(|state| state != "active") {
+        return Err(RepositoryError::SubjectUnavailable);
+    }
+    Ok(())
+}
+
+async fn set_scope_context(
     transaction: &mut Transaction<'_, Postgres>,
     tenant_id: TenantId,
     subject_id: SubjectId,

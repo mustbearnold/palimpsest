@@ -1,0 +1,72 @@
+# Subject lifecycle fence evaluation
+
+Date: 2026-07-29
+Issue: #29
+Status: development merge gate passed
+
+## Claim under evaluation
+
+An active subject may admit bounded content work. Once its monotonic lifecycle
+commits `deletion_pending`, no new HTTP response, idempotent replay, projection
+worker, or restricted database query may begin returning subject content. Work
+admitted before the transition remains durably visible as a content lease until
+it drains or is released.
+
+This evaluation does not claim that subject deletion is implemented. Durable
+deletion operations, lease revocation, purge workers, and absence verification
+remain issue #31.
+
+## Environment
+
+- PostgreSQL server version: 18 or newer, asserted by each integration test.
+- pgvector extension: exactly 0.8.5, asserted by each integration test.
+- Isolation authority: a fresh `NOSUPERUSER NOBYPASSRLS` runtime role with
+  forced row-level security.
+- Public seam: real TCP HTTP requests through the Axum adapter and PostgreSQL
+  repository.
+
+## Scenarios and results
+
+| Scenario | Result |
+| --- | --- |
+| Closed trusted grant vocabulary rejects unknown names and defaults empty | Pass |
+| Domain lifecycle permits only active to deletion-pending to deleted | Pass |
+| Database trigger rejects reactivation and transition retry is idempotent | Pass |
+| Active HTTP response retains one UUIDv7 lease through body delivery | Pass |
+| Pending fence rejects all episode, fact, as-of, checkpoint, retrieval, and replay handlers with redacted 404 responses | Pass |
+| Response admitted before the fence drains its already-authorized body, then releases its lease | Pass |
+| Embedding projection retains one worker lease through its provider call and releases it afterward | Pass |
+| Pending fence rejects a new projection before the provider is called | Pass |
+| Exclusive lifecycle transition waits for an in-flight shared subject transaction | Pass |
+| Restricted forced-RLS queries expose zero canonical, receipt, checkpoint, retrieval, and projection rows after the fence | Pass |
+| Pre-vector lexical receipts survive migrations 0007 through 0009 and still replay | Pass |
+
+The cross-tenant and cross-subject conformance suite also remained green under
+the new restrictive policies.
+
+## Commands
+
+```bash
+bash scripts/check-repo.sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+All commands passed. The workspace test includes the PostgreSQL 18 conformance,
+legacy receipt upgrade, and focused subject lifecycle fence scenarios.
+
+## Residual boundaries
+
+- Content leases expire after 30 seconds but remain durable until explicit
+  release or future deletion-worker revocation; issue #31 owns revocation and
+  the `draining` to `fenced` proof.
+- No public export or deletion endpoint exists in this change.
+- No production deployment, destructive purge, recovery exercise, or release
+  claim was performed.
+
+## Verdict
+
+The implementation satisfies issue #29's development seam and can proceed to
+independent Standards and Spec review. This report authorizes neither a
+security-sensitive release nor a first production deployment.

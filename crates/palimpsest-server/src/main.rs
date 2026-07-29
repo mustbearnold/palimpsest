@@ -1,7 +1,9 @@
 use std::{env, sync::Arc};
 
-use anyhow::{Context, Result};
-use palimpsest_domain::{PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId};
+use anyhow::{Context, Result, bail};
+use palimpsest_domain::{
+    OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,
+};
 use palimpsest_http::StaticAuthenticator;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
@@ -21,6 +23,9 @@ async fn main() -> Result<()> {
         .map(|value| Sensitivity::try_from(value.trim().to_owned()))
         .collect::<std::result::Result<Vec<_>, _>>()
         .context("PALIMPSEST_ALLOWED_SENSITIVITIES contains an invalid label")?;
+    let operation_grants =
+        parse_operation_grants(&env::var("PALIMPSEST_OPERATION_GRANTS").unwrap_or_default())
+            .context("PALIMPSEST_OPERATION_GRANTS contains an unknown grant")?;
     let bind = env::var("PALIMPSEST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
 
     let pool = PgPool::connect(&database_url)
@@ -37,6 +42,7 @@ async fn main() -> Result<()> {
             tenant_id: TenantId(tenant_id),
             subject_ids: vec![SubjectId(subject_id)],
             allowed_sensitivities,
+            operation_grants,
         },
     )]));
     let listener = TcpListener::bind(&bind)
@@ -48,6 +54,30 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn parse_operation_grants(value: &str) -> Result<Vec<OperationGrant>> {
+    let mut canonical_history_export = false;
+    let mut subject_delete = false;
+    for name in value
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
+        match name {
+            "canonical_history_export" => canonical_history_export = true,
+            "subject_delete" => subject_delete = true,
+            _ => bail!("unknown operation grant {name}"),
+        }
+    }
+    let mut grants = Vec::with_capacity(2);
+    if canonical_history_export {
+        grants.push(OperationGrant::CanonicalHistoryExport);
+    }
+    if subject_delete {
+        grants.push(OperationGrant::SubjectDelete);
+    }
+    Ok(grants)
+}
+
 fn required(name: &str) -> Result<String> {
     env::var(name).with_context(|| format!("{name} must be set"))
 }
@@ -56,4 +86,23 @@ fn parse_uuid(name: &str) -> Result<Uuid> {
     required(name)?
         .parse()
         .with_context(|| format!("{name} must be a UUID"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_grants_accept_only_the_closed_trusted_vocabulary() {
+        assert_eq!(
+            parse_operation_grants("canonical_history_export,subject_delete")
+                .expect("known operation grants should parse"),
+            vec![
+                OperationGrant::CanonicalHistoryExport,
+                OperationGrant::SubjectDelete,
+            ]
+        );
+        assert!(parse_operation_grants("").is_ok_and(|grants| grants.is_empty()));
+        assert!(parse_operation_grants("controller_override").is_err());
+    }
 }

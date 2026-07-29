@@ -1,7 +1,13 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use axum::{
     Json, Router,
+    body::{Body, Bytes, HttpBody},
     extract::{
         DefaultBodyLimit, Path, Query, State,
         rejection::{JsonRejection, QueryRejection},
@@ -10,14 +16,15 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post, put},
 };
+use http_body::{Frame, SizeHint};
 use palimpsest_application::{MemoryService, ServiceError};
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
     CreateFact, CreateRetrieval, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId,
     FactKey, FactNamespace, FactView, PrincipalScope, Provenance, RetentionPolicyId,
     RetrievalFilters, RetrievalId, RetrievalPerspective, RetrievalPolicyId, RetrievalQuery,
-    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId,
-    ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
+    SupersedeFact, TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
     parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
@@ -52,6 +59,89 @@ impl Authenticator for StaticAuthenticator {
 struct AppState {
     service: MemoryService,
     authenticator: Arc<dyn Authenticator>,
+}
+
+struct ContentLeaseGuard {
+    service: MemoryService,
+    lease: Option<SubjectContentLease>,
+}
+
+impl ContentLeaseGuard {
+    fn attach(mut self, response: Response) -> Response {
+        let (parts, body) = response.into_parts();
+        let body = Body::new(ContentLeaseBody {
+            inner: Box::pin(body),
+            guard: Some(Self {
+                service: self.service.clone(),
+                lease: self.lease.take(),
+            }),
+        });
+        Response::from_parts(parts, body)
+    }
+
+    fn release(&mut self) {
+        let Some(lease) = self.lease.take() else {
+            return;
+        };
+        let service = self.service.clone();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                let _ = service.release_subject_content_lease(lease).await;
+            });
+        }
+    }
+}
+
+impl Drop for ContentLeaseGuard {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+struct ContentLeaseBody {
+    inner: Pin<Box<Body>>,
+    guard: Option<ContentLeaseGuard>,
+}
+
+impl HttpBody for ContentLeaseBody {
+    type Data = Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let result = self.inner.as_mut().poll_frame(context);
+        if matches!(result, Poll::Ready(None)) {
+            self.guard.take();
+        }
+        result
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.inner.size_hint()
+    }
+}
+
+async fn acquire_content_lease(
+    state: &AppState,
+    principal: &PrincipalScope,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+) -> Result<ContentLeaseGuard, Problem> {
+    let lease = state
+        .service
+        .acquire_subject_content_lease(principal, tenant_id, subject_id)
+        .await
+        .map_err(Problem::from_service)?;
+    Ok(ContentLeaseGuard {
+        service: state.service.clone(),
+        lease: Some(lease),
+    })
 }
 
 pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> Router {
@@ -226,6 +316,7 @@ async fn save_checkpoint(
     let agent_id = AgentId(parse_uuid("agent_id", &agent_id)?);
     let thread_id = ThreadId(parse_uuid("thread_id", &thread_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let precondition = require_checkpoint_precondition(&headers)?;
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
@@ -260,7 +351,8 @@ async fn save_checkpoint(
         "/v1/tenants/{}/subjects/{}/agents/{}/threads/{}/checkpoint",
         tenant_id.0, subject_id.0, agent_id.0, thread_id.0
     );
-    checkpoint_response(status, outcome.view, Some(location), outcome.replayed)
+    let response = checkpoint_response(status, outcome.view, Some(location), outcome.replayed)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_checkpoint(
@@ -273,12 +365,14 @@ async fn get_checkpoint(
     let agent_id = AgentId(parse_uuid("agent_id", &agent_id)?);
     let thread_id = ThreadId(parse_uuid("thread_id", &thread_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let view = state
         .service
         .get_checkpoint(&principal, tenant_id, subject_id, agent_id, thread_id)
         .await
         .map_err(Problem::from_service)?;
-    checkpoint_response(StatusCode::OK, view, None, false)
+    let response = checkpoint_response(StatusCode::OK, view, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn append_episode(
@@ -290,6 +384,7 @@ async fn append_episode(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
@@ -318,12 +413,13 @@ async fn append_episode(
         "/v1/tenants/{}/subjects/{}/episodes/{}",
         tenant_id.0, subject_id.0, episode.episode.episode_id.0
     );
-    resource_response(
+    let response = resource_response(
         StatusCode::CREATED,
         episode.episode,
         Some(location),
         episode.replayed,
-    )
+    )?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_episode(
@@ -335,13 +431,15 @@ async fn get_episode(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let episode_id = EpisodeId(parse_uuid("episode_id", &episode_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
 
     let episode = state
         .service
         .get_episode(&principal, tenant_id, subject_id, episode_id)
         .await
         .map_err(Problem::from_service)?;
-    resource_response(StatusCode::OK, episode, None, false)
+    let response = resource_response(StatusCode::OK, episode, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn create_fact(
@@ -353,6 +451,7 @@ async fn create_fact(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
@@ -401,12 +500,13 @@ async fn create_fact(
         "/v1/tenants/{}/subjects/{}/facts/{}",
         tenant_id.0, subject_id.0, outcome.view.fact_id.0
     );
-    fact_response(
+    let response = fact_response(
         StatusCode::CREATED,
         outcome.view,
         Some(location),
         outcome.replayed,
-    )
+    )?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_current_fact(
@@ -418,12 +518,14 @@ async fn get_current_fact(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let view = state
         .service
         .get_current_fact(&principal, tenant_id, subject_id, fact_id)
         .await
         .map_err(Problem::from_service)?;
-    fact_response(StatusCode::OK, view, None, false)
+    let response = fact_response(StatusCode::OK, view, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn supersede_fact(
@@ -436,6 +538,7 @@ async fn supersede_fact(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let expected_head_revision_id = require_if_match(&headers)?;
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
@@ -480,7 +583,8 @@ async fn supersede_fact(
         )
         .await
         .map_err(Problem::from_service)?;
-    fact_response(StatusCode::OK, outcome.view, None, outcome.replayed)
+    let response = fact_response(StatusCode::OK, outcome.view, None, outcome.replayed)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_fact_as_of(
@@ -493,6 +597,7 @@ async fn get_fact_as_of(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let Query(query) = query.map_err(|error| {
         Problem::bad_request(
             "invalid_query",
@@ -514,7 +619,8 @@ async fn get_fact_as_of(
         )
         .await
         .map_err(Problem::from_service)?;
-    fact_response(StatusCode::OK, view, None, false)
+    let response = fact_response(StatusCode::OK, view, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn create_retrieval(
@@ -526,6 +632,7 @@ async fn create_retrieval(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_retrieval_json_rejection)?;
     if request.query.len() > 4096 {
@@ -578,12 +685,13 @@ async fn create_retrieval(
         "/v1/tenants/{}/subjects/{}/retrievals/{}",
         tenant_id.0, subject_id.0, outcome.receipt.retrieval_id.0
     );
-    retrieval_response(
+    let response = retrieval_response(
         StatusCode::CREATED,
         outcome.receipt,
         Some(location),
         outcome.replayed,
-    )
+    )?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_retrieval(
@@ -596,6 +704,7 @@ async fn get_retrieval(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let retrieval_id = RetrievalId(parse_uuid("retrieval_id", &retrieval_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let Query(query) = query.map_err(|error| {
         Problem::bad_request(
             "invalid_query",
@@ -614,7 +723,8 @@ async fn get_retrieval(
         )
         .await
         .map_err(Problem::from_service)?;
-    retrieval_response(StatusCode::OK, receipt, None, false)
+    let response = retrieval_response(StatusCode::OK, receipt, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<PrincipalScope, Problem> {

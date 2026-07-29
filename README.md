@@ -46,6 +46,11 @@ role so forced row-level security remains active. Override the `PALIMPSEST_*`
 environment variables when needed. Stop the service with `Ctrl+C`, then stop
 PostgreSQL without deleting its volume:
 
+`PALIMPSEST_OPERATION_GRANTS` is empty by default. Trusted deployments may set
+the comma-separated closed vocabulary `canonical_history_export` and/or
+`subject_delete`; unknown grants fail startup. The grants do not add public
+export or deletion endpoints by themselves.
+
 ```bash
 docker compose stop postgres
 ```

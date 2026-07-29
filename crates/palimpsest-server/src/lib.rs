@@ -21,6 +21,7 @@ pub fn app_with_embedding_provider(
             repository.clone(),
             repository.clone(),
             repository.clone(),
+            repository.clone(),
             repository,
         )
         .with_embedding_provider(embedding_provider),
