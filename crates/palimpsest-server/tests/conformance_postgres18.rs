@@ -2636,6 +2636,19 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
         lifecycle_fixture,
         lifecycle_replay,
     } = runtime;
+    let login_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(PgConnectOptions::from_str(database_url)?)
+        .await?;
+    let login_role = sqlx::query(
+        "SELECT session_user::text AS role_name, quote_ident(session_user) AS quoted_role_name",
+    )
+    .fetch_one(&login_pool)
+    .await?;
+    let login_role_name: String = login_role.try_get("role_name")?;
+    let quoted_login_role_name: String = login_role.try_get("quoted_role_name")?;
+    login_pool.close().await;
+
     let role_name = format!("palimpsest_test_runtime_{}", Uuid::now_v7().simple());
     sqlx::query(AssertSqlSafe(format!(
         "CREATE ROLE \"{role_name}\" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS"
@@ -2645,7 +2658,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
 
     let verification = async {
         sqlx::query(AssertSqlSafe(format!(
-            "GRANT \"{role_name}\" TO CURRENT_USER"
+            "GRANT \"{role_name}\" TO {quoted_login_role_name}"
         )))
         .execute(migration_pool)
         .await?;
@@ -2699,12 +2712,14 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
             .connect_with(PgConnectOptions::from_str(database_url)?)
             .await?;
         let role = sqlx::query(
-            "SELECT current_user AS role_name, rolsuper, rolbypassrls \
+            "SELECT current_user AS role_name, session_user AS login_role_name, \
+                    rolsuper, rolbypassrls \
              FROM pg_roles WHERE rolname = current_user",
         )
         .fetch_one(&runtime_pool)
         .await?;
         ensure!(role.try_get::<String, _>("role_name")? == role_name);
+        ensure!(role.try_get::<String, _>("login_role_name")? == login_role_name);
         ensure!(!role.try_get::<bool, _>("rolsuper")?);
         ensure!(!role.try_get::<bool, _>("rolbypassrls")?);
 
@@ -2766,7 +2781,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
     let cleanup = async {
         sqlx::raw_sql(AssertSqlSafe(format!(
             "DROP OWNED BY \"{role_name}\"; \
-             REVOKE \"{role_name}\" FROM CURRENT_USER; \
+             REVOKE \"{role_name}\" FROM {quoted_login_role_name}; \
              DROP ROLE \"{role_name}\""
         )))
         .execute(migration_pool)
