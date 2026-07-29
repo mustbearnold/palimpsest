@@ -96,7 +96,7 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
         let legacy_hybrid =
             load_receipt_evidence(&migration_pool, Uuid::parse_str(HYBRID_RETRIEVAL_ID)?).await?;
 
-        apply_temporal_migration(&runtime_pool).await?;
+        apply_temporal_migration(&migration_pool).await?;
         verify_preserved_database_contract(&migration_pool, &legacy).await?;
         verify_preserved_hybrid_contract(&migration_pool, &legacy_hybrid).await?;
         verify_temporal_schema_contract(&migration_pool, &legacy, &legacy_hybrid).await?;
