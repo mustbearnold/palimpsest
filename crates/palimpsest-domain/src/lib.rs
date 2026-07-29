@@ -102,6 +102,44 @@ text_value!(RetrievalQuery, 4096);
 text_value!(RetrievalPolicyId, 255);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmbeddingTask {
+    Query,
+    Document,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EmbeddingProfile {
+    pub id: String,
+    pub version: String,
+    pub provider: String,
+    pub model: String,
+    pub model_revision: String,
+    pub dimensions: usize,
+    pub normalization: String,
+    pub normalization_tolerance: f64,
+    pub distance_metric: String,
+    pub scalar_type: String,
+    pub input_serialization: String,
+    pub query_task: String,
+    pub document_task: String,
+    pub provider_contract_schema_version: u32,
+    pub digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EmbeddingInput {
+    pub input_sha256: String,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EmbeddingOutput {
+    pub input_sha256: String,
+    pub values: Vec<f32>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct PrincipalId(pub String);
 
@@ -574,6 +612,28 @@ pub struct RetrievalScore {
     pub value: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RetrievalEmbeddingLineage {
+    pub profile_id: String,
+    pub profile_version: String,
+    pub profile_digest: String,
+    pub projection_sha256: String,
+    pub input_sha256: String,
+    pub vector_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RetrievalQueryEmbeddingLineage {
+    pub profile_id: String,
+    pub profile_version: String,
+    pub profile_digest: String,
+    pub projection_profile_id: String,
+    pub projection_profile_version: String,
+    pub projection_profile_digest: String,
+    pub input_sha256: String,
+    pub vector_sha256: String,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RetrievalItem {
     pub memory_kind: String,
@@ -584,6 +644,8 @@ pub struct RetrievalItem {
     pub value: Value,
     pub evidence_episode_ids: Vec<EpisodeId>,
     pub scores: Vec<RetrievalScore>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<RetrievalEmbeddingLineage>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -601,6 +663,8 @@ pub struct RetrievalReceipt {
     pub policy: RetrievalPolicy,
     pub authorization: RetrievalAuthorizationReceipt,
     pub document_schema_version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_embedding: Option<RetrievalQueryEmbeddingLineage>,
     pub items: Vec<RetrievalItem>,
     pub next_cursor: Option<String>,
 }

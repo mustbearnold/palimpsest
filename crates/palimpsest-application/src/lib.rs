@@ -3,11 +3,12 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 use palimpsest_domain::{
     AgentId, AppendEpisode, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
-    CompleteEffectTransition, CreateFact, CreateRetrieval, EffectId, EffectTransition, Episode,
-    EpisodeId, FactId, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact,
-    NewFactRevision, NewPreparedEffect, NewRetrieval, PrincipalScope, RetrievalFilters,
-    RetrievalId, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint,
-    Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId,
+    CompleteEffectTransition, CreateFact, CreateRetrieval, EffectId, EffectTransition,
+    EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode, EpisodeId, FactId,
+    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
+    NewPreparedEffect, NewRetrieval, PrincipalScope, RetrievalFilters, RetrievalId,
+    RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity,
+    SubjectId, SupersedeFact, TenantId, ThreadId,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -123,10 +124,17 @@ pub trait CheckpointRepository: Send + Sync {
 
 #[async_trait]
 pub trait RetrievalRepository: Send + Sync {
+    async fn prepare_receipt(
+        &self,
+        retrieval: &NewRetrieval,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<RetrievalPreparation, RepositoryError>;
+
     async fn create_receipt(
         &self,
         retrieval: NewRetrieval,
         idempotency: IdempotencyRequest,
+        query_embedding: Option<RetrievalQueryEmbedding>,
     ) -> Result<RetrievalMutationOutcome, RepositoryError>;
 
     async fn get_receipt(
@@ -138,6 +146,64 @@ pub trait RetrievalRepository: Send + Sync {
         cursor: Option<String>,
         authorization_scope_sha256: String,
     ) -> Result<RetrievalReceipt, RepositoryError>;
+}
+
+#[derive(Clone, Debug)]
+pub enum RetrievalPreparation {
+    Replay(RetrievalMutationOutcome),
+    Execute {
+        embedding_profile: Option<EmbeddingProfile>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct RetrievalQueryEmbedding {
+    pub profile: EmbeddingProfile,
+    pub output: EmbeddingOutput,
+}
+
+#[derive(Clone, Debug)]
+pub struct EmbeddingRequest {
+    pub profile: EmbeddingProfile,
+    pub task: EmbeddingTask,
+    pub inputs: Vec<EmbeddingInput>,
+}
+
+#[derive(Clone, Debug)]
+pub struct EmbeddingResponse {
+    pub profile_digest: String,
+    pub outputs: Vec<EmbeddingOutput>,
+}
+
+#[derive(Clone, Debug, Error, Eq, PartialEq)]
+pub enum EmbeddingProviderError {
+    #[error("embedding provider is unavailable: {code}")]
+    Unavailable { code: String },
+    #[error("embedding provider returned an invalid response: {code}")]
+    InvalidResponse { code: String },
+}
+
+#[async_trait]
+pub trait EmbeddingProvider: Send + Sync {
+    async fn embed(
+        &self,
+        request: EmbeddingRequest,
+    ) -> Result<EmbeddingResponse, EmbeddingProviderError>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct UnavailableEmbeddingProvider;
+
+#[async_trait]
+impl EmbeddingProvider for UnavailableEmbeddingProvider {
+    async fn embed(
+        &self,
+        _request: EmbeddingRequest,
+    ) -> Result<EmbeddingResponse, EmbeddingProviderError> {
+        Err(EmbeddingProviderError::Unavailable {
+            code: "provider_not_configured".to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -164,7 +230,7 @@ pub struct CheckpointMutationOutcome {
     pub replayed: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RetrievalMutationOutcome {
     pub receipt: RetrievalReceipt,
     pub replayed: bool,
@@ -222,6 +288,7 @@ pub struct MemoryService {
     facts: Arc<dyn FactRepository>,
     checkpoints: Arc<dyn CheckpointRepository>,
     retrievals: Arc<dyn RetrievalRepository>,
+    embeddings: Arc<dyn EmbeddingProvider>,
 }
 
 impl MemoryService {
@@ -236,7 +303,13 @@ impl MemoryService {
             facts,
             checkpoints,
             retrievals,
+            embeddings: Arc::new(UnavailableEmbeddingProvider),
         }
+    }
+
+    pub fn with_embedding_provider(mut self, embeddings: Arc<dyn EmbeddingProvider>) -> Self {
+        self.embeddings = embeddings;
+        self
     }
 
     pub async fn save_checkpoint(
@@ -606,7 +679,10 @@ impl MemoryService {
             RetrievalPolicyId::try_from("retrieval-lexical-v1".to_owned())
                 .expect("the built-in retrieval policy ID is valid"),
         );
-        if policy_id.as_str() != "retrieval-lexical-v1" {
+        if !matches!(
+            policy_id.as_str(),
+            "retrieval-lexical-v1" | "retrieval-hybrid-v1"
+        ) {
             return Err(ServiceError::Unprocessable(
                 "policy_id is not supported".to_owned(),
             ));
@@ -639,27 +715,60 @@ impl MemoryService {
             &allowed_sensitivities,
         )?;
 
+        let retrieval = NewRetrieval {
+            tenant_id: command.tenant_id,
+            subject_id: command.subject_id,
+            retrieval_id: RetrievalId(Uuid::now_v7()),
+            query,
+            query_sha256,
+            authorization_scope_sha256,
+            perspective: command.perspective,
+            page_size: command.page_size,
+            policy_id,
+            filters,
+            principal_id: principal.principal_id.clone(),
+            allowed_sensitivities,
+        };
+        let idempotency = IdempotencyRequest {
+            key: idempotency_key,
+            fingerprint,
+        };
+
+        let embedding_profile = match self
+            .retrievals
+            .prepare_receipt(&retrieval, &idempotency)
+            .await
+            .map_err(map_repository)?
+        {
+            RetrievalPreparation::Replay(outcome) => return Ok(outcome),
+            RetrievalPreparation::Execute { embedding_profile } => embedding_profile,
+        };
+        let query_embedding = if let Some(profile) = embedding_profile {
+            let response = self
+                .embeddings
+                .embed(EmbeddingRequest {
+                    profile: profile.clone(),
+                    task: EmbeddingTask::Query,
+                    inputs: vec![EmbeddingInput {
+                        input_sha256: retrieval.query_sha256.clone(),
+                        content: retrieval.query.as_str().to_owned(),
+                    }],
+                })
+                .await
+                .map_err(|_| ServiceError::Unavailable)?;
+            let mut outputs =
+                validate_embedding_response(&profile, &[retrieval.query_sha256.as_str()], response)
+                    .map_err(|_| ServiceError::Unavailable)?;
+            Some(RetrievalQueryEmbedding {
+                profile,
+                output: outputs.remove(0),
+            })
+        } else {
+            None
+        };
+
         self.retrievals
-            .create_receipt(
-                NewRetrieval {
-                    tenant_id: command.tenant_id,
-                    subject_id: command.subject_id,
-                    retrieval_id: RetrievalId(Uuid::now_v7()),
-                    query,
-                    query_sha256,
-                    authorization_scope_sha256,
-                    perspective: command.perspective,
-                    page_size: command.page_size,
-                    policy_id,
-                    filters,
-                    principal_id: principal.principal_id.clone(),
-                    allowed_sensitivities,
-                },
-                IdempotencyRequest {
-                    key: idempotency_key,
-                    fingerprint,
-                },
-            )
+            .create_receipt(retrieval, idempotency, query_embedding)
             .await
             .map_err(map_repository)
     }
@@ -719,6 +828,52 @@ fn retrieval_authorization_scope_sha256(
         }))
         .map_err(|error| ServiceError::Invalid(error.to_string()))?,
     )))
+}
+
+pub fn validate_embedding_response(
+    profile: &EmbeddingProfile,
+    expected_input_sha256: &[&str],
+    response: EmbeddingResponse,
+) -> Result<Vec<EmbeddingOutput>, EmbeddingProviderError> {
+    if profile.dimensions == 0
+        || profile.digest.is_empty()
+        || profile.normalization != "unit_l2"
+        || !profile.normalization_tolerance.is_finite()
+        || profile.normalization_tolerance <= 0.0
+        || profile.distance_metric != "cosine"
+        || profile.scalar_type != "float32"
+        || response.profile_digest != profile.digest
+        || response.outputs.len() != expected_input_sha256.len()
+    {
+        return Err(EmbeddingProviderError::InvalidResponse {
+            code: "profile_contract_mismatch".to_owned(),
+        });
+    }
+
+    for (expected_input, output) in expected_input_sha256.iter().zip(&response.outputs) {
+        if output.input_sha256 != *expected_input
+            || output.values.len() != profile.dimensions
+            || output.values.iter().any(|value| !value.is_finite())
+        {
+            return Err(EmbeddingProviderError::InvalidResponse {
+                code: "embedding_shape_invalid".to_owned(),
+            });
+        }
+        let squared_norm = output
+            .values
+            .iter()
+            .map(|value| f64::from(*value) * f64::from(*value))
+            .sum::<f64>();
+        if squared_norm <= f64::EPSILON
+            || (squared_norm.sqrt() - 1.0).abs() > profile.normalization_tolerance
+        {
+            return Err(EmbeddingProviderError::InvalidResponse {
+                code: "embedding_normalization_invalid".to_owned(),
+            });
+        }
+    }
+
+    Ok(response.outputs)
 }
 
 fn normalize_retrieval_filters(
