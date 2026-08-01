@@ -147,10 +147,7 @@ impl CanonicalHistoryPackage {
         );
         files.push((
             "README.txt".to_owned(),
-            b"Palimpsest canonical history export.\n"
-                .iter()
-                .copied()
-                .collect(),
+            b"Palimpsest canonical history export.\n".to_vec(),
         ));
 
         let bytes = write_zip(&files)?;
