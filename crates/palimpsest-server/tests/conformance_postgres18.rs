@@ -1063,7 +1063,7 @@ async fn runs_hybrid_retrieval_conformance(
         ensure!(initial.failed == 0);
         verify_embedding_projection_rows(pool, target, &fixture).await?;
         verify_no_ann_indexes(pool).await?;
-        exercise_concurrent_projection_claim(pool, target, &fixture).await?;
+        exercise_concurrent_projection_claim(pool, migration_pool, target, &fixture).await?;
 
         apply_corpus_lifecycle(pool, target, &prepared_corpus).await?;
         tokio::time::sleep(Duration::from_millis(1_100)).await;
@@ -1722,6 +1722,7 @@ async fn rebuild_temporal_fixture_projections(
 
 async fn exercise_concurrent_projection_claim(
     pool: &PgPool,
+    migration_pool: &PgPool,
     target: &Target,
     fixture: &HybridFusionFixture,
 ) -> Result<()> {
@@ -1756,7 +1757,7 @@ async fn exercise_concurrent_projection_claim(
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
-    .fetch_one(pool)
+    .fetch_one(migration_pool)
     .await?;
     ensure!(
         projection_lease_count == 1,
@@ -1789,7 +1790,7 @@ async fn exercise_concurrent_projection_claim(
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
-    .fetch_one(pool)
+    .fetch_one(migration_pool)
     .await?;
     ensure!(
         released_projection_lease_count == 0,
