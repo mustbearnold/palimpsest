@@ -3,20 +3,22 @@ use palimpsest_application::{
     AppendOutcome, CheckpointMutationOutcome, CheckpointRepository, EmbeddingProvider,
     EmbeddingRequest, EpisodeRepository, FactMutationOutcome, FactRepository, IdempotencyRequest,
     RepositoryError, RetrievalMutationOutcome, RetrievalPreparation, RetrievalQueryEmbedding,
-    RetrievalRepository, validate_embedding_response,
+    RetrievalRepository, SubjectContentLeaseRepository, SubjectLifecycleControllerRepository,
+    validate_embedding_response,
 };
 use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
-    CheckpointSnapshot, CheckpointView, EffectId, EffectKey, EffectKind, EffectReceipt,
-    EffectRecoveryMode, EffectStatus, EmbeddingInput, EmbeddingProfile, EmbeddingTask, Episode,
-    EpisodeId, EpisodeKind, ExactIdentityTier, FactId, FactKey, FactNamespace, FactRevision,
-    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewRetrieval,
-    PrincipalId, PrincipalScope, Provenance, Q63_EXP2_CONSTANTS_SHA256, RecencyProfile,
-    RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalEmbeddingLineage, RetrievalId,
-    RetrievalItem, RetrievalPerspective, RetrievalPolicy, RetrievalPolicyId,
+    CheckpointSnapshot, CheckpointView, ContentLeaseId, EffectId, EffectKey, EffectKind,
+    EffectReceipt, EffectRecoveryMode, EffectStatus, EmbeddingInput, EmbeddingProfile,
+    EmbeddingTask, Episode, EpisodeId, EpisodeKind, ExactIdentityTier, FactId, FactKey,
+    FactNamespace, FactRevision, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode,
+    NewFact, NewRetrieval, PrincipalId, PrincipalScope, Provenance, Q63_EXP2_CONSTANTS_SHA256,
+    RecencyProfile, RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalEmbeddingLineage,
+    RetrievalId, RetrievalItem, RetrievalPerspective, RetrievalPolicy, RetrievalPolicyId,
     RetrievalQueryEmbeddingLineage, RetrievalReceipt, RetrievalScore, RevisionId, ScoreUnits,
-    Sensitivity, SourceType, SubjectId, TemporalOrderKey, TemporalScoreInput, TenantId, ThreadId,
-    ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion, score_temporal_retrieval,
+    Sensitivity, SourceType, SubjectContentLease, SubjectId, SubjectLifecycle,
+    SubjectLifecycleState, TemporalOrderKey, TemporalScoreInput, TenantId, ThreadId, ValidTime,
+    WritePolicy, WritePolicyId, WritePolicyVersion, score_temporal_retrieval,
 };
 use pgvector::Vector;
 use sha2::{Digest, Sha256};
@@ -75,6 +77,39 @@ impl EmbeddingProjectionCoordinator {
         if batch_size == 0 {
             return Ok(ProjectionRebuildReport::default());
         }
+
+        let lifecycle_repository = PostgresMemoryRepository::new(self.pool.clone());
+        let principal = PrincipalScope {
+            principal_id: PrincipalId("worker:embedding-projection".to_owned()),
+            tenant_id,
+            subject_ids: vec![subject_id],
+            allowed_sensitivities: vec![],
+            operation_grants: vec![],
+        };
+        let lease = lifecycle_repository
+            .acquire_content_lease(&principal, tenant_id, subject_id)
+            .await?;
+        let rebuild = run_with_content_lease_deadline(
+            lease.expires_at,
+            self.rebuild_pending_with_lease(tenant_id, subject_id, batch_size),
+        )
+        .await;
+        let release = lifecycle_repository.release_content_lease(&lease).await;
+        match (rebuild, release) {
+            (Ok(report), Ok(())) => Ok(report),
+            (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
+            (Err(rebuild_error), Err(release_error)) => Err(RepositoryError::Unexpected(format!(
+                "projection rebuild failed ({rebuild_error}); content lease release also failed ({release_error})"
+            ))),
+        }
+    }
+
+    async fn rebuild_pending_with_lease(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        batch_size: usize,
+    ) -> Result<ProjectionRebuildReport, RepositoryError> {
         let limit = i64::try_from(batch_size).map_err(unexpected)?;
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, tenant_id, subject_id).await?;
@@ -503,6 +538,27 @@ impl EmbeddingProjectionCoordinator {
         transaction.commit().await.map_err(unexpected)?;
         Ok(result.rows_affected() == 1)
     }
+}
+
+fn remaining_content_lease_duration(
+    expires_at: OffsetDateTime,
+) -> Result<std::time::Duration, RepositoryError> {
+    let remaining = expires_at - OffsetDateTime::now_utc();
+    if remaining <= time::Duration::ZERO {
+        Ok(std::time::Duration::ZERO)
+    } else {
+        std::time::Duration::try_from(remaining).map_err(unexpected)
+    }
+}
+
+async fn run_with_content_lease_deadline<T>(
+    expires_at: OffsetDateTime,
+    future: impl std::future::Future<Output = Result<T, RepositoryError>>,
+) -> Result<T, RepositoryError> {
+    let remaining = remaining_content_lease_duration(expires_at)?;
+    tokio::time::timeout(remaining, future)
+        .await
+        .map_err(|_| RepositoryError::Unexpected("projection content lease expired".to_owned()))?
 }
 
 fn embedding_vector_sha256(values: &[f32]) -> String {
@@ -3044,6 +3100,167 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 }
 
 #[async_trait]
+impl SubjectContentLeaseRepository for PostgresMemoryRepository {
+    async fn acquire_content_lease(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectContentLease, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope(&mut transaction, tenant_id, subject_id).await?;
+        sqlx::query("SELECT set_config('palimpsest.principal_id', $1, true)")
+            .bind(&principal.principal_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+
+        let lease_id = ContentLeaseId(uuid::Uuid::now_v7());
+        let row = sqlx::query(
+            r#"
+            SELECT acquired_at, expires_at
+            FROM memory.acquire_subject_content_lease($1, $2, $3, $4)
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .bind(lease_id.0)
+        .bind(&principal.principal_id.0)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        let lease = SubjectContentLease {
+            tenant_id,
+            subject_id,
+            lease_id,
+            principal_id: principal.principal_id.clone(),
+            acquired_at: row.try_get("acquired_at").map_err(unexpected)?,
+            expires_at: row.try_get("expires_at").map_err(unexpected)?,
+        };
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(lease)
+    }
+
+    async fn release_content_lease(
+        &self,
+        lease: &SubjectContentLease,
+    ) -> Result<(), RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope_context(&mut transaction, lease.tenant_id, lease.subject_id).await?;
+        sqlx::query("SELECT set_config('palimpsest.principal_id', $1, true)")
+            .bind(&lease.principal_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        sqlx::query(
+            r#"
+            SELECT memory.release_subject_content_lease($1, $2, $3, $4)
+            "#,
+        )
+        .bind(lease.tenant_id.0)
+        .bind(lease.subject_id.0)
+        .bind(lease.lease_id.0)
+        .bind(&lease.principal_id.0)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl SubjectLifecycleControllerRepository for PostgresMemoryRepository {
+    async fn transition_to_deletion_pending(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        self.transition_subject_lifecycle(
+            tenant_id,
+            subject_id,
+            SubjectLifecycleState::DeletionPending,
+        )
+        .await
+    }
+
+    async fn transition_to_deleted(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        self.transition_subject_lifecycle(tenant_id, subject_id, SubjectLifecycleState::Deleted)
+            .await
+    }
+}
+
+impl PostgresMemoryRepository {
+    async fn transition_subject_lifecycle(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        target: SubjectLifecycleState,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        const MAX_SERIALIZATION_ATTEMPTS: usize = 3;
+        for attempt in 1..=MAX_SERIALIZATION_ATTEMPTS {
+            match self
+                .transition_subject_lifecycle_once(tenant_id, subject_id, target)
+                .await
+            {
+                Err(RepositoryError::SerializationRetry)
+                    if attempt < MAX_SERIALIZATION_ATTEMPTS => {}
+                outcome => return outcome,
+            }
+        }
+        unreachable!("the bounded lifecycle serialization retry loop always returns")
+    }
+
+    async fn transition_subject_lifecycle_once(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        target: SubjectLifecycleState,
+    ) -> Result<SubjectLifecycle, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+            .execute(&mut *transaction)
+            .await
+            .map_err(map_lifecycle_sqlx)?;
+        set_scope_context(&mut transaction, tenant_id, subject_id).await?;
+        let state_version = match target {
+            SubjectLifecycleState::DeletionPending => sqlx::query_scalar::<_, i64>(
+                "SELECT memory.transition_subject_to_deletion_pending($1, $2)",
+            )
+            .bind(tenant_id.0)
+            .bind(subject_id.0)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(map_lifecycle_sqlx)?,
+            SubjectLifecycleState::Deleted => {
+                sqlx::query_scalar::<_, i64>("SELECT memory.transition_subject_to_deleted($1, $2)")
+                    .bind(tenant_id.0)
+                    .bind(subject_id.0)
+                    .fetch_one(&mut *transaction)
+                    .await
+                    .map_err(map_lifecycle_sqlx)?
+            }
+            SubjectLifecycleState::Active => {
+                return Err(RepositoryError::Unexpected(
+                    "active is not a lifecycle transition target".to_owned(),
+                ));
+            }
+        };
+        transaction.commit().await.map_err(map_lifecycle_sqlx)?;
+        Ok(SubjectLifecycle {
+            tenant_id,
+            subject_id,
+            state: target,
+            state_version: u64::try_from(state_version).map_err(unexpected)?,
+        })
+    }
+}
+
+#[async_trait]
 impl EpisodeRepository for PostgresMemoryRepository {
     async fn append(
         &self,
@@ -3861,6 +4078,40 @@ async fn set_scope(
     tenant_id: TenantId,
     subject_id: SubjectId,
 ) -> Result<(), RepositoryError> {
+    set_scope_context(transaction, tenant_id, subject_id).await?;
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock_shared(\
+            hashtextextended($1::text || ':' || $2::text, 0)\
+        )",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .execute(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    let lifecycle_state = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT lifecycle_state
+        FROM memory.subject_lifecycles
+        WHERE tenant_id = $1 AND subject_id = $2
+        "#,
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unexpected)?;
+    if lifecycle_state.is_some_and(|state| state != "active") {
+        return Err(RepositoryError::SubjectUnavailable);
+    }
+    Ok(())
+}
+
+async fn set_scope_context(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+) -> Result<(), RepositoryError> {
     sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
         .bind(tenant_id.0.to_string())
         .execute(&mut **transaction)
@@ -4572,6 +4823,18 @@ fn map_retrieval_sqlx(error: sqlx::Error) -> RepositoryError {
     }
 }
 
+fn map_lifecycle_sqlx(error: sqlx::Error) -> RepositoryError {
+    let code = error
+        .as_database_error()
+        .and_then(|database_error| database_error.code());
+    match code.as_deref() {
+        Some("40001") => RepositoryError::SerializationRetry,
+        Some("P0002") => RepositoryError::NotFound,
+        Some("23000" | "55000") => RepositoryError::Conflict,
+        _ => unexpected(error),
+    }
+}
+
 fn map_checkpoint_sqlx(error: sqlx::Error) -> RepositoryError {
     let Some(database_error) = error.as_database_error() else {
         return unexpected(error);
@@ -4609,4 +4872,21 @@ fn map_checkpoint_sqlx(error: sqlx::Error) -> RepositoryError {
 
 fn unexpected(error: impl std::fmt::Display) -> RepositoryError {
     RepositoryError::Unexpected(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn projection_work_is_cancelled_at_the_content_lease_deadline() {
+        let result = run_with_content_lease_deadline::<()>(
+            OffsetDateTime::now_utc() + time::Duration::milliseconds(10),
+            std::future::pending(),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(RepositoryError::Unexpected(message)) if message == "projection content lease expired")
+        );
+    }
 }

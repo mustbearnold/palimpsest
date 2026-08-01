@@ -372,6 +372,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                         Sensitivity::try_from("internal".to_owned())?,
                         Sensitivity::try_from("restricted".to_owned())?,
                     ],
+                    operation_grants: vec![],
                 },
             ),
             (
@@ -384,6 +385,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                         SubjectId(target.principal_a_secondary_subject_id),
                     ],
                     allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
+                    operation_grants: vec![],
                 },
             ),
             (
@@ -393,6 +395,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     tenant_id: TenantId(target.principal_b_tenant_id),
                     subject_ids: vec![SubjectId(target.principal_b_subject_id)],
                     allowed_sensitivities: vec![Sensitivity::try_from("restricted".to_owned())?],
+                    operation_grants: vec![],
                 },
             ),
             (
@@ -402,6 +405,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     tenant_id: TenantId(tenant_id),
                     subject_ids: vec![SubjectId(target.principal_c_subject_id)],
                     allowed_sensitivities: vec![Sensitivity::try_from("restricted".to_owned())?],
+                    operation_grants: vec![],
                 },
             ),
             (
@@ -414,6 +418,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                         Sensitivity::try_from("internal".to_owned())?,
                         Sensitivity::try_from("restricted".to_owned())?,
                     ],
+                    operation_grants: vec![],
                 },
             ),
         ]));
@@ -424,7 +429,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         let server = tokio::spawn(async move {
             axum::serve(
                 listener,
-                palimpsest_server::app(server_pool, server_authenticator),
+                palimpsest_server::app(server_pool.clone(), server_pool, server_authenticator),
             )
             .await
         });
@@ -1031,6 +1036,7 @@ async fn runs_hybrid_retrieval_conformance(
     let address = listener.local_addr()?;
     let router = palimpsest_server::app_with_embedding_provider(
         pool.clone(),
+        pool.clone(),
         authenticator.clone(),
         provider_port.clone(),
     );
@@ -1057,7 +1063,7 @@ async fn runs_hybrid_retrieval_conformance(
         ensure!(initial.failed == 0);
         verify_embedding_projection_rows(pool, target, &fixture).await?;
         verify_no_ann_indexes(pool).await?;
-        exercise_concurrent_projection_claim(pool, target, &fixture).await?;
+        exercise_concurrent_projection_claim(pool, migration_pool, target, &fixture).await?;
 
         apply_corpus_lifecycle(pool, target, &prepared_corpus).await?;
         tokio::time::sleep(Duration::from_millis(1_100)).await;
@@ -1716,6 +1722,7 @@ async fn rebuild_temporal_fixture_projections(
 
 async fn exercise_concurrent_projection_claim(
     pool: &PgPool,
+    migration_pool: &PgPool,
     target: &Target,
     fixture: &HybridFusionFixture,
 ) -> Result<()> {
@@ -1739,6 +1746,23 @@ async fn exercise_concurrent_projection_claim(
     })
     .await
     .context("first projection worker did not reach the provider")?;
+    let projection_lease_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM memory.subject_content_leases
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND principal_id = 'worker:embedding-projection'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(
+        projection_lease_count == 1,
+        "projection provider work did not retain exactly one subject content lease"
+    );
     let second = tokio::spawn(async move {
         second_coordinator
             .rebuild_pending(tenant_id, subject_id, 1)
@@ -1755,6 +1779,23 @@ async fn exercise_concurrent_projection_claim(
     );
     ensure!(first_report.attempted == 1 && first_report.ready == 1);
     ensure!(second_report.attempted == 0 && second_report.ready == 0);
+    let released_projection_lease_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM memory.subject_content_leases
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND principal_id = 'worker:embedding-projection'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(
+        released_projection_lease_count == 0,
+        "completed projection worker retained its subject content lease"
+    );
     Ok(())
 }
 
@@ -2947,6 +2988,8 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.fact_retrieval_metadata_policies, \
                  memory.fact_retention_policies, \
                  memory.search_projection_schemas, \
+                 memory.subject_lifecycles, \
+                 memory.subject_content_leases, \
                  memory.facts, \
                  memory.fact_revisions, \
                  memory.fact_revision_evidence, \
@@ -2960,13 +3003,18 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.authorized_retrieval_manifest \
              TO \"{role_name}\"; \
              GRANT INSERT ON \
+                 memory.subject_lifecycles, \
+                 memory.subject_content_leases, \
                  memory.retrieval_idempotency_reservations, \
                  memory.retrieval_receipts, \
                  memory.retrieval_manifest_items \
              TO \"{role_name}\"; \
+             GRANT DELETE ON memory.subject_content_leases TO \"{role_name}\"; \
              GRANT EXECUTE ON FUNCTION \
                  memory.round_half_even_integer_v1(numeric, numeric), \
-                 memory.temporal_recency_factor_units_v1(text, text, numeric) \
+                 memory.temporal_recency_factor_units_v1(text, text, numeric), \
+                 memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
+                 memory.release_subject_content_lease(uuid, uuid, uuid, text) \
              TO \"{role_name}\""
         )))
         .execute(migration_pool)
@@ -3004,6 +3052,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
             axum::serve(
                 listener,
                 palimpsest_server::app_with_embedding_provider(
+                    runtime_pool.clone(),
                     runtime_pool.clone(),
                     authenticator,
                     provider_port,
@@ -3372,10 +3421,11 @@ async fn crash_after_checkpoint_commit_child() -> Result<()> {
                 Sensitivity::try_from("internal".to_owned())?,
                 Sensitivity::try_from("restricted".to_owned())?,
             ],
+            operation_grants: vec![],
         },
     )]));
     let listener = TcpListener::bind(&env::var("PALIMPSEST_TEST_CHILD_BIND")?).await?;
-    let router = palimpsest_server::app(pool, authenticator)
+    let router = palimpsest_server::app(pool.clone(), pool, authenticator)
         .layer(middleware::from_fn(crash_after_selected_commit));
     axum::serve(listener, router).await?;
     Ok(())

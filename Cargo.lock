@@ -942,6 +942,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror",
  "time",
+ "tokio",
  "uuid",
 ]
 
@@ -973,11 +974,13 @@ name = "palimpsest-http"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "http-body",
  "palimpsest-application",
  "palimpsest-domain",
  "serde",
  "serde_json",
  "time",
+ "tokio",
  "uuid",
 ]
 
@@ -994,6 +997,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "time",
+ "tokio",
  "uuid",
 ]
 

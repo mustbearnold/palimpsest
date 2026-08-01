@@ -1,7 +1,18 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    future::Future,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    task::{Context, Poll},
+    time::Duration,
+};
 
 use axum::{
     Json, Router,
+    body::{Body, Bytes, HttpBody},
     extract::{
         DefaultBodyLimit, Path, Query, State,
         rejection::{JsonRejection, QueryRejection},
@@ -10,7 +21,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post, put},
 };
-use palimpsest_application::{MemoryService, ServiceError};
+use http_body::{Frame, SizeHint};
+use palimpsest_application::{
+    ContentLeasePermit, FactAsOfCoordinates, MemoryService, ServiceError,
+};
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
     CreateFact, CreateRetrieval, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId,
@@ -24,6 +38,29 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+static CONTENT_LEASE_RELEASE_RETRY_TOTAL: AtomicU64 = AtomicU64::new(0);
+static CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL: AtomicU64 = AtomicU64::new(0);
+static CONTENT_LEASE_RELEASE_OUTSTANDING: AtomicU64 = AtomicU64::new(0);
+static CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ContentLeaseCleanupCounters {
+    pub release_retries: u64,
+    pub runtime_unavailable: u64,
+    pub outstanding: u64,
+    pub deferred_to_expiry: u64,
+}
+
+pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
+    ContentLeaseCleanupCounters {
+        release_retries: CONTENT_LEASE_RELEASE_RETRY_TOTAL.load(Ordering::Relaxed),
+        runtime_unavailable: CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL
+            .load(Ordering::Relaxed),
+        outstanding: CONTENT_LEASE_RELEASE_OUTSTANDING.load(Ordering::Relaxed),
+        deferred_to_expiry: CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL.load(Ordering::Relaxed),
+    }
+}
 
 pub trait Authenticator: Send + Sync {
     fn authenticate(&self, bearer_token: &str) -> Option<PrincipalScope>;
@@ -52,12 +89,171 @@ impl Authenticator for StaticAuthenticator {
 struct AppState {
     service: MemoryService,
     authenticator: Arc<dyn Authenticator>,
+    lease_cleanup: ContentLeaseCleanupQueue,
+}
+
+struct ContentLeaseGuard {
+    cleanup: ContentLeaseCleanupQueue,
+    permit: Option<ContentLeasePermit>,
+}
+
+#[derive(Clone)]
+struct ContentLeaseCleanupQueue {
+    sender: tokio::sync::mpsc::UnboundedSender<palimpsest_application::ContentLeaseRelease>,
+}
+
+impl ContentLeaseCleanupQueue {
+    fn start(service: MemoryService) -> Self {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                while let Some(release) = receiver.recv().await {
+                    retry_content_lease_release(|| service.release_subject_content_lease(&release))
+                        .await;
+                    CONTENT_LEASE_RELEASE_OUTSTANDING.fetch_sub(1, Ordering::Relaxed);
+                }
+            });
+        } else {
+            CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            drop(receiver);
+        }
+        Self { sender }
+    }
+
+    fn enqueue(&self, release: palimpsest_application::ContentLeaseRelease) {
+        CONTENT_LEASE_RELEASE_OUTSTANDING.fetch_add(1, Ordering::Relaxed);
+        if self.sender.send(release).is_err() {
+            CONTENT_LEASE_RELEASE_OUTSTANDING.fetch_sub(1, Ordering::Relaxed);
+            CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+impl ContentLeaseGuard {
+    fn attach(mut self, response: Response) -> Response {
+        let (parts, body) = response.into_parts();
+        let expires_at = self.permit().expires_at();
+        let body = Body::new(ContentLeaseBody {
+            inner: Box::pin(body),
+            expires_at,
+            deadline: Box::pin(tokio::time::sleep(duration_until(expires_at))),
+            guard: Some(Self {
+                cleanup: self.cleanup.clone(),
+                permit: self.permit.take(),
+            }),
+        });
+        Response::from_parts(parts, body)
+    }
+
+    fn release(&mut self) {
+        let Some(permit) = self.permit.take() else {
+            return;
+        };
+        let release = permit.into_release();
+        self.cleanup.enqueue(release);
+    }
+
+    fn permit(&self) -> &ContentLeasePermit {
+        self.permit
+            .as_ref()
+            .expect("a content lease guard owns its permit until attached")
+    }
+}
+
+impl Drop for ContentLeaseGuard {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+struct ContentLeaseBody {
+    inner: Pin<Box<Body>>,
+    expires_at: OffsetDateTime,
+    deadline: Pin<Box<tokio::time::Sleep>>,
+    guard: Option<ContentLeaseGuard>,
+}
+
+impl HttpBody for ContentLeaseBody {
+    type Data = Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        if self.deadline.as_mut().poll(context).is_ready()
+            || OffsetDateTime::now_utc() >= self.expires_at
+        {
+            self.guard.take();
+            return Poll::Ready(None);
+        }
+        let result = self.inner.as_mut().poll_frame(context);
+        if matches!(result, Poll::Ready(None)) {
+            self.guard.take();
+        }
+        result
+    }
+
+    fn is_end_stream(&self) -> bool {
+        OffsetDateTime::now_utc() >= self.expires_at || self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        if OffsetDateTime::now_utc() >= self.expires_at {
+            SizeHint::with_exact(0)
+        } else {
+            self.inner.size_hint()
+        }
+    }
+}
+
+fn duration_until(expires_at: OffsetDateTime) -> Duration {
+    (expires_at - OffsetDateTime::now_utc())
+        .try_into()
+        .unwrap_or(Duration::ZERO)
+}
+
+async fn retry_content_lease_release<F, Fut, Error>(mut release: F)
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), Error>>,
+{
+    let mut delay = Duration::from_millis(10);
+    loop {
+        match release().await {
+            Ok(()) => return,
+            Err(_) => {
+                CONTENT_LEASE_RELEASE_RETRY_TOTAL.fetch_add(1, Ordering::Relaxed);
+                tokio::time::sleep(delay).await;
+                delay = delay.saturating_mul(2).min(Duration::from_secs(1));
+            }
+        }
+    }
+}
+
+async fn acquire_content_lease(
+    state: &AppState,
+    principal: &PrincipalScope,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+) -> Result<ContentLeaseGuard, Problem> {
+    let permit = state
+        .service
+        .acquire_subject_content_lease(principal, tenant_id, subject_id)
+        .await
+        .map_err(Problem::from_service)?;
+    Ok(ContentLeaseGuard {
+        cleanup: state.lease_cleanup.clone(),
+        permit: Some(permit),
+    })
 }
 
 pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> Router {
+    let lease_cleanup = ContentLeaseCleanupQueue::start(service.clone());
     let state = AppState {
         service,
         authenticator,
+        lease_cleanup,
     };
     Router::new()
         .route(
@@ -226,12 +422,14 @@ async fn save_checkpoint(
     let agent_id = AgentId(parse_uuid("agent_id", &agent_id)?);
     let thread_id = ThreadId(parse_uuid("thread_id", &thread_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let precondition = require_checkpoint_precondition(&headers)?;
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let outcome = state
         .service
         .save_checkpoint(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             precondition,
@@ -260,7 +458,8 @@ async fn save_checkpoint(
         "/v1/tenants/{}/subjects/{}/agents/{}/threads/{}/checkpoint",
         tenant_id.0, subject_id.0, agent_id.0, thread_id.0
     );
-    checkpoint_response(status, outcome.view, Some(location), outcome.replayed)
+    let response = checkpoint_response(status, outcome.view, Some(location), outcome.replayed)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_checkpoint(
@@ -273,12 +472,21 @@ async fn get_checkpoint(
     let agent_id = AgentId(parse_uuid("agent_id", &agent_id)?);
     let thread_id = ThreadId(parse_uuid("thread_id", &thread_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let view = state
         .service
-        .get_checkpoint(&principal, tenant_id, subject_id, agent_id, thread_id)
+        .get_checkpoint(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            agent_id,
+            thread_id,
+        )
         .await
         .map_err(Problem::from_service)?;
-    checkpoint_response(StatusCode::OK, view, None, false)
+    let response = checkpoint_response(StatusCode::OK, view, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn append_episode(
@@ -290,6 +498,7 @@ async fn append_episode(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
@@ -297,6 +506,7 @@ async fn append_episode(
     let episode = state
         .service
         .append_episode(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             AppendEpisode {
@@ -318,12 +528,13 @@ async fn append_episode(
         "/v1/tenants/{}/subjects/{}/episodes/{}",
         tenant_id.0, subject_id.0, episode.episode.episode_id.0
     );
-    resource_response(
+    let response = resource_response(
         StatusCode::CREATED,
         episode.episode,
         Some(location),
         episode.replayed,
-    )
+    )?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_episode(
@@ -335,13 +546,21 @@ async fn get_episode(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let episode_id = EpisodeId(parse_uuid("episode_id", &episode_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
 
     let episode = state
         .service
-        .get_episode(&principal, tenant_id, subject_id, episode_id)
+        .get_episode(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            episode_id,
+        )
         .await
         .map_err(Problem::from_service)?;
-    resource_response(StatusCode::OK, episode, None, false)
+    let response = resource_response(StatusCode::OK, episode, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn create_fact(
@@ -353,6 +572,7 @@ async fn create_fact(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
@@ -367,6 +587,7 @@ async fn create_fact(
     let outcome = state
         .service
         .create_fact(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             CreateFact {
@@ -401,12 +622,13 @@ async fn create_fact(
         "/v1/tenants/{}/subjects/{}/facts/{}",
         tenant_id.0, subject_id.0, outcome.view.fact_id.0
     );
-    fact_response(
+    let response = fact_response(
         StatusCode::CREATED,
         outcome.view,
         Some(location),
         outcome.replayed,
-    )
+    )?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_current_fact(
@@ -418,12 +640,20 @@ async fn get_current_fact(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let view = state
         .service
-        .get_current_fact(&principal, tenant_id, subject_id, fact_id)
+        .get_current_fact(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            fact_id,
+        )
         .await
         .map_err(Problem::from_service)?;
-    fact_response(StatusCode::OK, view, None, false)
+    let response = fact_response(StatusCode::OK, view, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn supersede_fact(
@@ -436,6 +666,7 @@ async fn supersede_fact(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let expected_head_revision_id = require_if_match(&headers)?;
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
@@ -450,6 +681,7 @@ async fn supersede_fact(
     let outcome = state
         .service
         .supersede_fact(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             expected_head_revision_id,
@@ -480,7 +712,8 @@ async fn supersede_fact(
         )
         .await
         .map_err(Problem::from_service)?;
-    fact_response(StatusCode::OK, outcome.view, None, outcome.replayed)
+    let response = fact_response(StatusCode::OK, outcome.view, None, outcome.replayed)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_fact_as_of(
@@ -493,6 +726,7 @@ async fn get_fact_as_of(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let Query(query) = query.map_err(|error| {
         Problem::bad_request(
             "invalid_query",
@@ -505,16 +739,20 @@ async fn get_fact_as_of(
     let view = state
         .service
         .get_fact_as_of(
+            content_lease.permit(),
             &principal,
             tenant_id,
             subject_id,
             fact_id,
-            valid_at,
-            recorded_at,
+            FactAsOfCoordinates {
+                valid_at,
+                recorded_at,
+            },
         )
         .await
         .map_err(Problem::from_service)?;
-    fact_response(StatusCode::OK, view, None, false)
+    let response = fact_response(StatusCode::OK, view, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 async fn create_retrieval(
@@ -526,6 +764,7 @@ async fn create_retrieval(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_retrieval_json_rejection)?;
     if request.query.len() > 4096 {
@@ -552,6 +791,7 @@ async fn create_retrieval(
     let outcome = state
         .service
         .create_retrieval(
+            content_lease.permit(),
             &principal,
             idempotency_key,
             CreateRetrieval {
@@ -578,12 +818,13 @@ async fn create_retrieval(
         "/v1/tenants/{}/subjects/{}/retrievals/{}",
         tenant_id.0, subject_id.0, outcome.receipt.retrieval_id.0
     );
-    retrieval_response(
+    let response = retrieval_response(
         StatusCode::CREATED,
         outcome.receipt,
         Some(location),
         outcome.replayed,
-    )
+    )?;
+    Ok(content_lease.attach(response))
 }
 
 async fn get_retrieval(
@@ -596,6 +837,7 @@ async fn get_retrieval(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let retrieval_id = RetrievalId(parse_uuid("retrieval_id", &retrieval_id)?);
     let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let Query(query) = query.map_err(|error| {
         Problem::bad_request(
             "invalid_query",
@@ -606,6 +848,7 @@ async fn get_retrieval(
     let receipt = state
         .service
         .get_retrieval(
+            content_lease.permit(),
             &principal,
             tenant_id,
             subject_id,
@@ -614,7 +857,8 @@ async fn get_retrieval(
         )
         .await
         .map_err(Problem::from_service)?;
-    retrieval_response(StatusCode::OK, receipt, None, false)
+    let response = retrieval_response(StatusCode::OK, receipt, None, false)?;
+    Ok(content_lease.attach(response))
 }
 
 fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<PrincipalScope, Problem> {
@@ -1136,5 +1380,90 @@ impl IntoResponse for Problem {
                 .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
         }
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        convert::Infallible,
+        sync::atomic::{AtomicUsize, Ordering as AtomicOrdering},
+        task::Waker,
+    };
+
+    struct PendingBody;
+
+    impl HttpBody for PendingBody {
+        type Data = Bytes;
+        type Error = Infallible;
+
+        fn poll_frame(
+            self: Pin<&mut Self>,
+            _context: &mut Context<'_>,
+        ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+            Poll::Pending
+        }
+    }
+
+    #[tokio::test]
+    async fn expired_content_lease_never_yields_buffered_response_content() {
+        let mut body = Box::pin(ContentLeaseBody {
+            inner: Box::pin(Body::from("must-not-cross-expired-content-lease")),
+            expires_at: OffsetDateTime::now_utc() - time::Duration::SECOND,
+            deadline: Box::pin(tokio::time::sleep(Duration::ZERO)),
+            guard: None,
+        });
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(matches!(
+            body.as_mut().poll_frame(&mut context),
+            Poll::Ready(None)
+        ));
+        assert!(body.is_end_stream());
+        assert_eq!(body.size_hint().exact(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn content_lease_deadline_wakes_a_stalled_response_body() {
+        let expires_at = OffsetDateTime::now_utc() + time::Duration::milliseconds(20);
+        let mut body = Box::pin(ContentLeaseBody {
+            inner: Box::pin(Body::new(PendingBody)),
+            expires_at,
+            deadline: Box::pin(tokio::time::sleep(duration_until(expires_at))),
+            guard: None,
+        });
+
+        let frame = tokio::time::timeout(
+            Duration::from_secs(1),
+            std::future::poll_fn(|context| body.as_mut().poll_frame(context)),
+        )
+        .await
+        .expect("the lease deadline must wake a response whose inner body never wakes");
+
+        assert!(frame.is_none());
+        assert!(body.is_end_stream());
+    }
+
+    #[tokio::test]
+    async fn lease_release_retries_until_cleanup_succeeds() {
+        let counters_before = content_lease_cleanup_counters();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed_attempts = attempts.clone();
+        retry_content_lease_release(move || {
+            let attempts = attempts.clone();
+            async move {
+                if attempts.fetch_add(1, AtomicOrdering::SeqCst) < 2 {
+                    Err(())
+                } else {
+                    Ok(())
+                }
+            }
+        })
+        .await;
+        assert_eq!(observed_attempts.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(
+            content_lease_cleanup_counters().release_retries,
+            counters_before.release_retries + 2
+        );
     }
 }
