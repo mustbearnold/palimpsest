@@ -100,6 +100,7 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
             load_receipt_evidence(&migration_pool, Uuid::parse_str(HYBRID_RETRIEVAL_ID)?).await?;
 
         apply_current_migrations(&migration_pool).await?;
+        grant_runtime_content_lease_functions(&migration_pool, &runtime_pool).await?;
         verify_preserved_database_contract(&migration_pool, &legacy).await?;
         verify_preserved_hybrid_contract(&migration_pool, &legacy_hybrid).await?;
         verify_temporal_schema_contract(&migration_pool, &legacy, &legacy_hybrid).await?;
@@ -152,6 +153,24 @@ async fn apply_current_migrations(pool: &PgPool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+    Ok(())
+}
+
+async fn grant_runtime_content_lease_functions(
+    migration_pool: &PgPool,
+    runtime_pool: &PgPool,
+) -> Result<()> {
+    let quoted_runtime_role: String = sqlx::query_scalar("SELECT quote_ident(current_user::text)")
+        .fetch_one(runtime_pool)
+        .await?;
+    sqlx::raw_sql(AssertSqlSafe(format!(
+        "GRANT EXECUTE ON FUNCTION \
+         memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
+         memory.release_subject_content_lease(uuid, uuid, uuid, text) \
+         TO {quoted_runtime_role}"
+    )))
+    .execute(migration_pool)
+    .await?;
     Ok(())
 }
 
