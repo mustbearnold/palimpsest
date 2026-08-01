@@ -3012,7 +3012,9 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
              GRANT DELETE ON memory.subject_content_leases TO \"{role_name}\"; \
              GRANT EXECUTE ON FUNCTION \
                  memory.round_half_even_integer_v1(numeric, numeric), \
-                 memory.temporal_recency_factor_units_v1(text, text, numeric) \
+                 memory.temporal_recency_factor_units_v1(text, text, numeric), \
+                 memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
+                 memory.release_subject_content_lease(uuid, uuid, uuid, text) \
              TO \"{role_name}\""
         )))
         .execute(migration_pool)
