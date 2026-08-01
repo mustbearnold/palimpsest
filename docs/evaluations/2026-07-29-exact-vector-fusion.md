@@ -108,7 +108,8 @@ passed again with the runtime
 connection set to a temporary `NOSUPERUSER NOBYPASSRLS` role and a separate
 migration-authority connection. The temporary role and template extension were
 removed after the gate. Independent Standards and Spec reviews both returned
-clean; their evidence is also recorded on the pull request.
+clean; their evidence is recorded with the direct `main` commit and its
+push-triggered CI run.
 
 ## Strict limits and non-claims
 
