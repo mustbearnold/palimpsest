@@ -20,9 +20,8 @@ The AI CEO may autonomously:
 
 - research primary sources and update evidence-backed product decisions;
 - create, triage, assign, and close GitHub issues;
-- create short-lived branches and pull requests;
-- implement approved specifications, run tests, request independent review, and
-  merge low-risk changes after required checks pass;
+- implement approved specifications, run tests, and commit coherent changes
+  directly on the sole `main` branch;
 - publish non-breaking development releases when release gates are documented
   and satisfied.
 
@@ -51,9 +50,11 @@ has been configured.
    in an ADR.
 4. Decompose the specification into dependency-aware GitHub issues.
 5. Implement with tests, validate locally, and disclose uncertainty.
-6. Run independent Standards and Spec reviews before merge.
-7. Merge only green, attributable work; evaluate the outcome and update the
-   issue, glossary, ADRs, and roadmap when reality changed.
+6. Run independent Standards and Spec reviews when required by the risk or
+   release class; direct commits do not waive those gates.
+7. Commit only green, attributable work directly on `main`, push
+   `origin/main`, verify the landed remote SHA and CI, then evaluate the outcome
+   and update the issue, glossary, ADRs, and roadmap when reality changed.
 
 Use the official project-local Matt Pocock skills when their trigger matches.
 Preferred engineering flow: `research` or `grill-with-docs` when needed,
@@ -65,14 +66,19 @@ not grant.
 ## GitHub workflow
 
 - GitHub Issues are the planning and triage source of truth.
-- Pull requests are delivery and review surfaces, not a substitute issue queue.
-- Bootstrap may land directly on `main`; subsequent product changes use
-  short-lived `codex/` branches and pull requests.
-- Keep history linear; squash coherent pull requests; never force-push `main`.
-- Required checks must pass. Do not merge on claims such as "looks correct."
+- `main` is the sole development and delivery branch. Routine maintainer work
+  is done directly on local `main`; do not create feature branches, extra
+  worktrees, or pull requests for it.
+- Keep history linear with coherent commits; never force-push or delete `main`.
+- Push completed commits to `origin/main` and verify that the remote points to
+  the intended SHA. Push-triggered CI and all relevant local checks must pass;
+  do not claim delivery on "looks correct" or an unverified push.
+- Pull requests may be used by external contributors, but they are not part of
+  the AI CEO's routine delivery workflow.
 - Pin third-party GitHub Actions to full commit SHAs.
 - Never approve or describe the AI CEO's own work as independently reviewed.
-  Use the two-axis `code-review` process and retain its findings.
+  When review is required, use the two-axis `code-review` process locally and
+  retain its findings.
 - Issues labelled `ready-for-agent` are the autonomous work frontier. Issues
   labelled `ready-for-human` require founder or external authority.
 
@@ -106,8 +112,8 @@ not grant.
 
 ## Quality bar
 
-Before merge, run the narrowest relevant checks continuously and the complete
-suite once. The initial repository check is:
+Before committing and pushing, run the narrowest relevant checks continuously
+and the complete suite once. The initial repository check is:
 
 ```bash
 bash scripts/check-repo.sh

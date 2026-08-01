@@ -4,15 +4,17 @@
 
 1. Start with a GitHub issue that states the user-visible outcome and validation
    seam.
-2. Use a short-lived branch named `codex/<outcome>` for agent work or an equally
-   descriptive branch for human contributions.
+2. Maintainer and AI CEO work is performed directly on the sole local `main`
+   branch. Do not create feature branches, extra worktrees, or pull requests for
+   routine changes.
 3. Add tests at the highest stable seam and run focused checks while working.
-4. Open a pull request that links the issue, states risks, and includes exact
-   validation evidence.
-5. Address Standards and Spec review findings separately. Merge only after
-   required checks pass.
+4. Commit a coherent, attributable change on `main`, then push it to
+   `origin/main` and verify the remote SHA and push-triggered CI.
+5. External contributors may use pull requests when needed, but that is not the
+   maintainer delivery path. Required review and release gates still apply to
+   the work that falls under them.
 
-## Commit and pull-request quality
+## Commit quality
 
 - Keep commits coherent and attributable.
 - Do not commit secrets, customer data, private evaluation corpora, generated
@@ -20,6 +22,7 @@
 - Pin GitHub Actions to full commit SHAs.
 - Update `CONTEXT.md` or an ADR when behavior changes their truth.
 - Do not weaken tests or authorization to complete a change.
+- Never force-push or delete `main`.
 
 ## First check
 

@@ -42,7 +42,7 @@ metadata in PostgreSQL.
 The project will be operated by an AI CEO under the founder's explicit charter.
 GitHub Issues will be the work source of truth, official Matt Pocock skills will
 drive specification, decomposition, implementation, and independent review,
-and protected pull requests plus executable gates will control delivery.
+and direct linear commits on `main` plus executable gates will control delivery.
 
 ## User Stories
 
@@ -126,13 +126,13 @@ and protected pull requests plus executable gates will control delivery.
 - The initial deployment is single-region and self-hostable. Multi-region
   active-active writes require a later consistency ADR.
 - The AI CEO uses GitHub Issues as the source of truth, official Matt Pocock
-  skills as the procedure layer, short-lived pull requests as the delivery seam,
-  and independent Standards and Spec reviews as the merge gate.
-- The initial public-repository bootstrap may land directly on local `main`
-  before a protected remote branch exists, but only after independent Standards
-  and Spec reviews. This one-time exception ends as soon as the public `main`
-  branch and its ruleset exist; every subsequent product change uses a
-  short-lived pull request.
+  skills as the procedure layer, and direct linear commits on the sole `main`
+  branch as the delivery seam. Local gates and push-triggered CI are mandatory;
+  independent Standards and Spec review remains required for the risk and
+  release classes that call for it.
+- The remote `main` ruleset permits ordinary direct pushes while prohibiting
+  force-pushes and branch deletion. The AI CEO does not create feature branches,
+  extra worktrees, or pull requests for routine product work.
 
 ## Testing Decisions
 

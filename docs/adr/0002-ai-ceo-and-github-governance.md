@@ -1,6 +1,6 @@
 # ADR-0002: AI CEO operates through bounded GitHub governance
 
-Status: accepted
+Status: accepted; delivery workflow superseded by ADR-0009
 
 Date: 2026-07-28
 
@@ -14,9 +14,12 @@ the founder did not authorize.
 ## Decision
 
 The human founder retains constitutional authority. The AI agent acts as
-operating CEO inside `AGENTS.md`. GitHub Issues define work, dependency-aware
-`ready-for-agent` issues define the autonomy frontier, and pull requests plus
-required checks and independent two-axis review define the delivery gate.
+operating CEO inside `AGENTS.md`. GitHub Issues define work and
+dependency-aware `ready-for-agent` issues define the autonomy frontier. The
+original delivery gate used pull requests plus required checks and independent
+two-axis review. ADR-0009 supersedes that delivery mechanism with direct,
+linear commits on `main` while retaining the issue frontier, executable checks,
+and independent review for the risk and release classes that require it.
 
 The CEO may merge low-risk, fully specified work after gates pass. Governance,
 credentials, spending, legal terms, destructive production operations, first

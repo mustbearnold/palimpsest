@@ -14,9 +14,12 @@ Specifications and tickets live as GitHub Issues in the repository identified by
 - GitHub shares numbering between issues and pull requests; resolve ambiguous
   references before mutating either.
 
-## Pull requests as a triage surface
+## Pull requests as an optional external-contribution surface
 
-**PRs as a request surface: no.** Pull requests deliver already-specified work.
+Routine maintainer and AI CEO work is committed directly to `main`; it does not
+use pull requests. An external contributor may submit a pull request, but it
+must still implement an already-specified issue rather than become a substitute
+for the issue queue.
 
 ## Skill mappings
 

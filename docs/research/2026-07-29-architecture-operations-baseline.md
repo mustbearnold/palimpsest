@@ -107,7 +107,7 @@ explicit PostgreSQL queries and checked migrations, Serde for wire DTOs, and
 `tracing` plus OpenTelemetry for observability. Keep `Cargo.lock` committed and
 pin direct dependencies to compatible release lines. Ban wildcard dependencies,
 run license/advisory/source checks, and update dependencies in small attributable
-pull requests.
+commits on `main`.
 
 Do not introduce an ORM. Palimpsest's bitemporal, authorization-first, range,
 full-text, and pgvector queries are part of correctness and must remain visible

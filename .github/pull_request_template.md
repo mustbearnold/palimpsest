@@ -1,3 +1,6 @@
+Routine maintainer and AI CEO work is committed directly to `main`. This
+template applies only when an external contributor submits a pull request.
+
 ## Outcome
 
 Describe the user-visible result and link the originating issue.
