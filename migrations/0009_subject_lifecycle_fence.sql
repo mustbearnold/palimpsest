@@ -42,6 +42,7 @@ BEGIN
         FROM memory.subject_content_leases AS lease
         WHERE lease.tenant_id = OLD.tenant_id
           AND lease.subject_id = OLD.subject_id
+          AND lease.expires_at > clock_timestamp()
     ) THEN
         RAISE EXCEPTION 'subject lifecycle cannot reach deleted while content leases remain'
             USING ERRCODE = '55000';
@@ -62,13 +63,21 @@ CREATE FUNCTION memory.transition_subject_to_deletion_pending(
 )
 RETURNS bigint
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = pg_catalog, memory
 AS $$
 DECLARE
     current_state text;
     current_version bigint;
 BEGIN
+    IF candidate_tenant_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+       OR candidate_subject_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid THEN
+        RAISE EXCEPTION 'subject lifecycle transition scope is not authorized'
+            USING ERRCODE = '42501';
+    END IF;
+
     PERFORM pg_advisory_xact_lock(
         hashtextextended(
             candidate_tenant_id::text || ':' || candidate_subject_id::text,
@@ -146,19 +155,32 @@ CREATE FUNCTION memory.transition_subject_to_deleted(
 )
 RETURNS bigint
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = pg_catalog, memory
 AS $$
 DECLARE
     current_state text;
     current_version bigint;
 BEGIN
+    IF candidate_tenant_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+       OR candidate_subject_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid THEN
+        RAISE EXCEPTION 'subject lifecycle transition scope is not authorized'
+            USING ERRCODE = '42501';
+    END IF;
+
     PERFORM pg_advisory_xact_lock(
         hashtextextended(
             candidate_tenant_id::text || ':' || candidate_subject_id::text,
             0
         )
     );
+
+    DELETE FROM memory.subject_content_leases
+    WHERE tenant_id = candidate_tenant_id
+      AND subject_id = candidate_subject_id
+      AND expires_at <= clock_timestamp();
 
     SELECT lifecycle_state, state_version
     INTO current_state, current_version
@@ -284,6 +306,110 @@ USING (
     tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
     AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
 );
+
+CREATE FUNCTION memory.acquire_subject_content_lease(
+    candidate_tenant_id uuid,
+    candidate_subject_id uuid,
+    candidate_lease_id uuid,
+    candidate_principal_id text
+)
+RETURNS TABLE(acquired_at timestamptz, expires_at timestamptz)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, memory
+AS $$
+BEGIN
+    IF candidate_tenant_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+       OR candidate_subject_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+       OR candidate_principal_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.principal_id', true), '') THEN
+        RAISE EXCEPTION 'subject content lease scope is not authorized'
+            USING ERRCODE = '42501';
+    END IF;
+
+    PERFORM pg_advisory_xact_lock_shared(
+        hashtextextended(
+            candidate_tenant_id::text || ':' || candidate_subject_id::text,
+            0
+        )
+    );
+
+    INSERT INTO memory.subject_lifecycles (
+        tenant_id, subject_id, lifecycle_state, state_version
+    )
+    VALUES (candidate_tenant_id, candidate_subject_id, 'active', 0)
+    ON CONFLICT (tenant_id, subject_id) DO NOTHING;
+
+    IF EXISTS (
+        SELECT 1
+        FROM memory.subject_lifecycles
+        WHERE tenant_id = candidate_tenant_id
+          AND subject_id = candidate_subject_id
+          AND lifecycle_state <> 'active'
+    ) THEN
+        RAISE EXCEPTION 'subject does not admit content leases'
+            USING ERRCODE = '55000';
+    END IF;
+
+    DELETE FROM memory.subject_content_leases
+    WHERE tenant_id = candidate_tenant_id
+      AND subject_id = candidate_subject_id
+      AND expires_at <= clock_timestamp();
+
+    RETURN QUERY
+    INSERT INTO memory.subject_content_leases (
+        tenant_id, subject_id, lease_id, principal_id, expires_at
+    )
+    VALUES (
+        candidate_tenant_id,
+        candidate_subject_id,
+        candidate_lease_id,
+        candidate_principal_id,
+        clock_timestamp() + interval '30 seconds'
+    )
+    RETURNING
+        subject_content_leases.acquired_at,
+        subject_content_leases.expires_at;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION memory.acquire_subject_content_lease(uuid, uuid, uuid, text)
+FROM PUBLIC;
+
+CREATE FUNCTION memory.release_subject_content_lease(
+    candidate_tenant_id uuid,
+    candidate_subject_id uuid,
+    candidate_lease_id uuid,
+    candidate_principal_id text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, memory
+AS $$
+BEGIN
+    IF candidate_tenant_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+       OR candidate_subject_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+       OR candidate_principal_id IS DISTINCT FROM
+            NULLIF(current_setting('palimpsest.principal_id', true), '') THEN
+        RAISE EXCEPTION 'subject content lease scope is not authorized'
+            USING ERRCODE = '42501';
+    END IF;
+
+    DELETE FROM memory.subject_content_leases
+    WHERE tenant_id = candidate_tenant_id
+      AND subject_id = candidate_subject_id
+      AND lease_id = candidate_lease_id
+      AND principal_id = candidate_principal_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION memory.release_subject_content_lease(uuid, uuid, uuid, text)
+FROM PUBLIC;
 
 CREATE POLICY episodes_active_subject
 ON memory.episodes AS RESTRICTIVE FOR ALL

@@ -6,7 +6,7 @@ use axum::{
 };
 use palimpsest_application::{
     EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse, MemoryService,
-    RepositoryError, ServiceError, SubjectLifecycleRepository,
+    RepositoryError, ServiceError, SubjectContentLeaseRepository,
 };
 use palimpsest_conformance::{
     Target, creates_an_attributable_fact_revision, creates_and_replays_a_lexical_retrieval_receipt,
@@ -21,7 +21,7 @@ use palimpsest_postgres::{EmbeddingProjectionCoordinator, PostgresMemoryReposito
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 use sqlx::{
-    AssertSqlSafe, PgPool, Row,
+    AssertSqlSafe, PgPool, Postgres, Row, Transaction,
     postgres::{PgConnectOptions, PgPoolOptions},
 };
 use std::{str::FromStr, sync::Arc};
@@ -136,13 +136,11 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             "GRANT USAGE ON SCHEMA memory TO \"{runtime_role}\"; \
              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA memory TO \"{runtime_role}\"; \
              GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA memory TO \"{runtime_role}\"; \
-             REVOKE UPDATE, DELETE ON memory.subject_lifecycles FROM \"{runtime_role}\"; \
-             REVOKE UPDATE ON memory.subject_content_leases FROM \"{runtime_role}\"; \
+             REVOKE INSERT, UPDATE, DELETE ON memory.subject_lifecycles FROM \"{runtime_role}\"; \
+             REVOKE INSERT, UPDATE, DELETE ON memory.subject_content_leases FROM \"{runtime_role}\"; \
              REVOKE EXECUTE ON FUNCTION memory.transition_subject_to_deletion_pending(uuid, uuid) FROM \"{runtime_role}\"; \
              REVOKE EXECUTE ON FUNCTION memory.transition_subject_to_deleted(uuid, uuid) FROM \"{runtime_role}\"; \
              GRANT USAGE ON SCHEMA memory TO \"{controller_role}\"; \
-             GRANT SELECT, INSERT, UPDATE ON memory.subject_lifecycles TO \"{controller_role}\"; \
-             GRANT SELECT ON memory.subject_content_leases TO \"{controller_role}\"; \
              GRANT EXECUTE ON FUNCTION memory.transition_subject_to_deletion_pending(uuid, uuid) TO \"{controller_role}\"; \
              GRANT EXECUTE ON FUNCTION memory.transition_subject_to_deleted(uuid, uuid) TO \"{controller_role}\""
         )))
@@ -206,6 +204,44 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
                 .is_some_and(|code| code == "42501"),
             "ordinary runtime transition failed for a reason other than privilege denial"
         );
+        let direct_runtime_subject =
+            Uuid::parse_str("019be100-0000-7000-8000-000000000097")?;
+        let mut runtime_direct = runtime_pool.begin().await?;
+        set_test_scope(&mut runtime_direct, tenant_id, direct_runtime_subject).await?;
+        let runtime_insert_error = sqlx::query(
+            "INSERT INTO memory.subject_lifecycles \
+             (tenant_id, subject_id, lifecycle_state, state_version) \
+             VALUES ($1, $2, 'deleted', 2)",
+        )
+        .bind(tenant_id)
+        .bind(direct_runtime_subject)
+        .execute(&mut *runtime_direct)
+        .await
+        .expect_err("ordinary runtime role inserted an arbitrary lifecycle state");
+        ensure!(is_privilege_denial(&runtime_insert_error));
+        runtime_direct.rollback().await?;
+
+        let direct_controller_subject =
+            Uuid::parse_str("019be100-0000-7000-8000-000000000096")?;
+        let mut controller_direct = controller_pool.begin().await?;
+        set_test_scope(
+            &mut controller_direct,
+            tenant_id,
+            direct_controller_subject,
+        )
+        .await?;
+        let controller_insert_error = sqlx::query(
+            "INSERT INTO memory.subject_lifecycles \
+             (tenant_id, subject_id, lifecycle_state, state_version) \
+             VALUES ($1, $2, 'deletion_pending', 1)",
+        )
+        .bind(tenant_id)
+        .bind(direct_controller_subject)
+        .execute(&mut *controller_direct)
+        .await
+        .expect_err("controller role bypassed the lifecycle transition function with INSERT");
+        ensure!(is_privilege_denial(&controller_insert_error));
+        controller_direct.rollback().await?;
         let bearer_token = "lifecycle-principal-token";
         let principal = PrincipalScope {
             principal_id: PrincipalId("principal-a".to_owned()),
@@ -278,24 +314,26 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             ),
         ]));
         let lifecycle_repository = PostgresMemoryRepository::new(runtime_pool.clone());
-        let repository_port = Arc::new(lifecycle_repository.clone());
-        let controller_port = Arc::new(PostgresMemoryRepository::new(controller_pool.clone()));
-        let lifecycle_service = MemoryService::new(
-            controller_port,
-            repository_port.clone(),
-            repository_port.clone(),
-            repository_port.clone(),
-            repository_port,
+        let lifecycle_service = palimpsest_server::memory_service(
+            runtime_pool.clone(),
+            controller_pool.clone(),
         );
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let projection_pool = runtime_pool.clone();
         let response_hold = ResponseHold::default();
         let server_hold = response_hold.clone();
+        let server_runtime_pool = runtime_pool.clone();
+        let server_controller_pool = controller_pool.clone();
         let server = tokio::spawn(async move {
             axum::serve(
                 listener,
-                palimpsest_server::app(runtime_pool.clone(), authenticator).layer(
+                palimpsest_server::app(
+                    server_runtime_pool,
+                    server_controller_pool,
+                    authenticator,
+                )
+                .layer(
                     middleware::from_fn_with_state(server_hold, hold_selected_response),
                 ),
             )
@@ -348,7 +386,13 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
             .json(&episode)
             .send()
             .await?;
-        ensure!(create.status() == StatusCode::CREATED);
+        let create_status = create.status();
+        if create_status != StatusCode::CREATED {
+            anyhow::bail!(
+                "initial episode creation returned {create_status}: {}",
+                create.text().await?
+            );
+        }
         let location = create
             .headers()
             .get(reqwest::header::LOCATION)
@@ -441,6 +485,22 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
                 .and_then(|error| error.code())
                 .is_some_and(|code| code == "42501")
         );
+        let mut controller_direct = controller_pool.begin().await?;
+        set_test_scope(&mut controller_direct, tenant_id, subject_id).await?;
+        let controller_update_error = sqlx::query(
+            r#"
+            UPDATE memory.subject_lifecycles
+            SET lifecycle_state = 'deletion_pending', state_version = state_version + 1
+            WHERE tenant_id = $1 AND subject_id = $2
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(subject_id)
+        .execute(&mut *controller_direct)
+        .await
+        .expect_err("controller role bypassed the serialized transition function with UPDATE");
+        ensure!(is_privilege_denial(&controller_update_error));
+        controller_direct.rollback().await?;
 
         let held_client = client.clone();
         let held_url = format!("http://{address}{location}");
@@ -948,4 +1008,27 @@ async fn runtime_pool_for_role(
         })
         .connect_with(PgConnectOptions::from_str(database_url)?.database(database_name))
         .await?)
+}
+
+async fn set_test_scope(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+) -> Result<()> {
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(tenant_id.to_string())
+        .execute(&mut **transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(subject_id.to_string())
+        .execute(&mut **transaction)
+        .await?;
+    Ok(())
+}
+
+fn is_privilege_denial(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .and_then(|error| error.code())
+        .is_some_and(|code| code == "42501")
 }

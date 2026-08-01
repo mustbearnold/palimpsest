@@ -3,7 +3,8 @@ use palimpsest_application::{
     AppendOutcome, CheckpointMutationOutcome, CheckpointRepository, EmbeddingProvider,
     EmbeddingRequest, EpisodeRepository, FactMutationOutcome, FactRepository, IdempotencyRequest,
     RepositoryError, RetrievalMutationOutcome, RetrievalPreparation, RetrievalQueryEmbedding,
-    RetrievalRepository, SubjectLifecycleRepository, validate_embedding_response,
+    RetrievalRepository, SubjectContentLeaseRepository, SubjectLifecycleControllerRepository,
+    validate_embedding_response,
 };
 use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
@@ -3099,7 +3100,7 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 }
 
 #[async_trait]
-impl SubjectLifecycleRepository for PostgresMemoryRepository {
+impl SubjectContentLeaseRepository for PostgresMemoryRepository {
     async fn acquire_content_lease(
         &self,
         principal: &PrincipalScope,
@@ -3108,29 +3109,17 @@ impl SubjectLifecycleRepository for PostgresMemoryRepository {
     ) -> Result<SubjectContentLease, RepositoryError> {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, tenant_id, subject_id).await?;
-        sqlx::query(
-            r#"
-            INSERT INTO memory.subject_lifecycles (
-                tenant_id, subject_id, lifecycle_state, state_version
-            )
-            VALUES ($1, $2, 'active', 0)
-            ON CONFLICT (tenant_id, subject_id) DO NOTHING
-            "#,
-        )
-        .bind(tenant_id.0)
-        .bind(subject_id.0)
-        .execute(&mut *transaction)
-        .await
-        .map_err(unexpected)?;
+        sqlx::query("SELECT set_config('palimpsest.principal_id', $1, true)")
+            .bind(&principal.principal_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
 
         let lease_id = ContentLeaseId(uuid::Uuid::now_v7());
         let row = sqlx::query(
             r#"
-            INSERT INTO memory.subject_content_leases (
-                tenant_id, subject_id, lease_id, principal_id, expires_at
-            )
-            VALUES ($1, $2, $3, $4, clock_timestamp() + interval '30 seconds')
-            RETURNING acquired_at, expires_at
+            SELECT acquired_at, expires_at
+            FROM memory.acquire_subject_content_lease($1, $2, $3, $4)
             "#,
         )
         .bind(tenant_id.0)
@@ -3158,13 +3147,14 @@ impl SubjectLifecycleRepository for PostgresMemoryRepository {
     ) -> Result<(), RepositoryError> {
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope_context(&mut transaction, lease.tenant_id, lease.subject_id).await?;
+        sqlx::query("SELECT set_config('palimpsest.principal_id', $1, true)")
+            .bind(&lease.principal_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
         sqlx::query(
             r#"
-            DELETE FROM memory.subject_content_leases
-            WHERE tenant_id = $1
-              AND subject_id = $2
-              AND lease_id = $3
-              AND principal_id = $4
+            SELECT memory.release_subject_content_lease($1, $2, $3, $4)
             "#,
         )
         .bind(lease.tenant_id.0)
@@ -3177,7 +3167,10 @@ impl SubjectLifecycleRepository for PostgresMemoryRepository {
         transaction.commit().await.map_err(unexpected)?;
         Ok(())
     }
+}
 
+#[async_trait]
+impl SubjectLifecycleControllerRepository for PostgresMemoryRepository {
     async fn transition_to_deletion_pending(
         &self,
         tenant_id: TenantId,

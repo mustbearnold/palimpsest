@@ -153,7 +153,7 @@ pub trait RetrievalRepository: Send + Sync {
 }
 
 #[async_trait]
-pub trait SubjectLifecycleRepository: Send + Sync {
+pub trait SubjectContentLeaseRepository: Send + Sync {
     async fn acquire_content_lease(
         &self,
         principal: &PrincipalScope,
@@ -165,7 +165,10 @@ pub trait SubjectLifecycleRepository: Send + Sync {
         &self,
         lease: &SubjectContentLease,
     ) -> Result<(), RepositoryError>;
+}
 
+#[async_trait]
+pub trait SubjectLifecycleControllerRepository: Send + Sync {
     async fn transition_to_deletion_pending(
         &self,
         tenant_id: TenantId,
@@ -324,6 +327,15 @@ impl ContentLeasePermit {
     pub fn expires_at(&self) -> time::OffsetDateTime {
         self.lease.expires_at
     }
+
+    pub fn into_release(self) -> ContentLeaseRelease {
+        ContentLeaseRelease { lease: self.lease }
+    }
+}
+
+#[derive(Debug)]
+pub struct ContentLeaseRelease {
+    lease: SubjectContentLease,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -334,7 +346,8 @@ pub struct FactAsOfCoordinates {
 
 #[derive(Clone)]
 pub struct MemoryService {
-    lifecycles: Arc<dyn SubjectLifecycleRepository>,
+    content_leases: Arc<dyn SubjectContentLeaseRepository>,
+    lifecycle_controller: Arc<dyn SubjectLifecycleControllerRepository>,
     episodes: Arc<dyn EpisodeRepository>,
     facts: Arc<dyn FactRepository>,
     checkpoints: Arc<dyn CheckpointRepository>,
@@ -344,14 +357,16 @@ pub struct MemoryService {
 
 impl MemoryService {
     pub fn new(
-        lifecycles: Arc<dyn SubjectLifecycleRepository>,
+        content_leases: Arc<dyn SubjectContentLeaseRepository>,
+        lifecycle_controller: Arc<dyn SubjectLifecycleControllerRepository>,
         episodes: Arc<dyn EpisodeRepository>,
         facts: Arc<dyn FactRepository>,
         checkpoints: Arc<dyn CheckpointRepository>,
         retrievals: Arc<dyn RetrievalRepository>,
     ) -> Self {
         Self {
-            lifecycles,
+            content_leases,
+            lifecycle_controller,
             episodes,
             facts,
             checkpoints,
@@ -373,7 +388,7 @@ impl MemoryService {
     ) -> Result<ContentLeasePermit, ServiceError> {
         authorize(principal, tenant_id, subject_id)?;
         let lease = self
-            .lifecycles
+            .content_leases
             .acquire_content_lease(principal, tenant_id, subject_id)
             .await
             .map_err(map_repository)?;
@@ -382,10 +397,10 @@ impl MemoryService {
 
     pub async fn release_subject_content_lease(
         &self,
-        permit: &ContentLeasePermit,
+        release: &ContentLeaseRelease,
     ) -> Result<(), ServiceError> {
-        self.lifecycles
-            .release_content_lease(&permit.lease)
+        self.content_leases
+            .release_content_lease(&release.lease)
             .await
             .map_err(map_repository)
     }
@@ -402,7 +417,7 @@ impl MemoryService {
             subject_id,
             OperationGrant::SubjectDelete,
         )?;
-        self.lifecycles
+        self.lifecycle_controller
             .transition_to_deletion_pending(tenant_id, subject_id)
             .await
             .map_err(map_repository)
@@ -420,7 +435,7 @@ impl MemoryService {
             subject_id,
             OperationGrant::SubjectDelete,
         )?;
-        self.lifecycles
+        self.lifecycle_controller
             .transition_to_deleted(tenant_id, subject_id)
             .await
             .map_err(map_repository)

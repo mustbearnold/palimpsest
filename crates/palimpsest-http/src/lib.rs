@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    future::Future,
     pin::Pin,
     sync::{
         Arc,
@@ -40,11 +41,15 @@ use uuid::Uuid;
 
 static CONTENT_LEASE_RELEASE_RETRY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL: AtomicU64 = AtomicU64::new(0);
+static CONTENT_LEASE_RELEASE_OUTSTANDING: AtomicU64 = AtomicU64::new(0);
+static CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ContentLeaseCleanupCounters {
     pub release_retries: u64,
     pub runtime_unavailable: u64,
+    pub outstanding: u64,
+    pub deferred_to_expiry: u64,
 }
 
 pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
@@ -52,6 +57,8 @@ pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
         release_retries: CONTENT_LEASE_RELEASE_RETRY_TOTAL.load(Ordering::Relaxed),
         runtime_unavailable: CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL
             .load(Ordering::Relaxed),
+        outstanding: CONTENT_LEASE_RELEASE_OUTSTANDING.load(Ordering::Relaxed),
+        deferred_to_expiry: CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL.load(Ordering::Relaxed),
     }
 }
 
@@ -82,11 +89,44 @@ impl Authenticator for StaticAuthenticator {
 struct AppState {
     service: MemoryService,
     authenticator: Arc<dyn Authenticator>,
+    lease_cleanup: ContentLeaseCleanupQueue,
 }
 
 struct ContentLeaseGuard {
-    service: MemoryService,
+    cleanup: ContentLeaseCleanupQueue,
     permit: Option<ContentLeasePermit>,
+}
+
+#[derive(Clone)]
+struct ContentLeaseCleanupQueue {
+    sender: tokio::sync::mpsc::UnboundedSender<palimpsest_application::ContentLeaseRelease>,
+}
+
+impl ContentLeaseCleanupQueue {
+    fn start(service: MemoryService) -> Self {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                while let Some(release) = receiver.recv().await {
+                    retry_content_lease_release(|| service.release_subject_content_lease(&release))
+                        .await;
+                    CONTENT_LEASE_RELEASE_OUTSTANDING.fetch_sub(1, Ordering::Relaxed);
+                }
+            });
+        } else {
+            CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            drop(receiver);
+        }
+        Self { sender }
+    }
+
+    fn enqueue(&self, release: palimpsest_application::ContentLeaseRelease) {
+        CONTENT_LEASE_RELEASE_OUTSTANDING.fetch_add(1, Ordering::Relaxed);
+        if self.sender.send(release).is_err() {
+            CONTENT_LEASE_RELEASE_OUTSTANDING.fetch_sub(1, Ordering::Relaxed);
+            CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 impl ContentLeaseGuard {
@@ -96,8 +136,9 @@ impl ContentLeaseGuard {
         let body = Body::new(ContentLeaseBody {
             inner: Box::pin(body),
             expires_at,
+            deadline: Box::pin(tokio::time::sleep(duration_until(expires_at))),
             guard: Some(Self {
-                service: self.service.clone(),
+                cleanup: self.cleanup.clone(),
                 permit: self.permit.take(),
             }),
         });
@@ -108,15 +149,8 @@ impl ContentLeaseGuard {
         let Some(permit) = self.permit.take() else {
             return;
         };
-        let service = self.service.clone();
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-            runtime.spawn(async move {
-                retry_content_lease_release(|| service.release_subject_content_lease(&permit))
-                    .await;
-            });
-        } else {
-            CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL.fetch_add(1, Ordering::Relaxed);
-        }
+        let release = permit.into_release();
+        self.cleanup.enqueue(release);
     }
 
     fn permit(&self) -> &ContentLeasePermit {
@@ -135,6 +169,7 @@ impl Drop for ContentLeaseGuard {
 struct ContentLeaseBody {
     inner: Pin<Box<Body>>,
     expires_at: OffsetDateTime,
+    deadline: Pin<Box<tokio::time::Sleep>>,
     guard: Option<ContentLeaseGuard>,
 }
 
@@ -146,7 +181,9 @@ impl HttpBody for ContentLeaseBody {
         mut self: Pin<&mut Self>,
         context: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-        if OffsetDateTime::now_utc() >= self.expires_at {
+        if self.deadline.as_mut().poll(context).is_ready()
+            || OffsetDateTime::now_utc() >= self.expires_at
+        {
             self.guard.take();
             return Poll::Ready(None);
         }
@@ -168,6 +205,12 @@ impl HttpBody for ContentLeaseBody {
             self.inner.size_hint()
         }
     }
+}
+
+fn duration_until(expires_at: OffsetDateTime) -> Duration {
+    (expires_at - OffsetDateTime::now_utc())
+        .try_into()
+        .unwrap_or(Duration::ZERO)
 }
 
 async fn retry_content_lease_release<F, Fut, Error>(mut release: F)
@@ -200,15 +243,17 @@ async fn acquire_content_lease(
         .await
         .map_err(Problem::from_service)?;
     Ok(ContentLeaseGuard {
-        service: state.service.clone(),
+        cleanup: state.lease_cleanup.clone(),
         permit: Some(permit),
     })
 }
 
 pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> Router {
+    let lease_cleanup = ContentLeaseCleanupQueue::start(service.clone());
     let state = AppState {
         service,
         authenticator,
+        lease_cleanup,
     };
     Router::new()
         .route(
@@ -1342,15 +1387,31 @@ impl IntoResponse for Problem {
 mod tests {
     use super::*;
     use std::{
+        convert::Infallible,
         sync::atomic::{AtomicUsize, Ordering as AtomicOrdering},
         task::Waker,
     };
 
-    #[test]
-    fn expired_content_lease_never_yields_buffered_response_content() {
+    struct PendingBody;
+
+    impl HttpBody for PendingBody {
+        type Data = Bytes;
+        type Error = Infallible;
+
+        fn poll_frame(
+            self: Pin<&mut Self>,
+            _context: &mut Context<'_>,
+        ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+            Poll::Pending
+        }
+    }
+
+    #[tokio::test]
+    async fn expired_content_lease_never_yields_buffered_response_content() {
         let mut body = Box::pin(ContentLeaseBody {
             inner: Box::pin(Body::from("must-not-cross-expired-content-lease")),
             expires_at: OffsetDateTime::now_utc() - time::Duration::SECOND,
+            deadline: Box::pin(tokio::time::sleep(Duration::ZERO)),
             guard: None,
         });
         let mut context = Context::from_waker(Waker::noop());
@@ -1360,6 +1421,27 @@ mod tests {
         ));
         assert!(body.is_end_stream());
         assert_eq!(body.size_hint().exact(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn content_lease_deadline_wakes_a_stalled_response_body() {
+        let expires_at = OffsetDateTime::now_utc() + time::Duration::milliseconds(20);
+        let mut body = Box::pin(ContentLeaseBody {
+            inner: Box::pin(Body::new(PendingBody)),
+            expires_at,
+            deadline: Box::pin(tokio::time::sleep(duration_until(expires_at))),
+            guard: None,
+        });
+
+        let frame = tokio::time::timeout(
+            Duration::from_secs(1),
+            std::future::poll_fn(|context| body.as_mut().poll_frame(context)),
+        )
+        .await
+        .expect("the lease deadline must wake a response whose inner body never wakes");
+
+        assert!(frame.is_none());
+        assert!(body.is_end_stream());
     }
 
     #[tokio::test]

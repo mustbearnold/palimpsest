@@ -1257,6 +1257,7 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
         repository.clone(),
         repository.clone(),
         repository.clone(),
+        repository.clone(),
         repository,
     );
     let content_lease = service
@@ -1327,8 +1328,9 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
         fetched == replay.receipt,
         "GET changed the migrated receipt"
     );
+    let content_lease_release = content_lease.into_release();
     service
-        .release_subject_content_lease(&content_lease)
+        .release_subject_content_lease(&content_lease_release)
         .await?;
     Ok(())
 }

@@ -34,6 +34,14 @@ async fn main() -> Result<()> {
     palimpsest_postgres::migrate(&pool)
         .await
         .context("apply database migrations")?;
+    let lifecycle_controller_pool = if operation_grants.contains(&OperationGrant::SubjectDelete) {
+        let controller_database_url = required("PALIMPSEST_LIFECYCLE_CONTROLLER_DATABASE_URL")?;
+        PgPool::connect(&controller_database_url)
+            .await
+            .context("connect to PALIMPSEST_LIFECYCLE_CONTROLLER_DATABASE_URL")?
+    } else {
+        pool.clone()
+    };
 
     let authenticator = Arc::new(StaticAuthenticator::new([(
         bearer_token,
@@ -48,9 +56,12 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&bind)
         .await
         .with_context(|| format!("bind HTTP listener to {bind}"))?;
-    axum::serve(listener, palimpsest_server::app(pool, authenticator))
-        .await
-        .context("serve HTTP API")?;
+    axum::serve(
+        listener,
+        palimpsest_server::app(pool, lifecycle_controller_pool, authenticator),
+    )
+    .await
+    .context("serve HTTP API")?;
     Ok(())
 }
 

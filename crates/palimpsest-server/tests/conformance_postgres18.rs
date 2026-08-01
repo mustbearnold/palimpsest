@@ -429,7 +429,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         let server = tokio::spawn(async move {
             axum::serve(
                 listener,
-                palimpsest_server::app(server_pool, server_authenticator),
+                palimpsest_server::app(server_pool.clone(), server_pool, server_authenticator),
             )
             .await
         });
@@ -1035,6 +1035,7 @@ async fn runs_hybrid_retrieval_conformance(
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     let router = palimpsest_server::app_with_embedding_provider(
+        pool.clone(),
         pool.clone(),
         authenticator.clone(),
         provider_port.clone(),
@@ -3049,6 +3050,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                 listener,
                 palimpsest_server::app_with_embedding_provider(
                     runtime_pool.clone(),
+                    runtime_pool.clone(),
                     authenticator,
                     provider_port,
                 ),
@@ -3420,7 +3422,7 @@ async fn crash_after_checkpoint_commit_child() -> Result<()> {
         },
     )]));
     let listener = TcpListener::bind(&env::var("PALIMPSEST_TEST_CHILD_BIND")?).await?;
-    let router = palimpsest_server::app(pool, authenticator)
+    let router = palimpsest_server::app(pool.clone(), pool, authenticator)
         .layer(middleware::from_fn(crash_after_selected_commit));
     axum::serve(listener, router).await?;
     Ok(())
