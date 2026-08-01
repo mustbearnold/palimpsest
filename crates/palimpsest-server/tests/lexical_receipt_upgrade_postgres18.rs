@@ -164,7 +164,11 @@ async fn grant_runtime_content_lease_functions(
         .fetch_one(runtime_pool)
         .await?;
     sqlx::raw_sql(AssertSqlSafe(format!(
-        "GRANT EXECUTE ON FUNCTION \
+        "GRANT SELECT, INSERT ON \
+         memory.subject_lifecycles, memory.subject_content_leases \
+         TO {quoted_runtime_role}; \
+         GRANT DELETE ON memory.subject_content_leases TO {quoted_runtime_role}; \
+         GRANT EXECUTE ON FUNCTION \
          memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
          memory.release_subject_content_lease(uuid, uuid, uuid, text) \
          TO {quoted_runtime_role}"
