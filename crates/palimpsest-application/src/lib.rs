@@ -15,6 +15,13 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub mod export;
+
+pub use export::{
+    CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, ExportPackageError,
+    ExportProcessingContext, ExportRecord, ExportRecordKind,
+};
+
 const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
 const MAX_CHECKPOINT_EFFECT_TRANSITIONS: usize = 100;
 const MAX_RETRIEVAL_QUERY_BYTES: usize = 4096;
