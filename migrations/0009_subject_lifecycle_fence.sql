@@ -180,7 +180,7 @@ BEGIN
     DELETE FROM memory.subject_content_leases
     WHERE tenant_id = candidate_tenant_id
       AND subject_id = candidate_subject_id
-      AND expires_at <= clock_timestamp();
+      AND subject_content_leases.expires_at <= clock_timestamp();
 
     SELECT lifecycle_state, state_version
     INTO current_state, current_version
@@ -356,7 +356,7 @@ BEGIN
     DELETE FROM memory.subject_content_leases
     WHERE tenant_id = candidate_tenant_id
       AND subject_id = candidate_subject_id
-      AND expires_at <= clock_timestamp();
+      AND subject_content_leases.expires_at <= clock_timestamp();
 
     RETURN QUERY
     INSERT INTO memory.subject_content_leases (
