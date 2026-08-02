@@ -10,6 +10,7 @@ rust-version.workspace = true
 async-trait.workspace = true
 hex.workspace = true
 palimpsest-domain = { path = "../palimpsest-domain" }
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

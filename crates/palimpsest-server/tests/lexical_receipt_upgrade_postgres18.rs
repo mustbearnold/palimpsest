@@ -19,9 +19,11 @@ const PRE_VECTOR_MIGRATIONS: [&str; 6] = [
     include_str!("../../../migrations/0006_authorized_lexical_retrieval.sql"),
 ];
 const VECTOR_MIGRATION: &str = include_str!("../../../migrations/0007_exact_vector_retrieval.sql");
-const CURRENT_MIGRATION_FILES: [&str; 2] = [
+const CURRENT_MIGRATION_FILES: [&str; 4] = [
     "0008_deterministic_temporal_retrieval.sql",
     "0009_subject_lifecycle_fence.sql",
+    "0010_deletion_operations.sql",
+    "0011_canonical_history_exports.sql",
 ];
 
 const TENANT_ID: &str = "019be100-0000-7000-8000-000000000010";
@@ -164,13 +166,18 @@ async fn grant_runtime_content_lease_functions(
         .fetch_one(runtime_pool)
         .await?;
     sqlx::raw_sql(AssertSqlSafe(format!(
-        "GRANT SELECT, INSERT ON \
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON \
          memory.subject_lifecycles, memory.subject_content_leases \
+         TO {quoted_runtime_role}; \
+         GRANT SELECT, INSERT, UPDATE, DELETE ON \
+         memory.export_operations, memory.export_manifest_items \
          TO {quoted_runtime_role}; \
          GRANT DELETE ON memory.subject_content_leases TO {quoted_runtime_role}; \
          GRANT EXECUTE ON FUNCTION \
          memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
-         memory.release_subject_content_lease(uuid, uuid, uuid, text) \
+         memory.release_subject_content_lease(uuid, uuid, uuid, text), \
+         memory.claim_next_export_operation(uuid, integer), \
+         memory.claim_next_expired_export_operation(uuid, integer) \
          TO {quoted_runtime_role}"
     )))
     .execute(migration_pool)
@@ -1276,7 +1283,6 @@ async fn verify_public_replay(pool: &PgPool, legacy: &LegacyReceiptEvidence) -> 
     };
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let service = MemoryService::new(
-        repository.clone(),
         repository.clone(),
         repository.clone(),
         repository.clone(),

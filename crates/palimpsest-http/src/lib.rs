@@ -23,19 +23,19 @@ use axum::{
 };
 use http_body::{Frame, SizeHint};
 use palimpsest_application::{
-    ContentLeasePermit, FactAsOfCoordinates, MemoryService, ServiceError,
+    ContentLeasePermit, ExportOperationState, FactAsOfCoordinates, MemoryService, ServiceError,
 };
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
-    CreateFact, CreateRetrieval, EffectTransition, Episode, EpisodeId, EpisodeKind, FactId,
-    FactKey, FactNamespace, FactView, PrincipalScope, Provenance, RetentionPolicyId,
-    RetrievalFilters, RetrievalId, RetrievalPerspective, RetrievalPolicyId, RetrievalQuery,
-    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId,
-    ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
-    parse_utc_microsecond_timestamp,
+    CreateFact, CreateRetrieval, DeletionOperationId, EffectTransition, Episode, EpisodeId,
+    EpisodeKind, ExportId, FactId, FactKey, FactNamespace, FactView, OperationGrant,
+    PrincipalScope, Provenance, RetentionPolicyId, RetrievalFilters, RetrievalId,
+    RetrievalPerspective, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId,
+    SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId, ValidTime,
+    WritePolicy, WritePolicyId, WritePolicyVersion, parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -64,6 +64,19 @@ pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
 
 pub trait Authenticator: Send + Sync {
     fn authenticate(&self, bearer_token: &str) -> Option<PrincipalScope>;
+
+    /// Returns a current worker authorization for a persisted principal
+    /// identity. Implementations backed by a real policy service should
+    /// resolve this from that service; the default fails closed.
+    fn authorize_export_worker(
+        &self,
+        _principal_id: &palimpsest_domain::PrincipalId,
+        _tenant_id: TenantId,
+        _subject_id: SubjectId,
+        _authorization_scope_sha256: &str,
+    ) -> Option<PrincipalScope> {
+        None
+    }
 }
 
 #[derive(Default)]
@@ -82,6 +95,29 @@ impl StaticAuthenticator {
 impl Authenticator for StaticAuthenticator {
     fn authenticate(&self, bearer_token: &str) -> Option<PrincipalScope> {
         self.principals.get(bearer_token).cloned()
+    }
+
+    fn authorize_export_worker(
+        &self,
+        principal_id: &palimpsest_domain::PrincipalId,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        authorization_scope_sha256: &str,
+    ) -> Option<PrincipalScope> {
+        self.principals.values().find_map(|principal| {
+            (principal.principal_id == *principal_id
+                && principal.authorizes(tenant_id, subject_id)
+                && principal.authorizes_operation(OperationGrant::CanonicalHistoryExport))
+            .then(|| {
+                palimpsest_application::export_authorization_scope_sha256(
+                    principal, tenant_id, subject_id,
+                )
+                .ok()
+                .filter(|scope| scope == authorization_scope_sha256)
+                .map(|_| principal.clone())
+            })
+            .flatten()
+        })
     }
 }
 
@@ -285,6 +321,26 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
             get(get_retrieval),
         )
         .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/deletions",
+            post(create_deletion),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/deletions/{operation_id}",
+            get(get_deletion),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/exports",
+            post(create_export),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/exports/{export_id}",
+            get(get_export),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/exports/{export_id}/content",
+            get(get_export_content),
+        )
+        .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
             get(get_checkpoint).put(save_checkpoint),
         )
@@ -302,6 +358,10 @@ struct AppendEpisodeRequest {
     retention_policy_id: RetentionPolicyId,
     payload: Value,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateDeletionRequest {}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -861,6 +921,295 @@ async fn get_retrieval(
     Ok(content_lease.attach(response))
 }
 
+async fn create_deletion(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Option<Json<CreateDeletionRequest>>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    // Parse an optional empty object only to reject unknown request members;
+    // target selection is a server-owned deletion policy.
+    let _ = payload;
+    let outcome = state
+        .service
+        .create_subject_deletion(&principal, tenant_id, subject_id, idempotency_key)
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/deletions/{}",
+        tenant_id.0, subject_id.0, outcome.operation_id.0
+    );
+    let mut response = (
+        StatusCode::ACCEPTED,
+        [(header::CONTENT_TYPE, "application/json")],
+        Json(json!({
+            "operation_id": outcome.operation_id.0,
+            "lifecycle_state": outcome.lifecycle_state,
+            "state_version": outcome.state_version,
+            "targets": serde_json::to_value(&outcome.targets)
+                .map_err(|error| Problem::internal(error.to_string()))?,
+        })),
+    )
+        .into_response();
+    response.headers_mut().insert(
+        header::LOCATION,
+        HeaderValue::from_str(&location)
+            .map_err(|_| Problem::internal("The service could not construct Location."))?,
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    if outcome.replayed {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("idempotency-replayed"),
+            HeaderValue::from_static("true"),
+        );
+    }
+    Ok(response)
+}
+
+async fn get_deletion(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, operation_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let operation_id = DeletionOperationId(parse_uuid("operation_id", &operation_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, operation_id)
+        .await
+        .map_err(Problem::from_service)?;
+    let etag = format!(
+        "\"{}-{}\"",
+        view.lifecycle_state.as_str(),
+        view.state_version
+    );
+    if let Some(if_none_match) = headers.get(header::IF_NONE_MATCH) {
+        let matches = if_none_match
+            .to_str()
+            .ok()
+            .is_some_and(|value| value.split(',').any(|candidate| candidate.trim() == etag));
+        if matches {
+            let mut response = StatusCode::NOT_MODIFIED.into_response();
+            response.headers_mut().insert(
+                header::ETAG,
+                HeaderValue::from_str(&etag)
+                    .map_err(|_| Problem::internal("The service could not construct ETag."))?,
+            );
+            response.headers_mut().insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, no-store"),
+            );
+            return Ok(response);
+        }
+    }
+    let mut response = (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json")],
+        Json(json!({
+            "operation_id": view.operation_id.0,
+            "lifecycle_state": view.lifecycle_state,
+            "state_version": view.state_version,
+            "retry_count": view.retry_count,
+            "failure_reason": view.failure_reason,
+            "targets": serde_json::to_value(&view.targets)
+                .map_err(|error| Problem::internal(error.to_string()))?,
+            "updated_at": serde_json::to_value(view.updated_at)
+                .map_err(|error| Problem::internal(error.to_string()))?,
+        })),
+    )
+        .into_response();
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&etag)
+            .map_err(|_| Problem::internal("The service could not construct ETag."))?,
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(response)
+}
+
+async fn create_export(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let outcome = state
+        .service
+        .create_export(&principal, tenant_id, subject_id, idempotency_key)
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/exports/{}",
+        tenant_id.0, subject_id.0, outcome.operation.export_id.0
+    );
+    export_status_response(
+        StatusCode::ACCEPTED,
+        outcome.operation,
+        Some(location),
+        outcome.replayed,
+    )
+}
+
+async fn get_export(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, export_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let export_id = ExportId(parse_uuid("export_id", &export_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let operation = state
+        .service
+        .get_export(&principal, tenant_id, subject_id, export_id)
+        .await
+        .map_err(Problem::from_service)?;
+    let etag = export_etag(&operation);
+    if if_none_match_matches(&headers, &etag) {
+        let mut response = StatusCode::NOT_MODIFIED.into_response();
+        response.headers_mut().insert(
+            header::ETAG,
+            HeaderValue::from_str(&etag)
+                .map_err(|_| Problem::internal("The service could not construct ETag."))?,
+        );
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        return Ok(response);
+    }
+    if operation.state == ExportOperationState::Ready {
+        let location = format!(
+            "/v1/tenants/{}/subjects/{}/exports/{}/content",
+            tenant_id.0, subject_id.0, export_id.0
+        );
+        let mut response = StatusCode::SEE_OTHER.into_response();
+        response.headers_mut().insert(
+            header::LOCATION,
+            HeaderValue::from_str(&location)
+                .map_err(|_| Problem::internal("The service could not construct Location."))?,
+        );
+        response.headers_mut().insert(
+            header::ETAG,
+            HeaderValue::from_str(&etag)
+                .map_err(|_| Problem::internal("The service could not construct ETag."))?,
+        );
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        return Ok(response);
+    }
+    export_status_response(StatusCode::OK, operation, None, false)
+}
+
+async fn get_export_content(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, export_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let export_id = ExportId(parse_uuid("export_id", &export_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
+    let (operation, bytes) = state
+        .service
+        .get_export_content(
+            content_lease.permit(),
+            &principal,
+            tenant_id,
+            subject_id,
+            export_id,
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let content_sha256 = operation
+        .content_sha256
+        .ok_or_else(|| Problem::internal("The export package has no integrity digest."))?;
+    let mut response = (StatusCode::OK, Body::from(bytes)).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!(
+            "attachment; filename=\"palimpsest-export-{}.zip\"",
+            export_id.0
+        ))
+        .map_err(|_| Problem::internal("The service could not construct Content-Disposition."))?,
+    );
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"{content_sha256}\""))
+            .map_err(|_| Problem::internal("The service could not construct ETag."))?,
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(content_lease.attach(response))
+}
+
+fn export_status_response(
+    status: StatusCode,
+    operation: palimpsest_application::ExportOperationView,
+    location: Option<String>,
+    idempotency_replayed: bool,
+) -> Result<Response, Problem> {
+    let mut response = (status, Json(operation.clone())).into_response();
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&export_etag(&operation))
+            .map_err(|_| Problem::internal("The service could not construct ETag."))?,
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    if let Some(location) = location {
+        response.headers_mut().insert(
+            header::LOCATION,
+            HeaderValue::from_str(&location)
+                .map_err(|_| Problem::internal("The service could not construct Location."))?,
+        );
+    }
+    if idempotency_replayed {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("idempotency-replayed"),
+            HeaderValue::from_static("true"),
+        );
+    }
+    Ok(response)
+}
+
+fn export_etag(operation: &palimpsest_application::ExportOperationView) -> String {
+    format!("\"{}-{}\"", operation.export_id.0, operation.status_version)
+}
+
+fn if_none_match_matches(headers: &HeaderMap, etag: &str) -> bool {
+    headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.split(',').any(|candidate| candidate.trim() == etag))
+}
+
 fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<PrincipalScope, Problem> {
     let token = headers
         .get(header::AUTHORIZATION)
@@ -1208,6 +1557,20 @@ impl Problem {
                 "resource_not_found",
                 "No resource was found in the authorized scope.",
             ),
+            ServiceError::Gone => Self::new(
+                "deletion-operation-expired",
+                "Deletion operation expired",
+                StatusCode::GONE,
+                "deletion_operation_expired",
+                "The deletion operation record is no longer available.",
+            ),
+            ServiceError::ExportExpired => Self::new(
+                "export-expired",
+                "Export expired",
+                StatusCode::GONE,
+                "export_expired",
+                "The export package is no longer available.",
+            ),
             ServiceError::Conflict => Self::new(
                 "fact-key-conflict",
                 "Fact key already exists",
@@ -1218,7 +1581,7 @@ impl Problem {
             ServiceError::IdempotencyKeyReused => Self::new(
                 "idempotency-key-reused",
                 "Idempotency key was already used",
-                StatusCode::UNPROCESSABLE_ENTITY,
+                StatusCode::CONFLICT,
                 "idempotency_key_reused",
                 "Use a new Idempotency-Key for a different request.",
             ),
@@ -1386,11 +1749,52 @@ impl IntoResponse for Problem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use palimpsest_domain::{OperationGrant, PrincipalId, SubjectId, TenantId};
     use std::{
         convert::Infallible,
         sync::atomic::{AtomicUsize, Ordering as AtomicOrdering},
         task::Waker,
     };
+
+    #[test]
+    fn reused_idempotency_key_is_a_conflict_problem() {
+        let problem = Problem::from_service(ServiceError::IdempotencyKeyReused);
+
+        assert_eq!(problem.status, StatusCode::CONFLICT.as_u16());
+        assert_eq!(problem.code, "idempotency_key_reused");
+    }
+
+    #[test]
+    fn export_worker_authorization_requires_the_export_grant() {
+        let tenant_id = TenantId(Uuid::from_u128(10));
+        let subject_id = SubjectId(Uuid::from_u128(11));
+        let principal_id = PrincipalId("shared-principal".to_owned());
+        let scope = PrincipalScope {
+            principal_id: principal_id.clone(),
+            tenant_id,
+            subject_ids: vec![subject_id],
+            allowed_sensitivities: vec![],
+            operation_grants: vec![OperationGrant::CanonicalHistoryExport],
+        };
+        let authenticator = StaticAuthenticator::new([
+            (
+                "read-token".to_owned(),
+                PrincipalScope {
+                    operation_grants: vec![],
+                    ..scope.clone()
+                },
+            ),
+            ("export-token".to_owned(), scope.clone()),
+        ]);
+        let digest = palimpsest_application::export_authorization_scope_sha256(
+            &scope, tenant_id, subject_id,
+        )
+        .unwrap();
+
+        let authorized =
+            authenticator.authorize_export_worker(&principal_id, tenant_id, subject_id, &digest);
+        assert_eq!(authorized, Some(scope));
+    }
 
     struct PendingBody;
 

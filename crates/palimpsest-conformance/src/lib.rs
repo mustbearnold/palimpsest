@@ -1175,12 +1175,7 @@ pub async fn rejects_cross_subject_idempotency_reuse(target: &Target) -> Result<
         }))
         .send()
         .await?;
-    assert_problem(
-        response,
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "idempotency-key-reused",
-    )
-    .await
+    assert_problem(response, StatusCode::CONFLICT, "idempotency-key-reused").await
 }
 
 pub async fn rejects_invalid_domain_and_timestamp_inputs(target: &Target) -> Result<()> {
@@ -3594,12 +3589,7 @@ pub async fn rejects_cross_subject_retrieval_idempotency_reuse(target: &Target) 
             .json(&body)
             .send()
             .await?;
-        assert_problem(
-            reused,
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "idempotency-key-reused",
-        )
-        .await?;
+        assert_problem(reused, StatusCode::CONFLICT, "idempotency-key-reused").await?;
     }
     Ok(())
 }
@@ -3881,7 +3871,7 @@ pub async fn retrieval_paginates_and_rejects_invalid_replays(target: &Target) ->
         }))
         .send()
         .await?;
-    ensure!(changed_replay.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    ensure!(changed_replay.status() == StatusCode::CONFLICT);
 
     let invalid_cursor = client
         .get(&receipt_url)

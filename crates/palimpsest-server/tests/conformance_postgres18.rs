@@ -22,7 +22,8 @@ use std::{
 };
 
 use palimpsest_application::{
-    EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse,
+    CreateDeletionRequest, DeletionRepository, EmbeddingProvider, EmbeddingProviderError,
+    EmbeddingRequest, EmbeddingResponse, MemoryService,
 };
 use palimpsest_conformance::retrieval_evaluation::{
     LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
@@ -57,11 +58,12 @@ use palimpsest_conformance::{
     temporal_receipt_survives_service_restart, temporal_retrieval_survives_projection_rebuild,
 };
 use palimpsest_domain::{
-    EmbeddingOutput, EmbeddingTask, PrincipalId, PrincipalScope, RecencyProfile, Sensitivity,
-    SubjectId, TenantId, temporal_factor_q63,
+    DeletionOperationState, DeletionTargetState, EmbeddingOutput, EmbeddingTask, OperationGrant,
+    PrincipalId, PrincipalScope, RecencyProfile, Sensitivity, SubjectId, TenantId,
+    temporal_factor_q63,
 };
 use palimpsest_http::StaticAuthenticator;
-use palimpsest_postgres::EmbeddingProjectionCoordinator;
+use palimpsest_postgres::{EmbeddingProjectionCoordinator, PostgresMemoryRepository};
 use sqlx::{
     AssertSqlSafe, ConnectOptions, PgPool, Row,
     postgres::{PgConnectOptions, PgPoolOptions},
@@ -347,7 +349,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             "#,
         )
         .execute(&migration_pool)
-        .await?;
+        .await
+        .context("create deletion operation")?;
         sqlx::query(
             r#"
             INSERT INTO memory.checkpoint_retention_policies (
@@ -357,7 +360,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             "#,
         )
         .execute(&pool)
-        .await?;
+        .await
+        .context("poll leased deletion target")?;
         let authenticator = Arc::new(StaticAuthenticator::new([
             (
                 target.bearer_token.clone(),
@@ -367,12 +371,33 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     subject_ids: vec![
                         SubjectId(subject_id),
                         SubjectId(target.principal_a_secondary_subject_id),
+                        SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000022")?),
                     ],
                     allowed_sensitivities: vec![
                         Sensitivity::try_from("internal".to_owned())?,
                         Sensitivity::try_from("restricted".to_owned())?,
                     ],
                     operation_grants: vec![],
+                },
+            ),
+            (
+                "principal-a-export-delete-test-token".to_owned(),
+                PrincipalScope {
+                    principal_id: PrincipalId("principal-a".to_owned()),
+                    tenant_id: TenantId(tenant_id),
+                    subject_ids: vec![
+                        SubjectId(subject_id),
+                        SubjectId(target.principal_a_secondary_subject_id),
+                        SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000022")?),
+                    ],
+                    allowed_sensitivities: vec![
+                        Sensitivity::try_from("internal".to_owned())?,
+                        Sensitivity::try_from("restricted".to_owned())?,
+                    ],
+                    operation_grants: vec![
+                        OperationGrant::CanonicalHistoryExport,
+                        OperationGrant::SubjectDelete,
+                    ],
                 },
             ),
             (
@@ -422,6 +447,9 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                 },
             ),
         ]));
+        deletion_target_lease_recovers_after_worker_expiry(&pool, &migration_pool).await?;
+        deletion_failed_operation_can_be_repaired_and_resumed(&pool, &migration_pool).await?;
+        deletion_target_retry_exhaustion_remains_fenced(&pool, &migration_pool).await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let server_pool = pool.clone();
@@ -525,18 +553,42 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             Ok::<_, anyhow::Error>(retrieval_isolation)
         }
         .await;
+        let retrieval_isolation = scenario?;
         server.abort();
         let _ = server.await;
-        let retrieval_isolation = scenario?;
         runs_hybrid_retrieval_conformance(
             &pool,
             &migration_pool,
-            authenticator,
+            authenticator.clone(),
             &target,
             &test_database_url,
             &retrieval_isolation,
         )
         .await?;
+        let export_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let export_address = export_listener.local_addr()?;
+        let export_pool = pool.clone();
+        let export_authenticator = authenticator.clone();
+        let export_server = tokio::spawn(async move {
+            axum::serve(
+                export_listener,
+                palimpsest_server::app(export_pool.clone(), export_pool, export_authenticator),
+            )
+            .await
+        });
+        let export_target = Target {
+            base_url: format!("http://{export_address}"),
+            ..target.clone()
+        };
+        let export_result = exercise_export_and_deletion_http(
+            &export_target,
+            &target,
+            "principal-a-export-delete-test-token",
+        )
+        .await;
+        export_server.abort();
+        let _ = export_server.await;
+        export_result?;
         recovers_a_committed_effect_after_response_loss(&pool, &target, &test_database_url).await
     }
     .await;
@@ -550,6 +602,676 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     .await?;
     migration_admin_pool.close().await;
     result
+}
+
+async fn deletion_target_lease_recovers_after_worker_expiry(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000030")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000031")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("deletion-recovery-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![],
+        operation_grants: vec![OperationGrant::SubjectDelete],
+    };
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    );
+    let created = repository
+        .create_deletion_operation(CreateDeletionRequest {
+            tenant_id,
+            subject_id,
+            principal_id: principal.principal_id.clone(),
+            idempotency_key: "deletion-target-lease-recovery".to_owned(),
+            request_fingerprint_sha256: "1".repeat(64),
+            configured_targets: vec![
+                palimpsest_domain::DeletionTargetName::Canonical,
+                palimpsest_domain::DeletionTargetName::Projections,
+            ],
+            retention_hours: 24 * 90,
+        })
+        .await
+        .context("create deletion operation")?;
+    let seed_counts: (i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            (SELECT count(*) FROM memory.deletion_tombstone_seeds
+             WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3),
+            (SELECT count(*) FROM memory.deletion_audit_seeds
+             WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3)
+        "#,
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(created.operation_id.0)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(seed_counts == (1, 1));
+    let first_worker = Uuid::now_v7();
+    let claimed = repository
+        .claim_next_deletion_operation(first_worker, 5)
+        .await?
+        .context("deletion operation was not claimable")?;
+    ensure!(claimed.operation_id == created.operation_id);
+    let advanced = repository
+        .advance_deletion_operation(&claimed, first_worker, 5)
+        .await
+        .context("advance operation into purging")?;
+    ensure!(advanced.lifecycle_state == DeletionOperationState::Purging);
+    let first_target = repository
+        .claim_next_deletion_target(&claimed, first_worker, 1)
+        .await
+        .context("claim first deletion target")?
+        .context("first deletion target was not claimable")?;
+    let leased_view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll leased deletion target")?;
+    let leased_target = leased_view
+        .targets
+        .iter()
+        .find(|target| target.target_name == first_target.target_name)
+        .context("claimed target was not visible in the public deletion view")?;
+    ensure!(leased_target.state == DeletionTargetState::Leased);
+    ensure!(leased_target.target_key_digest == first_target.target_key_digest);
+    ensure!(leased_target.lease_id == Some(first_target.target_lease_id));
+
+    repository
+        .renew_deletion_operation_lease(&claimed, first_worker, 5)
+        .await
+        .context("renew deletion operation lease")?;
+    repository
+        .renew_deletion_target_lease(&first_target, 5)
+        .await
+        .context("renew deletion target lease")?;
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    let second_worker = Uuid::now_v7();
+    ensure!(
+        repository
+            .claim_next_deletion_operation(second_worker, 5)
+            .await?
+            .is_none(),
+        "a renewed deletion operation lease was reclaimed early"
+    );
+    tokio::time::sleep(Duration::from_millis(5_000)).await;
+    let reclaimed_operation = repository
+        .claim_next_deletion_operation(second_worker, 5)
+        .await
+        .context("reclaim expired deletion operation")?
+        .context("expired deletion operation lease was not reclaimable")?;
+    let reclaimed_target = repository
+        .claim_next_deletion_target(&reclaimed_operation, second_worker, 1)
+        .await
+        .context("reclaim expired deletion target")?
+        .context("expired deletion target lease was not reclaimable")?;
+    ensure!(reclaimed_target.target_name == first_target.target_name);
+    ensure!(reclaimed_target.target_key_digest == first_target.target_key_digest);
+    ensure!(reclaimed_target.target_lease_id != first_target.target_lease_id);
+    ensure!(reclaimed_target.attempts == first_target.attempts + 1);
+
+    tokio::time::sleep(Duration::from_millis(6_500)).await;
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("finish recovered deletion")?;
+    let completed = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll completed deletion")?;
+    ensure!(completed.lifecycle_state == DeletionOperationState::Completed);
+    ensure!(
+        completed
+            .targets
+            .iter()
+            .filter(|target| target.capability
+                == palimpsest_domain::DeletionTargetCapability::Configured)
+            .all(|target| target.state == DeletionTargetState::Done)
+    );
+    ensure!(
+        completed
+            .targets
+            .iter()
+            .filter(|target| target.capability
+                == palimpsest_domain::DeletionTargetCapability::Configured)
+            .all(|target| target.effect_receipt_sha256.is_some())
+    );
+    let operation_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM memory.deletion_operations WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(operation_rows == 0);
+    let tombstone = sqlx::query(
+        "SELECT scope_digest, target_summary, idempotency_key_digest, request_fingerprint_sha256
+         FROM memory.deletion_tombstones WHERE tenant_id = $1 AND operation_id = $2",
+    )
+    .bind(tenant_id.0)
+    .bind(created.operation_id.0)
+    .fetch_one(migration_pool)
+    .await?;
+    let scope_digest: String = tombstone.try_get("scope_digest")?;
+    ensure!(scope_digest.starts_with("v1:"));
+    ensure!(scope_digest.len() == 67);
+    let target_summary: serde_json::Value = tombstone.try_get("target_summary")?;
+    ensure!(target_summary.is_array());
+    ensure!(
+        tombstone
+            .try_get::<String, _>("idempotency_key_digest")?
+            .trim()
+            .len()
+            == 64
+    );
+    ensure!(
+        tombstone
+            .try_get::<String, _>("request_fingerprint_sha256")?
+            .trim()
+            .len()
+            == 64
+    );
+    Ok(())
+}
+
+async fn deletion_failed_operation_can_be_repaired_and_resumed(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000040")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000041")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("deletion-repair-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![],
+        operation_grants: vec![OperationGrant::SubjectDelete],
+    };
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    );
+    let created = repository
+        .create_deletion_operation(CreateDeletionRequest {
+            tenant_id,
+            subject_id,
+            principal_id: principal.principal_id.clone(),
+            idempotency_key: "deletion-repair".to_owned(),
+            request_fingerprint_sha256: "2".repeat(64),
+            configured_targets: vec![palimpsest_domain::DeletionTargetName::Canonical],
+            retention_hours: 24 * 90,
+        })
+        .await
+        .context("create repairable deletion")?;
+
+    sqlx::query(
+        "UPDATE memory.deletion_operations
+         SET lifecycle_state = 'failed', failure_reason = 'injected_failure',
+             completed_at = clock_timestamp()
+         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(created.operation_id.0)
+    .execute(migration_pool)
+    .await?;
+    sqlx::query(
+        "UPDATE memory.deletion_targets
+         SET state = 'failed', sanitized_error = 'injected_failure'
+         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3
+           AND capability = 'configured'",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(created.operation_id.0)
+    .execute(migration_pool)
+    .await?;
+
+    let repaired = service
+        .repair_subject_deletion(
+            &principal,
+            tenant_id,
+            subject_id,
+            created.operation_id,
+            "operator_retry".to_owned(),
+        )
+        .await
+        .context("repair failed deletion")?;
+    ensure!(repaired.lifecycle_state == DeletionOperationState::RetryWait);
+    ensure!(repaired.failure_reason.is_none());
+    ensure!(repaired.targets.iter().all(|target| {
+        target.capability == palimpsest_domain::DeletionTargetCapability::NotConfigured
+            || target.state == DeletionTargetState::Pending
+    }));
+
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("resume repaired deletion")?;
+    let completed = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll repaired deletion")?;
+    ensure!(completed.lifecycle_state == DeletionOperationState::Completed);
+    let tombstone_text: String = sqlx::query_scalar(
+        "SELECT target_summary::text || ':' || verification_digest
+         FROM memory.deletion_tombstones
+         WHERE tenant_id = $1 AND operation_id = $2",
+    )
+    .bind(tenant_id.0)
+    .bind(created.operation_id.0)
+    .fetch_optional(migration_pool)
+    .await?
+    .context("repairable deletion tombstone is missing")?;
+    ensure!(
+        !tombstone_text.contains("operator_retry"),
+        "repair reason must not enter the tombstone"
+    );
+    Ok(())
+}
+
+async fn deletion_target_retry_exhaustion_remains_fenced(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000050")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000051")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("deletion-retry-exhaustion-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![],
+        operation_grants: vec![OperationGrant::SubjectDelete],
+    };
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    );
+    let created = repository
+        .create_deletion_operation(CreateDeletionRequest {
+            tenant_id,
+            subject_id,
+            principal_id: principal.principal_id.clone(),
+            idempotency_key: "deletion-retry-exhaustion".to_owned(),
+            request_fingerprint_sha256: "3".repeat(64),
+            configured_targets: vec![palimpsest_domain::DeletionTargetName::Canonical],
+            retention_hours: 24 * 90,
+        })
+        .await
+        .context("create retry-exhaustion deletion")?;
+    let worker_id = Uuid::now_v7();
+    let claimed = repository
+        .claim_next_deletion_operation(worker_id, 30)
+        .await?
+        .context("retry-exhaustion deletion was not claimable")?;
+    let advanced = repository
+        .advance_deletion_operation(&claimed, worker_id, 5)
+        .await
+        .context("advance retry-exhaustion deletion")?;
+    ensure!(advanced.lifecycle_state == DeletionOperationState::Purging);
+
+    for attempt in 1..=5 {
+        let target = repository
+            .claim_next_deletion_target(&claimed, worker_id, 30)
+            .await?
+            .context("retry-exhaustion target was not claimable")?;
+        repository
+            .fail_deletion_target(&target, "injected_failure", 5)
+            .await
+            .context("record retry-exhaustion target failure")?;
+        let view = service
+            .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+            .await?;
+        let target_view = view
+            .targets
+            .iter()
+            .find(|candidate| candidate.target_name == target.target_name)
+            .context("retry-exhaustion target disappeared")?;
+        if attempt < 5 {
+            ensure!(target_view.state == DeletionTargetState::Pending);
+        } else {
+            ensure!(target_view.state == DeletionTargetState::Failed);
+            ensure!(target_view.sanitized_error.as_deref() == Some("injected_failure"));
+        }
+    }
+
+    let failed = repository
+        .advance_deletion_operation(&claimed, worker_id, 5)
+        .await
+        .context("fail retry-exhaustion deletion")?;
+    ensure!(failed.lifecycle_state == DeletionOperationState::Failed);
+    let view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await?;
+    ensure!(view.lifecycle_state == DeletionOperationState::Failed);
+    let lifecycle_state: String = sqlx::query_scalar(
+        "SELECT lifecycle_state FROM memory.subject_lifecycles
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(lifecycle_state == "deletion_pending");
+    Ok(())
+}
+
+async fn exercise_export_and_deletion_http(
+    target: &Target,
+    scope: &Target,
+    bearer_token: &str,
+) -> Result<()> {
+    let client = Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let base_url = target.base_url.trim_end_matches('/');
+    let secondary_subject = scope.principal_a_secondary_subject_id;
+    let secondary_prefix = format!(
+        "{base_url}/v1/tenants/{}/subjects/{secondary_subject}",
+        target.tenant_id
+    );
+
+    let cross_tenant_deletion = client
+        .post(format!(
+            "{base_url}/v1/tenants/{}/subjects/{}/deletions",
+            scope.principal_b_tenant_id, scope.principal_b_subject_id
+        ))
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "cross-tenant-deletion-attempt")
+        .json(&json!({}))
+        .send()
+        .await?;
+    ensure!(
+        cross_tenant_deletion.status() == StatusCode::NOT_FOUND,
+        "cross-tenant deletion disclosed an operation: {}",
+        cross_tenant_deletion.status()
+    );
+
+    let episode_url = format!("{secondary_prefix}/episodes");
+    let episode_body = json!({
+        "case_id": Uuid::from_u128(0x501),
+        "kind": "message",
+        "observed_at": "2026-07-31T09:00:00Z",
+        "provenance": {
+            "source_type": "export-deletion-conformance",
+            "source_uri": null,
+            "external_id": "export-delete-episode"
+        },
+        "sensitivity": "internal",
+        "retention_policy_id": "standard",
+        "payload": {"marker": "export-delete-private-marker"}
+    });
+    let episode_response = client
+        .post(&episode_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "export-delete-episode")
+        .json(&episode_body)
+        .send()
+        .await?;
+    ensure!(episode_response.status() == StatusCode::CREATED);
+    let episode_location = episode_response
+        .headers()
+        .get(header::LOCATION)
+        .context("export/deletion episode omitted Location")?
+        .to_str()?
+        .to_owned();
+    let episode_location = if episode_location.starts_with("http") {
+        episode_location
+    } else {
+        format!("{base_url}{episode_location}")
+    };
+
+    let export_url = format!("{secondary_prefix}/exports");
+    let export_response = client
+        .post(&export_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "export-delete-export")
+        .send()
+        .await?;
+    if export_response.status() != StatusCode::ACCEPTED {
+        let status = export_response.status();
+        let body = export_response.text().await?;
+        bail!("export creation returned {status}: {body}");
+    }
+    ensure!(
+        export_response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .is_some_and(|value| value == "private, no-store")
+    );
+    let export_status_url = export_response
+        .headers()
+        .get(header::LOCATION)
+        .context("export creation omitted Location")?
+        .to_str()?
+        .to_owned();
+    let export_operation: Value = export_response.json().await?;
+    let export_id = export_operation["export_id"]
+        .as_str()
+        .context("export response omitted export_id")?
+        .to_owned();
+    let export_status_url = if export_status_url.starts_with("http") {
+        export_status_url
+    } else {
+        format!("{base_url}{export_status_url}")
+    };
+    let replay = client
+        .post(&export_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "export-delete-export")
+        .send()
+        .await?;
+    ensure!(replay.status() == StatusCode::ACCEPTED);
+    ensure!(
+        replay.headers().get("idempotency-replayed")
+            == Some(&header::HeaderValue::from_static("true"))
+    );
+    let replay_operation: Value = replay.json().await?;
+    ensure!(replay_operation["export_id"] == export_id);
+
+    let mut ready_etag = None;
+    let mut content_url = None;
+    let mut ready_operation = None;
+    let mut last_export_body = Value::Null;
+    for _ in 0..100 {
+        let response = client
+            .get(&export_status_url)
+            .bearer_auth(bearer_token)
+            .send()
+            .await?;
+        if response.status() == StatusCode::SEE_OTHER {
+            ready_etag = response
+                .headers()
+                .get(header::ETAG)
+                .map(|value| value.to_str().map(str::to_owned))
+                .transpose()?;
+            let location = response
+                .headers()
+                .get(header::LOCATION)
+                .context("ready export omitted content Location")?
+                .to_str()?
+                .to_owned();
+            content_url = Some(if location.starts_with("http") {
+                location
+            } else {
+                format!("{base_url}{location}")
+            });
+            ready_operation = Some(response);
+            break;
+        }
+        ensure!(response.status() == StatusCode::OK);
+        let body: Value = response.json().await?;
+        last_export_body = body.clone();
+        ensure!(body["state"] != "failed", "export failed: {body}");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let _ready_response = ready_operation
+        .with_context(|| format!("export did not become ready; last status: {last_export_body}"))?;
+    let ready_etag = ready_etag.context("ready export omitted ETag")?;
+    let content_url = content_url.context("ready export omitted content URL")?;
+    let not_modified = client
+        .get(&export_status_url)
+        .bearer_auth(bearer_token)
+        .header(header::IF_NONE_MATCH, &ready_etag)
+        .send()
+        .await?;
+    ensure!(not_modified.status() == StatusCode::NOT_MODIFIED);
+    ensure!(not_modified.headers().get(header::CACHE_CONTROL).is_some());
+
+    let content_response = client
+        .get(&content_url)
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+    ensure!(content_response.status() == StatusCode::OK);
+    ensure!(content_response.headers().get(header::ETAG).is_some());
+    let content = content_response.bytes().await?;
+    ensure!(
+        String::from_utf8_lossy(&content).contains("export-delete-private-marker"),
+        "export package omitted the authorized marker"
+    );
+
+    let hidden_export = client
+        .get(format!(
+            "{base_url}/v1/tenants/{}/subjects/{}/exports/{export_id}",
+            scope.principal_b_tenant_id, scope.principal_b_subject_id
+        ))
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+    ensure!(hidden_export.status() == StatusCode::NOT_FOUND);
+
+    let deletion_url = format!("{secondary_prefix}/deletions");
+    let deletion_response = client
+        .post(&deletion_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "export-delete-deletion")
+        .json(&json!({}))
+        .send()
+        .await?;
+    ensure!(
+        deletion_response.status() == StatusCode::ACCEPTED,
+        "deletion creation returned {}",
+        deletion_response.status()
+    );
+    ensure!(
+        deletion_response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .is_some_and(|value| value == "private, no-store")
+    );
+    let deletion_status_url = deletion_response
+        .headers()
+        .get(header::LOCATION)
+        .context("deletion creation omitted Location")?
+        .to_str()?
+        .to_owned();
+    let deletion_body: Value = deletion_response.json().await?;
+    let deletion_id = deletion_body["operation_id"]
+        .as_str()
+        .context("deletion response omitted operation_id")?
+        .to_owned();
+    let deletion_status_url = if deletion_status_url.starts_with("http") {
+        deletion_status_url
+    } else {
+        format!("{base_url}{deletion_status_url}")
+    };
+    let deletion_replay = client
+        .post(&deletion_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "export-delete-deletion")
+        .json(&json!({}))
+        .send()
+        .await?;
+    ensure!(deletion_replay.status() == StatusCode::ACCEPTED);
+    ensure!(
+        deletion_replay.headers().get("idempotency-replayed")
+            == Some(&header::HeaderValue::from_static("true"))
+    );
+    let deletion_replay_body: Value = deletion_replay.json().await?;
+    ensure!(deletion_replay_body["operation_id"] == deletion_id);
+
+    let mut completed_etag = None;
+    for _ in 0..200 {
+        let response = client
+            .get(&deletion_status_url)
+            .bearer_auth(bearer_token)
+            .send()
+            .await?;
+        ensure!(response.status() == StatusCode::OK);
+        let etag = response
+            .headers()
+            .get(header::ETAG)
+            .context("deletion status omitted ETag")?
+            .to_str()?
+            .to_owned();
+        let body: Value = response.json().await?;
+        if body["lifecycle_state"] == "completed" {
+            completed_etag = Some(etag);
+            break;
+        }
+        ensure!(
+            body["lifecycle_state"] != "failed",
+            "deletion failed: {body}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let completed_etag = completed_etag.context("deletion did not complete")?;
+    let deletion_not_modified = client
+        .get(&deletion_status_url)
+        .bearer_auth(bearer_token)
+        .header(header::IF_NONE_MATCH, completed_etag)
+        .send()
+        .await?;
+    ensure!(deletion_not_modified.status() == StatusCode::NOT_MODIFIED);
+    ensure!(
+        deletion_not_modified
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .is_some()
+    );
+
+    let deleted_episode = client
+        .get(&episode_location)
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+    ensure!(deleted_episode.status() == StatusCode::NOT_FOUND);
+    let revoked_export = client
+        .get(&content_url)
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+    ensure!(
+        matches!(
+            revoked_export.status(),
+            StatusCode::NOT_FOUND | StatusCode::GONE
+        ),
+        "revoked export remained readable: {}",
+        revoked_export.status()
+    );
+    let deleted_export_status = client
+        .get(&export_status_url)
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+    ensure!(deleted_export_status.status() == StatusCode::NOT_FOUND);
+    Ok(())
 }
 
 async fn install_deterministic_hybrid_fixture(pool: &PgPool) -> Result<()> {
@@ -2993,6 +3715,8 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.facts, \
                  memory.fact_revisions, \
                  memory.fact_revision_evidence, \
+                 memory.checkpoints, \
+                 memory.checkpoint_revisions, \
                  memory.fact_revision_governance, \
                  memory.fact_revision_search_documents, \
                  memory.fact_revision_embedding_projections, \
@@ -3000,21 +3724,48 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.retrieval_receipts, \
                  memory.retrieval_manifest_items, \
                  memory.retrieval_ready_fact_revision_embeddings, \
-                 memory.authorized_retrieval_manifest \
+                 memory.authorized_retrieval_manifest, \
+                 memory.episodes, \
+                 memory.idempotency_receipts, \
+                 memory.write_audit_receipts, \
+                 memory.outbox_intents, \
+                 memory.export_operations, \
+                 memory.export_manifest_items \
              TO \"{role_name}\"; \
              GRANT INSERT ON \
                  memory.subject_lifecycles, \
                  memory.subject_content_leases, \
                  memory.retrieval_idempotency_reservations, \
                  memory.retrieval_receipts, \
-                 memory.retrieval_manifest_items \
+                 memory.retrieval_manifest_items, \
+                 memory.episodes, \
+                 memory.idempotency_receipts, \
+                 memory.write_audit_receipts, \
+                 memory.outbox_intents \
+             TO \"{role_name}\"; \
+             GRANT UPDATE ON memory.idempotency_receipts TO \"{role_name}\"; \
+             GRANT INSERT, UPDATE, DELETE ON \
+                 memory.export_operations, memory.export_manifest_items \
              TO \"{role_name}\"; \
              GRANT DELETE ON memory.subject_content_leases TO \"{role_name}\"; \
              GRANT EXECUTE ON FUNCTION \
                  memory.round_half_even_integer_v1(numeric, numeric), \
                  memory.temporal_recency_factor_units_v1(text, text, numeric), \
                  memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
-                 memory.release_subject_content_lease(uuid, uuid, uuid, text) \
+                 memory.release_subject_content_lease(uuid, uuid, uuid, text), \
+                 memory.claim_next_export_operation(uuid, integer), \
+                 memory.claim_next_expired_export_operation(uuid, integer), \
+                 memory.deletion_workflow_allows(uuid, uuid), \
+                 memory.create_deletion_operation(uuid, uuid, uuid, text, text, character, text[], integer), \
+                 memory.poll_deletion_operation(uuid, uuid, uuid), \
+                 memory.claim_next_deletion_operation(uuid, integer), \
+                 memory.renew_deletion_operation_lease(uuid, uuid, uuid, uuid, integer), \
+                 memory.claim_next_deletion_target(uuid, uuid, uuid, uuid, uuid, integer), \
+                 memory.renew_deletion_target_lease(uuid, uuid, uuid, uuid, character, uuid, integer), \
+                 memory.fail_deletion_target(uuid, uuid, uuid, uuid, text, character, uuid, text, integer), \
+                 memory.purge_deletion_target(uuid, uuid, text), \
+                 memory.complete_deletion_target(uuid, uuid, uuid, uuid, text, character, uuid, character), \
+                 memory.advance_deletion_operation(uuid, uuid, uuid, uuid, integer) \
              TO \"{role_name}\""
         )))
         .execute(migration_pool)
@@ -3064,6 +3815,9 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
             base_url: format!("http://{address}"),
             ..target.clone()
         };
+        let mut nonbypass_export_target = runtime_target.clone();
+        nonbypass_export_target.principal_a_secondary_subject_id =
+            Uuid::parse_str("019be000-0000-7000-8000-000000000022")?;
         let runtime_scenario = async {
             let runtime_replay = creates_temporal_receipt_through_nonbypass_runtime(
                 &runtime_target,
@@ -3093,6 +3847,38 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                 calls_after_replay == calls_before_replay,
                 "non-bypass durable replay called the unavailable embedding provider"
             );
+            exercise_export_and_deletion_http(
+                &runtime_target,
+                &nonbypass_export_target,
+                "principal-a-export-delete-test-token",
+            )
+            .await?;
+            let residual: i64 = sqlx::query_scalar(
+                r#"
+                SELECT
+                    (SELECT count(*) FROM memory.episodes
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.facts
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.fact_revisions
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.checkpoints
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.export_operations
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.export_manifest_items
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.deletion_tombstone_seeds
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.deletion_audit_seeds
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                "#,
+            )
+            .bind(target.tenant_id)
+            .bind(nonbypass_export_target.principal_a_secondary_subject_id)
+            .fetch_one(migration_pool)
+            .await?;
+            ensure!(residual == 0, "non-bypass deletion left residual rows: {residual}");
             Ok::<(), anyhow::Error>(())
         }
         .await;

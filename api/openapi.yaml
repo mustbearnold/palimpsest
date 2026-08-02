@@ -29,6 +29,10 @@ tags:
     description: Durable authorization-first retrieval receipts
   - name: Checkpoints
     description: Crash-safe full snapshots and durable external-effect receipts
+  - name: Exports
+    description: Authorized asynchronous canonical-history packages
+  - name: Deletions
+    description: Authorized asynchronous subject-fence and purge operations
 paths:
   /v1/tenants/{tenant_id}/subjects/{subject_id}/episodes:
     post:
@@ -589,6 +593,242 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/RetrievalUnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/exports:
+    post:
+      tags: [Exports]
+      operationId: createExport
+      summary: Start an authorized canonical-history export
+      description: |
+        Commits an idempotent export operation and its authorization-scoped
+        immutable membership manifest before returning `202 Accepted`. The
+        package is materialized asynchronously and is not a legal-rights
+        determination.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Export operation committed and queued
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportOperation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/exports/{export_id}:
+    get:
+      tags: [Exports]
+      operationId: getExport
+      summary: Poll an authorized export operation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - name: export_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Strong export status ETag for conditional polling
+      responses:
+        '200':
+          description: Authorized export status
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportOperation'
+        '303':
+          description: Export is ready; follow Location to the content resource
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+        '304':
+          description: Authorized export status has not changed
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/exports/{export_id}/content:
+    get:
+      tags: [Exports]
+      operationId: downloadExport
+      summary: Download an authorized ready export package
+      responses:
+        '200':
+          description: Deterministic canonical-history ZIP package
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: Authorized export package expired or was revoked
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/deletions:
+    post:
+      tags: [Deletions]
+      operationId: createDeletion
+      summary: Start an authorized subject deletion operation
+      description: |
+        Commits an idempotent, content-free deletion operation and its target
+        ledger before returning. The operation first fences new subject content,
+        then drains leases, purges configured targets, verifies absence, and
+        records a content-free tombstone. The request cannot widen authority or
+        assert a legal profile.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeletionRequest'
+      responses:
+        '202':
+          description: Deletion operation committed and queued
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionOperationAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/deletions/{operation_id}:
+    get:
+      tags: [Deletions]
+      operationId: getDeletion
+      summary: Read an authorized deletion operation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - name: operation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Strong deletion status ETag for conditional polling
+      responses:
+        '200':
+          description: Authorized deletion status or content-free tombstone
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionOperation'
+        '304':
+          description: Authorized deletion status has not changed
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -1882,6 +2122,366 @@ components:
             - $ref: '#/components/schemas/FactRevision'
             - type: 'null'
 
+    CreateDeletionRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        The deletion target policy is selected by the service configuration,
+        not by the caller. Optional providers are reported as
+        `not_configured`; an empty object is accepted for forward-compatible
+        request framing.
+
+    DeletionTarget:
+      type: object
+      additionalProperties: false
+      required:
+        - target_name
+        - target_key_digest
+        - capability
+        - state
+        - attempts
+      properties:
+        target_name:
+          type: string
+          enum: [canonical, projections, caches, exports, artifacts]
+        target_key_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        capability:
+          type: string
+          enum: [configured, not_configured]
+        state:
+          type: string
+          enum: [pending, leased, done, failed, not_configured]
+        attempts:
+          type: integer
+          minimum: 0
+        lease_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        lease_expires_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        effect_receipt_sha256:
+          type:
+            - string
+            - 'null'
+          pattern: '^[0-9a-f]{64}$'
+        sanitized_error:
+          type:
+            - string
+            - 'null'
+
+    DeletionOperationAccepted:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationAcceptedCommon'
+        - type: object
+          required: [lifecycle_state]
+          properties:
+            lifecycle_state:
+              const: draining
+      unevaluatedProperties: false
+
+    DeletionOperationAcceptedCommon:
+      type: object
+      required: [operation_id, state_version, targets]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        state_version:
+          type: integer
+          minimum: 1
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletionTarget'
+
+    DeletionOperation:
+      oneOf:
+        - $ref: '#/components/schemas/DeletionDrainingOperation'
+        - $ref: '#/components/schemas/DeletionFencedOperation'
+        - $ref: '#/components/schemas/DeletionPurgingOperation'
+        - $ref: '#/components/schemas/DeletionRetryWaitOperation'
+        - $ref: '#/components/schemas/DeletionVerifyingOperation'
+        - $ref: '#/components/schemas/DeletionCompletedOperation'
+        - $ref: '#/components/schemas/DeletionFailedOperation'
+        - $ref: '#/components/schemas/DeletionExpiredOperation'
+      unevaluatedProperties: false
+      discriminator:
+        propertyName: lifecycle_state
+        mapping:
+          draining: '#/components/schemas/DeletionDrainingOperation'
+          fenced: '#/components/schemas/DeletionFencedOperation'
+          purging: '#/components/schemas/DeletionPurgingOperation'
+          retry_wait: '#/components/schemas/DeletionRetryWaitOperation'
+          verifying: '#/components/schemas/DeletionVerifyingOperation'
+          completed: '#/components/schemas/DeletionCompletedOperation'
+          failed: '#/components/schemas/DeletionFailedOperation'
+          expired: '#/components/schemas/DeletionExpiredOperation'
+
+    DeletionOperationStatusCommon:
+      type: object
+      required: [operation_id, state_version, retry_count, targets, updated_at]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        state_version:
+          type: integer
+          minimum: 1
+        retry_count:
+          type: integer
+          minimum: 0
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletionTarget'
+        updated_at:
+          $ref: '#/components/schemas/UtcDateTime'
+
+    DeletionDrainingOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: draining }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    DeletionFencedOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: fenced }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    DeletionPurgingOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: purging }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    DeletionRetryWaitOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: retry_wait }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    DeletionVerifyingOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: verifying }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    DeletionCompletedOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: completed }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    DeletionFailedOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: failed }
+            failure_reason:
+              type: string
+              minLength: 1
+      unevaluatedProperties: false
+
+    DeletionExpiredOperation:
+      allOf:
+        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - type: object
+          required: [lifecycle_state, failure_reason]
+          properties:
+            lifecycle_state: { const: expired }
+            failure_reason: { const: null }
+      unevaluatedProperties: false
+
+    ExportOperationCommon:
+      type: object
+      required:
+        - export_id
+        - profile
+        - status_version
+        - created_at
+        - expires_at
+      properties:
+        export_id:
+          type: string
+          format: uuid
+          description: Service-created UUIDv7 export operation identifier
+        profile:
+          type: string
+          const: palimpsest-canonical-history-v1
+        status_version:
+          type: integer
+          minimum: 1
+          description: Monotonic status representation version used for ETags
+        created_at:
+          $ref: '#/components/schemas/UtcDateTime'
+        expires_at:
+          $ref: '#/components/schemas/UtcDateTime'
+
+    ExportQueuedOperation:
+      allOf:
+        - $ref: '#/components/schemas/ExportOperationCommon'
+        - type: object
+          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          properties:
+            state:
+              const: queued
+            content_sha256:
+              const: null
+            size_bytes:
+              const: null
+            record_count:
+              const: null
+            failure_code:
+              const: null
+      unevaluatedProperties: false
+
+    ExportMaterializingOperation:
+      allOf:
+        - $ref: '#/components/schemas/ExportOperationCommon'
+        - type: object
+          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          properties:
+            state:
+              const: materializing
+            content_sha256:
+              const: null
+            size_bytes:
+              const: null
+            record_count:
+              const: null
+            failure_code:
+              const: null
+      unevaluatedProperties: false
+
+    ExportReadyOperation:
+      allOf:
+        - $ref: '#/components/schemas/ExportOperationCommon'
+        - type: object
+          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          properties:
+            state:
+              const: ready
+            content_sha256:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+            size_bytes:
+              type: integer
+              minimum: 0
+            record_count:
+              type: integer
+              minimum: 0
+            failure_code:
+              const: null
+      unevaluatedProperties: false
+
+    ExportFailedOperation:
+      allOf:
+        - $ref: '#/components/schemas/ExportOperationCommon'
+        - type: object
+          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          properties:
+            state:
+              const: failed
+            content_sha256:
+              const: null
+            size_bytes:
+              const: null
+            record_count:
+              const: null
+            failure_code:
+              type: string
+              pattern: '^[a-z][a-z0-9_]{0,63}$'
+      unevaluatedProperties: false
+
+    ExportRevokedOperation:
+      allOf:
+        - $ref: '#/components/schemas/ExportOperationCommon'
+        - type: object
+          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          properties:
+            state:
+              const: revoked
+            content_sha256:
+              const: null
+            size_bytes:
+              const: null
+            record_count:
+              const: null
+            failure_code:
+              const: null
+      unevaluatedProperties: false
+
+    ExportExpiredOperation:
+      allOf:
+        - $ref: '#/components/schemas/ExportOperationCommon'
+        - type: object
+          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          properties:
+            state:
+              const: expired
+            content_sha256:
+              const: null
+            size_bytes:
+              const: null
+            record_count:
+              const: null
+            failure_code:
+              const: null
+      unevaluatedProperties: false
+
+    ExportOperation:
+      oneOf:
+        - $ref: '#/components/schemas/ExportQueuedOperation'
+        - $ref: '#/components/schemas/ExportMaterializingOperation'
+        - $ref: '#/components/schemas/ExportReadyOperation'
+        - $ref: '#/components/schemas/ExportFailedOperation'
+        - $ref: '#/components/schemas/ExportRevokedOperation'
+        - $ref: '#/components/schemas/ExportExpiredOperation'
+      unevaluatedProperties: false
+      discriminator:
+        propertyName: state
+        mapping:
+          queued: '#/components/schemas/ExportQueuedOperation'
+          materializing: '#/components/schemas/ExportMaterializingOperation'
+          ready: '#/components/schemas/ExportReadyOperation'
+          failed: '#/components/schemas/ExportFailedOperation'
+          revoked: '#/components/schemas/ExportRevokedOperation'
+          expired: '#/components/schemas/ExportExpiredOperation'
+
     ValidationError:
       type: object
       additionalProperties: true
@@ -1920,8 +2520,9 @@ components:
         `invalid-valid-time`, `idempotency-key-reused`, `future-recorded-time`,
         `fact-precondition-required`, `retrieval-request-too-large`,
         `unprocessable-request`,
-        `unsupported-media-type`, `rate-limit-exceeded`, `internal-error`, and
-        `service-unavailable` under `https://palimpsest.dev/problems/`.
+        `unsupported-media-type`, `export-expired`, `deletion-operation-expired`,
+        `rate-limit-exceeded`, `internal-error`, and `service-unavailable` under
+        `https://palimpsest.dev/problems/`.
       required:
         - type
         - title
@@ -1998,8 +2599,8 @@ components:
     Conflict:
       description: |
         No mutation was committed. Stable types: `fact-key-conflict`,
-        `supersession-conflict`, `idempotency-in-progress`. The in-progress form
-        includes `Retry-After`.
+        `supersession-conflict`, `idempotency-key-reused`, and
+        `idempotency-in-progress`. The in-progress form includes `Retry-After`.
       headers:
         Cache-Control:
           $ref: '#/components/headers/PrivateNoStore'
@@ -2062,8 +2663,7 @@ components:
     UnprocessableEntity:
       description: |
         Syntactically valid request violates domain semantics. Stable types:
-        `invalid-valid-time`, `idempotency-key-reused`,
-        `future-recorded-time`, `retention-policy-rejected`,
+        `invalid-valid-time`, `future-recorded-time`, `retention-policy-rejected`,
         `write-policy-rejected`.
       headers:
         Cache-Control:
@@ -2117,9 +2717,8 @@ components:
     RetrievalUnprocessableEntity:
       description: |
         Syntactically valid retrieval input violates supported request or
-        temporal semantics, or reuses an idempotency key with different
-        content. Stable types: `unprocessable-request`,
-        `future-recorded-time`, and `idempotency-key-reused`. A cursor that does
+        temporal semantics. Stable types: `unprocessable-request` and
+        `future-recorded-time`. A cursor that does
         not identify a position in this authorized receipt returns the redacted
         `resource-not-found` response instead.
       headers:

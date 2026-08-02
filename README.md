@@ -10,7 +10,11 @@ truth.
 
 ## Status
 
-Specification and repository bootstrap. No production service has shipped yet.
+The repository contains a checked development slice for the PostgreSQL-backed
+HTTP service, including temporal memory, hybrid retrieval, canonical-history
+exports, and fenced subject deletion. It is not a production release: cache,
+artifact, backup/PITR, external identity, SDK, and operational release gates
+remain deployment work.
 
 ## Product commitments
 
@@ -43,7 +47,9 @@ bash scripts/dev-up.sh
 The service listens on `http://127.0.0.1:8080` and PostgreSQL listens only on
 `127.0.0.1:5432`. The HTTP service uses a synthetic, non-superuser PostgreSQL
 role so forced row-level security remains active. Override the `PALIMPSEST_*`
-environment variables when needed. Stop the service with `Ctrl+C`, then stop
+environment variables when needed. Set `PALIMPSEST_EXPORT_ROOT` to a durable
+private filesystem path when enabling canonical-history exports; the development
+default is `var/palimpsest/exports`. Stop the service with `Ctrl+C`, then stop
 PostgreSQL without deleting its volume:
 
 `PALIMPSEST_OPERATION_GRANTS` is empty by default. Trusted deployments may set

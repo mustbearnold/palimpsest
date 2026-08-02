@@ -30,6 +30,8 @@ uuid_id!(FactId);
 uuid_id!(RevisionId);
 uuid_id!(RetrievalId);
 uuid_id!(ContentLeaseId);
+uuid_id!(DeletionOperationId);
+uuid_id!(ExportId);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextValueError {
@@ -210,6 +212,116 @@ impl SubjectLifecycleState {
                 to: next,
             })
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionOperationState {
+    Draining,
+    Fenced,
+    Purging,
+    RetryWait,
+    Verifying,
+    Completed,
+    Failed,
+    Expired,
+}
+
+impl DeletionOperationState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draining => "draining",
+            Self::Fenced => "fenced",
+            Self::Purging => "purging",
+            Self::RetryWait => "retry_wait",
+            Self::Verifying => "verifying",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Expired => "expired",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionTargetName {
+    Canonical,
+    Projections,
+    Caches,
+    Exports,
+    Artifacts,
+}
+
+impl DeletionTargetName {
+    pub const ALL: [Self; 5] = [
+        Self::Canonical,
+        Self::Projections,
+        Self::Caches,
+        Self::Exports,
+        Self::Artifacts,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Canonical => "canonical",
+            Self::Projections => "projections",
+            Self::Caches => "caches",
+            Self::Exports => "exports",
+            Self::Artifacts => "artifacts",
+        }
+    }
+
+    pub fn try_from_str(value: &str) -> Option<Self> {
+        match value {
+            "canonical" => Some(Self::Canonical),
+            "projections" => Some(Self::Projections),
+            "caches" => Some(Self::Caches),
+            "exports" => Some(Self::Exports),
+            "artifacts" => Some(Self::Artifacts),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionTargetCapability {
+    Configured,
+    NotConfigured,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionTargetState {
+    Pending,
+    Leased,
+    Done,
+    Failed,
+    NotConfigured,
+}
+
+#[cfg(test)]
+mod deletion_model_tests {
+    use super::*;
+
+    #[test]
+    fn deletion_vocabulary_is_closed_and_stable() {
+        assert_eq!(
+            DeletionTargetName::ALL
+                .iter()
+                .map(|target| target.as_str())
+                .collect::<Vec<_>>(),
+            vec!["canonical", "projections", "caches", "exports", "artifacts"]
+        );
+        assert_eq!(DeletionOperationState::Completed.as_str(), "completed");
+        assert!(serde_json::from_str::<DeletionOperationState>("\"purging\"").is_ok());
+        assert!(serde_json::from_str::<DeletionTargetState>("\"leased\"").is_ok());
+        assert!(serde_json::from_str::<DeletionTargetState>("\"done\"").is_ok());
+        assert!(serde_json::from_str::<DeletionTargetState>("\"purging\"").is_err());
+        assert!(serde_json::from_str::<DeletionTargetState>("\"verified\"").is_err());
+        assert!(serde_json::from_str::<DeletionOperationState>("\"unknown\"").is_err());
+        assert!(DeletionTargetName::try_from_str("unknown").is_none());
     }
 }
 

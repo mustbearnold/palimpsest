@@ -617,7 +617,8 @@ regenerate data under a new ID.
 
 Issue #5 is ready to specify once one ADR fixes the public resources, operation
 states, fence transaction, `canonical_history` package, tombstone allowlist,
-and backup restore gate above. Implementation is not mergeable until the HTTP
+and backup restore gate above. Implementation is not ready for direct main
+delivery until the HTTP
 conformance suite exercises authorization, cross-tenant non-disclosure, partial
 failure, retry, stale receipt reauthorization, log canaries, and a pre-deletion
 PITR restore. Any narrower test proves only a component, not end-to-end scoped

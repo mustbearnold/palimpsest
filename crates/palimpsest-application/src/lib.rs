@@ -3,13 +3,16 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 use palimpsest_domain::{
     AgentId, AppendEpisode, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
-    CompleteEffectTransition, CreateFact, CreateRetrieval, EffectId, EffectTransition,
-    EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode, EpisodeId, FactId,
-    FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
-    NewPreparedEffect, NewRetrieval, OperationGrant, PrincipalScope, RetrievalFilters, RetrievalId,
-    RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity,
-    SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact, TenantId, ThreadId,
+    CompleteEffectTransition, CreateFact, CreateRetrieval, DeletionOperationId,
+    DeletionOperationState, DeletionTargetCapability, DeletionTargetName, DeletionTargetState,
+    EffectId, EffectTransition, EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask,
+    Episode, EpisodeId, ExportId, FactId, FactView, NewCheckpointRevision, NewEffectTransition,
+    NewEpisode, NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval, OperationGrant,
+    PrincipalId, PrincipalScope, RetrievalFilters, RetrievalId, RetrievalPolicyId, RetrievalQuery,
+    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
+    SubjectLifecycle, SupersedeFact, TenantId, ThreadId,
 };
+use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -18,14 +21,21 @@ use uuid::Uuid;
 pub mod export;
 
 pub use export::{
-    CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, ExportPackageError,
-    ExportProcessingContext, ExportRecord, ExportRecordKind,
+    CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, EXPORT_RETENTION_HOURS,
+    ExportCreateOutcome, ExportMaterialization, ExportOperationState, ExportOperationView,
+    ExportPackageError, ExportPackageMetadata, ExportPackageStore, ExportProcessingContext,
+    ExportRecord, ExportRecordKind, ExportRepository, ExportStoreError, FileExportPackageStore,
+    InMemoryExportPackageStore, NewExport,
 };
 
 const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
 const MAX_CHECKPOINT_EFFECT_TRANSITIONS: usize = 100;
 const MAX_RETRIEVAL_QUERY_BYTES: usize = 4096;
 const MAX_RETRIEVAL_FILTER_VALUES: usize = 100;
+pub const DELETION_RETENTION_HOURS: u32 = 24 * 90;
+pub const DELETION_WORKER_LEASE_SECONDS: u32 = 30;
+pub const DELETION_MAX_ATTEMPTS: u32 = 5;
+const DELETION_WORKER_MAX_CLAIMS_PER_RUN: u32 = 64;
 
 #[derive(Debug, Error)]
 pub enum RepositoryError {
@@ -35,6 +45,8 @@ pub enum RepositoryError {
     SubjectUnavailable,
     #[error("record conflicts with existing data")]
     Conflict,
+    #[error("record has expired")]
+    Expired,
     #[error("idempotency key was reused for a different request")]
     IdempotencyKeyReused,
     #[error("idempotent request is still in progress")]
@@ -189,6 +201,182 @@ pub trait SubjectLifecycleControllerRepository: Send + Sync {
     ) -> Result<SubjectLifecycle, RepositoryError>;
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeletionTargetView {
+    pub target_name: DeletionTargetName,
+    pub target_key_digest: String,
+    pub capability: DeletionTargetCapability,
+    pub state: DeletionTargetState,
+    pub attempts: u32,
+    pub lease_id: Option<Uuid>,
+    pub lease_expires_at: Option<time::OffsetDateTime>,
+    pub effect_receipt_sha256: Option<String>,
+    pub sanitized_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeletionOperationView {
+    pub operation_id: DeletionOperationId,
+    pub lifecycle_state: DeletionOperationState,
+    pub state_version: u64,
+    pub retry_count: u32,
+    pub failure_reason: Option<String>,
+    pub targets: Vec<DeletionTargetView>,
+    pub updated_at: time::OffsetDateTime,
+    pub expired: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateDeletionOutcome {
+    pub operation_id: DeletionOperationId,
+    pub lifecycle_state: DeletionOperationState,
+    pub state_version: u64,
+    pub replayed: bool,
+    pub targets: Vec<DeletionTargetView>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClaimedDeletionOperation {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub operation_id: DeletionOperationId,
+    pub lifecycle_state: DeletionOperationState,
+    pub state_version: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClaimedDeletionTarget {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub operation_id: DeletionOperationId,
+    pub worker_id: Uuid,
+    pub target_name: DeletionTargetName,
+    pub target_key_digest: String,
+    pub target_lease_id: Uuid,
+    pub attempts: u32,
+    pub lease_expires_at: time::OffsetDateTime,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdvanceDeletionOutcome {
+    pub lifecycle_state: DeletionOperationState,
+    pub state_version: u64,
+    pub next_poll_seconds: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DeletionWorkerRunSummary {
+    pub processed: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateDeletionRequest {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub principal_id: PrincipalId,
+    pub idempotency_key: String,
+    pub request_fingerprint_sha256: String,
+    pub configured_targets: Vec<DeletionTargetName>,
+    pub retention_hours: u32,
+}
+
+#[async_trait]
+pub trait DeletionRepository: Send + Sync {
+    async fn create_deletion_operation(
+        &self,
+        request: CreateDeletionRequest,
+    ) -> Result<CreateDeletionOutcome, RepositoryError>;
+
+    async fn poll_deletion_operation(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        operation_id: DeletionOperationId,
+    ) -> Result<DeletionOperationView, RepositoryError>;
+
+    async fn repair_deletion_operation(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        operation_id: DeletionOperationId,
+        reason_code: &str,
+    ) -> Result<(), RepositoryError>;
+
+    async fn claim_next_deletion_operation(
+        &self,
+        worker_id: Uuid,
+        lease_seconds: u32,
+    ) -> Result<Option<ClaimedDeletionOperation>, RepositoryError>;
+
+    async fn renew_deletion_operation_lease(
+        &self,
+        claimed: &ClaimedDeletionOperation,
+        worker_id: Uuid,
+        lease_seconds: u32,
+    ) -> Result<(), RepositoryError>;
+
+    async fn claim_next_deletion_target(
+        &self,
+        claimed: &ClaimedDeletionOperation,
+        worker_id: Uuid,
+        lease_seconds: u32,
+    ) -> Result<Option<ClaimedDeletionTarget>, RepositoryError>;
+
+    async fn renew_deletion_target_lease(
+        &self,
+        target: &ClaimedDeletionTarget,
+        lease_seconds: u32,
+    ) -> Result<(), RepositoryError>;
+
+    async fn apply_deletion_target(
+        &self,
+        target: &ClaimedDeletionTarget,
+    ) -> Result<(), RepositoryError>;
+
+    async fn fail_deletion_target(
+        &self,
+        target: &ClaimedDeletionTarget,
+        sanitized_error: &str,
+        max_attempts: u32,
+    ) -> Result<(), RepositoryError>;
+
+    async fn complete_deletion_target(
+        &self,
+        target: &ClaimedDeletionTarget,
+        effect_receipt_sha256: &str,
+    ) -> Result<(), RepositoryError>;
+
+    async fn advance_deletion_operation(
+        &self,
+        claimed: &ClaimedDeletionOperation,
+        worker_id: Uuid,
+        max_attempts: u32,
+    ) -> Result<AdvanceDeletionOutcome, RepositoryError>;
+}
+
+pub trait SubjectLifecycleRepository:
+    SubjectContentLeaseRepository + SubjectLifecycleControllerRepository + DeletionRepository
+{
+}
+
+impl<T> SubjectLifecycleRepository for T where
+    T: SubjectContentLeaseRepository + SubjectLifecycleControllerRepository + DeletionRepository
+{
+}
+
+/// Re-establishes export authorization from the currently trusted policy
+/// source. Persisted export rows are only job state; they are never an
+/// authorization source for a worker.
+pub trait ExportWorkerAuthorizer: Send + Sync {
+    fn authorize_export(
+        &self,
+        principal_id: &PrincipalId,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        authorization_scope_sha256: &str,
+    ) -> Result<PrincipalScope, ServiceError>;
+}
+
 #[derive(Clone, Debug)]
 pub enum RetrievalPreparation {
     Replay(RetrievalMutationOutcome),
@@ -299,6 +487,10 @@ pub enum ServiceError {
     Invalid(String),
     #[error("unprocessable request: {0}")]
     Unprocessable(String),
+    #[error("resource has expired")]
+    Gone,
+    #[error("export has expired")]
+    ExportExpired,
     #[error("checkpoint precondition failed")]
     CheckpointPreconditionFailed,
     #[error("checkpoint parent conflicts with the current head")]
@@ -353,8 +545,10 @@ pub struct FactAsOfCoordinates {
 
 #[derive(Clone)]
 pub struct MemoryService {
-    content_leases: Arc<dyn SubjectContentLeaseRepository>,
-    lifecycle_controller: Arc<dyn SubjectLifecycleControllerRepository>,
+    lifecycle: Arc<dyn SubjectLifecycleRepository>,
+    exports: Option<Arc<dyn ExportRepository>>,
+    export_store: Option<Arc<dyn ExportPackageStore>>,
+    export_authorizer: Option<Arc<dyn ExportWorkerAuthorizer>>,
     episodes: Arc<dyn EpisodeRepository>,
     facts: Arc<dyn FactRepository>,
     checkpoints: Arc<dyn CheckpointRepository>,
@@ -364,16 +558,17 @@ pub struct MemoryService {
 
 impl MemoryService {
     pub fn new(
-        content_leases: Arc<dyn SubjectContentLeaseRepository>,
-        lifecycle_controller: Arc<dyn SubjectLifecycleControllerRepository>,
+        lifecycle: Arc<dyn SubjectLifecycleRepository>,
         episodes: Arc<dyn EpisodeRepository>,
         facts: Arc<dyn FactRepository>,
         checkpoints: Arc<dyn CheckpointRepository>,
         retrievals: Arc<dyn RetrievalRepository>,
     ) -> Self {
         Self {
-            content_leases,
-            lifecycle_controller,
+            lifecycle,
+            exports: None,
+            export_store: None,
+            export_authorizer: None,
             episodes,
             facts,
             checkpoints,
@@ -387,6 +582,24 @@ impl MemoryService {
         self
     }
 
+    pub fn with_export_components(
+        mut self,
+        exports: Arc<dyn ExportRepository>,
+        export_store: Arc<dyn ExportPackageStore>,
+    ) -> Self {
+        self.exports = Some(exports);
+        self.export_store = Some(export_store);
+        self
+    }
+
+    pub fn with_export_worker_authorizer(
+        mut self,
+        authorizer: Arc<dyn ExportWorkerAuthorizer>,
+    ) -> Self {
+        self.export_authorizer = Some(authorizer);
+        self
+    }
+
     pub async fn acquire_subject_content_lease(
         &self,
         principal: &PrincipalScope,
@@ -395,7 +608,7 @@ impl MemoryService {
     ) -> Result<ContentLeasePermit, ServiceError> {
         authorize(principal, tenant_id, subject_id)?;
         let lease = self
-            .content_leases
+            .lifecycle
             .acquire_content_lease(principal, tenant_id, subject_id)
             .await
             .map_err(map_repository)?;
@@ -406,7 +619,7 @@ impl MemoryService {
         &self,
         release: &ContentLeaseRelease,
     ) -> Result<(), ServiceError> {
-        self.content_leases
+        self.lifecycle
             .release_content_lease(&release.lease)
             .await
             .map_err(map_repository)
@@ -424,7 +637,7 @@ impl MemoryService {
             subject_id,
             OperationGrant::SubjectDelete,
         )?;
-        self.lifecycle_controller
+        self.lifecycle
             .transition_to_deletion_pending(tenant_id, subject_id)
             .await
             .map_err(map_repository)
@@ -442,10 +655,701 @@ impl MemoryService {
             subject_id,
             OperationGrant::SubjectDelete,
         )?;
-        self.lifecycle_controller
+        self.lifecycle
             .transition_to_deleted(tenant_id, subject_id)
             .await
             .map_err(map_repository)
+    }
+
+    pub async fn create_subject_deletion(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        idempotency_key: String,
+    ) -> Result<CreateDeletionOutcome, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::SubjectDelete,
+        )?;
+        validate_idempotency_key(&idempotency_key)?;
+        // The deletion policy is server-owned.  A caller cannot select an
+        // unimplemented provider and make the operation claim that it was
+        // purged.  Optional providers remain explicit `not_configured`
+        // ledger rows; the PostgreSQL-backed canonical, projection, and
+        // configured export targets are the only live capabilities enabled by
+        // this service instance.
+        let configured_targets = configured_deletion_targets(self.exports.is_some());
+        let target_names = configured_targets
+            .iter()
+            .map(|target| target.as_str())
+            .collect::<Vec<_>>();
+        let fingerprint_input = json!({
+            "operation_id": "createSubjectDeletion",
+            "content_type": "application/json",
+            "principal_id": principal.principal_id.0,
+            "tenant_id": tenant_id.0,
+            "subject_id": subject_id.0,
+            "idempotency_key": idempotency_key,
+            "targets": target_names,
+        });
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&fingerprint_input)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        self.lifecycle
+            .create_deletion_operation(CreateDeletionRequest {
+                tenant_id,
+                subject_id,
+                principal_id: principal.principal_id.clone(),
+                idempotency_key,
+                request_fingerprint_sha256: fingerprint,
+                configured_targets,
+                retention_hours: DELETION_RETENTION_HOURS,
+            })
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn poll_subject_deletion(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        operation_id: DeletionOperationId,
+    ) -> Result<DeletionOperationView, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::SubjectDelete,
+        )?;
+        self.lifecycle
+            .poll_deletion_operation(tenant_id, subject_id, operation_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    pub async fn repair_subject_deletion(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        operation_id: DeletionOperationId,
+        reason_code: String,
+    ) -> Result<DeletionOperationView, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::SubjectDelete,
+        )?;
+        validate_deletion_repair_reason(&reason_code)?;
+        self.lifecycle
+            .repair_deletion_operation(tenant_id, subject_id, operation_id, &reason_code)
+            .await
+            .map_err(map_repository)?;
+        self.poll_subject_deletion(principal, tenant_id, subject_id, operation_id)
+            .await
+    }
+
+    pub async fn run_deletion_worker_once(&self) -> Result<DeletionWorkerRunSummary, ServiceError> {
+        let worker_id = Uuid::now_v7();
+        let mut processed = 0u32;
+        while processed < DELETION_WORKER_MAX_CLAIMS_PER_RUN {
+            let Some(claimed) = self
+                .lifecycle
+                .claim_next_deletion_operation(worker_id, DELETION_WORKER_LEASE_SECONDS)
+                .await
+                .map_err(map_repository)?
+            else {
+                break;
+            };
+            processed += 1;
+
+            // Operation state transitions and target effects are deliberately
+            // separate. A target lease is committed before its effect runs,
+            // so a crashed worker leaves a durable, reclaimable target row.
+            for _ in 0..16 {
+                self.lifecycle
+                    .renew_deletion_operation_lease(
+                        &claimed,
+                        worker_id,
+                        DELETION_WORKER_LEASE_SECONDS,
+                    )
+                    .await
+                    .map_err(map_repository)?;
+                let outcome = self
+                    .lifecycle
+                    .advance_deletion_operation(&claimed, worker_id, DELETION_MAX_ATTEMPTS)
+                    .await
+                    .map_err(map_repository)?;
+                if matches!(
+                    outcome.lifecycle_state,
+                    DeletionOperationState::Completed
+                        | DeletionOperationState::Failed
+                        | DeletionOperationState::Expired
+                ) {
+                    break;
+                }
+                if outcome.lifecycle_state != DeletionOperationState::Purging {
+                    if outcome.next_poll_seconds > 0 {
+                        break;
+                    }
+                    continue;
+                }
+
+                let Some(target) = self
+                    .lifecycle
+                    .claim_next_deletion_target(&claimed, worker_id, DELETION_WORKER_LEASE_SECONDS)
+                    .await
+                    .map_err(map_repository)?
+                else {
+                    if outcome.next_poll_seconds > 0 {
+                        break;
+                    }
+                    continue;
+                };
+
+                self.lifecycle
+                    .renew_deletion_operation_lease(
+                        &claimed,
+                        worker_id,
+                        DELETION_WORKER_LEASE_SECONDS,
+                    )
+                    .await
+                    .map_err(map_repository)?;
+                self.lifecycle
+                    .renew_deletion_target_lease(&target, DELETION_WORKER_LEASE_SECONDS)
+                    .await
+                    .map_err(map_repository)?;
+
+                let effect_result = async {
+                    if target.target_name == DeletionTargetName::Exports {
+                        let (Some(exports), Some(store)) =
+                            (self.exports.as_ref(), self.export_store.as_ref())
+                        else {
+                            return Err(ServiceError::Unavailable);
+                        };
+                        let export_ids = exports
+                            .list_export_ids_for_subject(claimed.tenant_id, claimed.subject_id)
+                            .await
+                            .map_err(map_repository)?;
+                        for export_id in export_ids {
+                            store
+                                .discard_staging(export_id)
+                                .await
+                                .map_err(map_export_store_error)?;
+                            store
+                                .discard_published(export_id)
+                                .await
+                                .map_err(map_export_store_error)?;
+                            if !store
+                                .probe_absent(export_id)
+                                .await
+                                .map_err(map_export_store_error)?
+                            {
+                                return Err(ServiceError::Unavailable);
+                            }
+                        }
+                    }
+
+                    self.lifecycle
+                        .apply_deletion_target(&target)
+                        .await
+                        .map_err(map_repository)
+                }
+                .await;
+                if let Err(error) = effect_result {
+                    self.lifecycle
+                        .fail_deletion_target(
+                            &target,
+                            "target_effect_failed",
+                            DELETION_MAX_ATTEMPTS,
+                        )
+                        .await
+                        .map_err(map_repository)?;
+                    return Err(error);
+                }
+                let effect_receipt_sha256 = hex::encode(Sha256::digest(format!(
+                    "palimpsest.deletion-target/v1:{}:{}:{}",
+                    target.operation_id.0, target.target_key_digest, target.attempts
+                )));
+                self.lifecycle
+                    .complete_deletion_target(&target, &effect_receipt_sha256)
+                    .await
+                    .map_err(map_repository)?;
+            }
+        }
+        Ok(DeletionWorkerRunSummary { processed })
+    }
+
+    pub async fn create_export(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        idempotency_key: String,
+    ) -> Result<ExportCreateOutcome, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::CanonicalHistoryExport,
+        )?;
+        validate_idempotency_key(&idempotency_key)?;
+        let exports = self.exports.as_ref().ok_or(ServiceError::Unavailable)?;
+        let authorization_scope_sha256 =
+            export_authorization_scope_sha256(principal, tenant_id, subject_id)?;
+        let fingerprint_input = json!({
+            "operation_id": "createExport",
+            "content_type": "application/json",
+            "principal_id": principal.principal_id.0,
+            "tenant_id": tenant_id.0,
+            "subject_id": subject_id.0,
+            "profile": CANONICAL_HISTORY_EXPORT_PROFILE,
+            "schema_version": 1,
+            "authorization_scope_sha256": authorization_scope_sha256,
+        });
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&fingerprint_input)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        let mut allowed_sensitivities = principal
+            .allowed_sensitivities
+            .iter()
+            .map(|value| value.as_str().to_owned())
+            .collect::<Vec<_>>();
+        allowed_sensitivities.sort_unstable();
+        allowed_sensitivities.dedup();
+        let operation = exports
+            .create_export(NewExport {
+                tenant_id,
+                subject_id,
+                export_id: ExportId(Uuid::now_v7()),
+                principal_id: principal.principal_id.clone(),
+                profile: CANONICAL_HISTORY_EXPORT_PROFILE.to_owned(),
+                idempotency: IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+                authorization_scope_sha256,
+                allowed_sensitivities,
+                expires_at: time::OffsetDateTime::now_utc()
+                    + time::Duration::hours(EXPORT_RETENTION_HOURS),
+            })
+            .await
+            .map_err(map_repository)?;
+        Ok(operation)
+    }
+
+    pub async fn get_export(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        export_id: ExportId,
+    ) -> Result<ExportOperationView, ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::CanonicalHistoryExport,
+        )?;
+        let exports = self.exports.as_ref().ok_or(ServiceError::Unavailable)?;
+        let operation = exports
+            .get_export(tenant_id, subject_id, export_id)
+            .await
+            .map_err(map_repository)?;
+        if operation.authorization_scope_sha256
+            != export_authorization_scope_sha256(principal, tenant_id, subject_id)?
+        {
+            return Err(ServiceError::NotFound);
+        }
+        if operation.state == ExportOperationState::Expired
+            && let Some(store) = self.export_store.as_ref()
+        {
+            let _ = store.discard_staging(export_id).await;
+            let _ = store.discard_published(export_id).await;
+        }
+        Ok(operation)
+    }
+
+    pub fn spawn_export_materialization(
+        &self,
+        principal: PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        export_id: ExportId,
+    ) {
+        let service = self.clone();
+        tokio::spawn(async move {
+            let _ = service
+                .materialize_export(&principal, tenant_id, subject_id, export_id)
+                .await;
+        });
+    }
+
+    pub async fn run_export_worker_once(&self) -> Result<bool, ServiceError> {
+        let exports = self.exports.as_ref().ok_or(ServiceError::Unavailable)?;
+        let store = self
+            .export_store
+            .as_ref()
+            .ok_or(ServiceError::Unavailable)?;
+        let authorizer = self
+            .export_authorizer
+            .as_ref()
+            .ok_or(ServiceError::Unavailable)?;
+        let worker_lease_id = Uuid::now_v7();
+        let Some(materialization) = exports
+            .claim_next_export_for_materialization(worker_lease_id, 30)
+            .await
+            .map_err(map_repository)?
+        else {
+            let cleanup_lease_id = Uuid::now_v7();
+            let Some(expired) = exports
+                .claim_next_expired_export_for_cleanup(cleanup_lease_id, 30)
+                .await
+                .map_err(map_repository)?
+            else {
+                return Ok(false);
+            };
+            let staging_result = store.discard_staging(expired.export_id).await;
+            let published_result = store.discard_published(expired.export_id).await;
+            if let Err(error) = staging_result {
+                let _ = published_result;
+                return Err(map_export_store_error(error));
+            }
+            if let Err(error) = published_result {
+                return Err(map_export_store_error(error));
+            }
+            exports
+                .mark_export_cleanup_complete(
+                    expired.tenant_id,
+                    expired.subject_id,
+                    expired.export_id,
+                    cleanup_lease_id,
+                )
+                .await
+                .map_err(map_repository)?;
+            return Ok(true);
+        };
+        let tenant_id = materialization.operation.tenant_id;
+        let subject_id = materialization.operation.subject_id;
+        let principal = authorizer.authorize_export(
+            &materialization.operation.principal_id,
+            tenant_id,
+            subject_id,
+            &materialization.operation.authorization_scope_sha256,
+        )?;
+        authorize_operation(
+            &principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::CanonicalHistoryExport,
+        )?;
+        if export_authorization_scope_sha256(&principal, tenant_id, subject_id)?
+            != materialization.operation.authorization_scope_sha256
+        {
+            return Err(ServiceError::NotFound);
+        }
+        let permit = self
+            .acquire_subject_content_lease(&principal, tenant_id, subject_id)
+            .await?;
+        let result = self
+            .materialize_claimed_export_with_lease(
+                &permit,
+                &principal,
+                exports.as_ref(),
+                store.as_ref(),
+                materialization,
+            )
+            .await;
+        let release = permit.into_release();
+        let release_result = self.release_subject_content_lease(&release).await;
+        match (result, release_result) {
+            (Ok(()), Ok(())) => Ok(true),
+            (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+            (Err(error), Err(release_error)) => Err(ServiceError::Invalid(format!(
+                "export worker failed ({error}); lease release failed ({release_error})"
+            ))),
+        }
+    }
+
+    pub async fn materialize_export(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        export_id: ExportId,
+    ) -> Result<(), ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::CanonicalHistoryExport,
+        )?;
+        let exports = self.exports.as_ref().ok_or(ServiceError::Unavailable)?;
+        let store = self
+            .export_store
+            .as_ref()
+            .ok_or(ServiceError::Unavailable)?;
+        let principal = if let Some(authorizer) = self.export_authorizer.as_ref() {
+            let operation = exports
+                .get_export(tenant_id, subject_id, export_id)
+                .await
+                .map_err(map_repository)?;
+            authorizer.authorize_export(
+                &operation.principal_id,
+                tenant_id,
+                subject_id,
+                &operation.authorization_scope_sha256,
+            )?
+        } else {
+            principal.clone()
+        };
+        let permit = self
+            .acquire_subject_content_lease(&principal, tenant_id, subject_id)
+            .await?;
+        let result = self
+            .materialize_export_with_lease(
+                &permit,
+                &principal,
+                exports.as_ref(),
+                store.as_ref(),
+                export_id,
+            )
+            .await;
+        let release = permit.into_release();
+        let release_result = self.release_subject_content_lease(&release).await;
+        match (result, release_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+            (Err(error), Err(release_error)) => Err(ServiceError::Invalid(format!(
+                "export materialization failed ({error}); lease release failed ({release_error})"
+            ))),
+        }
+    }
+
+    async fn materialize_export_with_lease(
+        &self,
+        permit: &ContentLeasePermit,
+        principal: &PrincipalScope,
+        exports: &dyn ExportRepository,
+        store: &dyn ExportPackageStore,
+        export_id: ExportId,
+    ) -> Result<(), ServiceError> {
+        let tenant_id = permit.lease.tenant_id;
+        let subject_id = permit.lease.subject_id;
+        let materialization = await_content_operation(permit, async {
+            exports
+                .claim_export_for_materialization(tenant_id, subject_id, export_id)
+                .await
+                .map_err(map_repository)
+        })
+        .await?;
+        let Some(materialization) = materialization else {
+            return Ok(());
+        };
+        self.materialize_claimed_export_with_lease(
+            permit,
+            principal,
+            exports,
+            store,
+            materialization,
+        )
+        .await
+    }
+
+    async fn materialize_claimed_export_with_lease(
+        &self,
+        permit: &ContentLeasePermit,
+        principal: &PrincipalScope,
+        exports: &dyn ExportRepository,
+        store: &dyn ExportPackageStore,
+        materialization: ExportMaterialization,
+    ) -> Result<(), ServiceError> {
+        let tenant_id = materialization.operation.tenant_id;
+        let subject_id = materialization.operation.subject_id;
+        let export_id = materialization.operation.export_id;
+        let worker_lease_id = materialization
+            .operation
+            .worker_lease_id
+            .ok_or(ServiceError::Unavailable)?;
+        let context = ExportProcessingContext {
+            tenant_id,
+            subject_id,
+            export_id,
+            snapshot_id: materialization.operation.export_id.0.to_string(),
+            authorization_scope_sha256: materialization
+                .operation
+                .authorization_scope_sha256
+                .clone(),
+            generated_at: materialization.operation.created_at,
+        };
+        let package = match CanonicalHistoryPackage::build(materialization.records, context) {
+            Ok(package) => package,
+            Err(_) => {
+                let _ = exports
+                    .mark_export_failed(
+                        tenant_id,
+                        subject_id,
+                        export_id,
+                        worker_lease_id,
+                        "package_build_failed",
+                    )
+                    .await;
+                return Err(ServiceError::Unavailable);
+            }
+        };
+        let metadata = match await_content_operation(permit, async {
+            store
+                .stage(export_id, &package)
+                .await
+                .map_err(map_export_store_error)
+        })
+        .await
+        {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let _ = store.discard_staging(export_id).await;
+                let _ = exports
+                    .mark_export_failed(
+                        tenant_id,
+                        subject_id,
+                        export_id,
+                        worker_lease_id,
+                        "package_store_failed",
+                    )
+                    .await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = await_content_operation(permit, async {
+            if let Some(authorizer) = self.export_authorizer.as_ref() {
+                let current = authorizer.authorize_export(
+                    &materialization.operation.principal_id,
+                    tenant_id,
+                    subject_id,
+                    &materialization.operation.authorization_scope_sha256,
+                )?;
+                authorize_operation(
+                    &current,
+                    tenant_id,
+                    subject_id,
+                    OperationGrant::CanonicalHistoryExport,
+                )?;
+                if export_authorization_scope_sha256(&current, tenant_id, subject_id)?
+                    != materialization.operation.authorization_scope_sha256
+                {
+                    return Err(ServiceError::NotFound);
+                }
+            } else {
+                authorize_operation(
+                    principal,
+                    tenant_id,
+                    subject_id,
+                    OperationGrant::CanonicalHistoryExport,
+                )?;
+            }
+            store
+                .publish(export_id)
+                .await
+                .map_err(map_export_store_error)
+        })
+        .await
+        {
+            let _ = store.discard_staging(export_id).await;
+            let _ = exports
+                .mark_export_failed(
+                    tenant_id,
+                    subject_id,
+                    export_id,
+                    worker_lease_id,
+                    "package_publish_failed",
+                )
+                .await;
+            return Err(error);
+        }
+        if let Err(error) = await_content_operation(permit, async {
+            exports
+                .mark_export_ready(tenant_id, subject_id, export_id, worker_lease_id, metadata)
+                .await
+                .map_err(map_repository)
+        })
+        .await
+        {
+            let _ = store.discard_published(export_id).await;
+            let _ = exports
+                .mark_export_failed(
+                    tenant_id,
+                    subject_id,
+                    export_id,
+                    worker_lease_id,
+                    "publication_authorization_failed",
+                )
+                .await;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub async fn get_export_content(
+        &self,
+        permit: &ContentLeasePermit,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        export_id: ExportId,
+    ) -> Result<(ExportOperationView, Vec<u8>), ServiceError> {
+        authorize_operation(
+            principal,
+            tenant_id,
+            subject_id,
+            OperationGrant::CanonicalHistoryExport,
+        )?;
+        authorize_content(permit, principal, tenant_id, subject_id)?;
+        let exports = self.exports.as_ref().ok_or(ServiceError::Unavailable)?;
+        let store = self
+            .export_store
+            .as_ref()
+            .ok_or(ServiceError::Unavailable)?;
+        let operation = await_content_operation(permit, async {
+            exports
+                .get_export(tenant_id, subject_id, export_id)
+                .await
+                .map_err(map_repository)
+        })
+        .await?;
+        if operation.authorization_scope_sha256
+            != export_authorization_scope_sha256(principal, tenant_id, subject_id)?
+        {
+            return Err(ServiceError::NotFound);
+        }
+        if operation.state == ExportOperationState::Expired
+            || operation.expires_at <= time::OffsetDateTime::now_utc()
+        {
+            let _ = store.discard_staging(export_id).await;
+            let _ = store.discard_published(export_id).await;
+            return Err(ServiceError::ExportExpired);
+        }
+        if operation.state != ExportOperationState::Ready {
+            return Err(ServiceError::NotFound);
+        }
+        let bytes = await_content_operation(permit, async {
+            store.read(export_id).await.map_err(map_export_store_error)
+        })
+        .await?;
+        let expected = operation
+            .content_sha256
+            .as_deref()
+            .ok_or(ServiceError::Unavailable)?;
+        if hex::encode(Sha256::digest(&bytes)) != expected {
+            return Err(ServiceError::Unavailable);
+        }
+        Ok((operation, bytes))
     }
 
     pub async fn save_checkpoint(
@@ -1193,6 +2097,22 @@ fn validate_idempotency_key(idempotency_key: &str) -> Result<(), ServiceError> {
     Ok(())
 }
 
+fn validate_deletion_repair_reason(reason_code: &str) -> Result<(), ServiceError> {
+    if reason_code.is_empty()
+        || reason_code.len() > 64
+        || !reason_code.bytes().enumerate().all(|(index, byte)| {
+            (index == 0 && byte.is_ascii_lowercase())
+                || (index > 0
+                    && (byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'))
+        })
+    {
+        return Err(ServiceError::Invalid(
+            "deletion repair reason must be a lowercase reason code".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_checkpoint(
     command: &SaveCheckpoint,
     precondition: CheckpointPrecondition,
@@ -1325,10 +2245,54 @@ fn validate_fact_revision(input: FactRevisionValidation<'_>) -> Result<(), Servi
     Ok(())
 }
 
+pub fn export_authorization_scope_sha256(
+    principal: &PrincipalScope,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+) -> Result<String, ServiceError> {
+    let mut sensitivities = principal
+        .allowed_sensitivities
+        .iter()
+        .map(|value| value.as_str())
+        .collect::<Vec<_>>();
+    sensitivities.sort_unstable();
+    sensitivities.dedup();
+    let input = json!({
+        "principal_id": principal.principal_id.0,
+        "tenant_id": tenant_id.0,
+        "subject_id": subject_id.0,
+        "allowed_sensitivities": sensitivities,
+        "grant": "canonical_history_export",
+        "schema_version": 1,
+    });
+    Ok(hex::encode(Sha256::digest(
+        serde_json::to_vec(&input).map_err(|error| ServiceError::Invalid(error.to_string()))?,
+    )))
+}
+
+fn configured_deletion_targets(exports_configured: bool) -> Vec<DeletionTargetName> {
+    let mut targets = vec![
+        DeletionTargetName::Canonical,
+        DeletionTargetName::Projections,
+    ];
+    if exports_configured {
+        targets.push(DeletionTargetName::Exports);
+    }
+    targets
+}
+
+fn map_export_store_error(error: ExportStoreError) -> ServiceError {
+    match error {
+        ExportStoreError::NotFound => ServiceError::NotFound,
+        ExportStoreError::Conflict | ExportStoreError::Unavailable => ServiceError::Unavailable,
+    }
+}
+
 fn map_repository(error: RepositoryError) -> ServiceError {
     match error {
         RepositoryError::NotFound | RepositoryError::SubjectUnavailable => ServiceError::NotFound,
         RepositoryError::Conflict => ServiceError::Conflict,
+        RepositoryError::Expired => ServiceError::ExportExpired,
         RepositoryError::IdempotencyKeyReused => ServiceError::IdempotencyKeyReused,
         RepositoryError::IdempotencyInProgress => ServiceError::IdempotencyInProgress,
         RepositoryError::PreconditionFailed => ServiceError::PreconditionFailed,
@@ -1383,5 +2347,29 @@ mod content_lease_tests {
             authorize_content(&permit, &principal, tenant_id, SubjectId(Uuid::now_v7())),
             Err(ServiceError::NotFound)
         ));
+    }
+}
+
+#[cfg(test)]
+mod deletion_policy_tests {
+    use super::*;
+
+    #[test]
+    fn deletion_policy_never_claims_unimplemented_targets() {
+        assert_eq!(
+            configured_deletion_targets(false),
+            vec![
+                DeletionTargetName::Canonical,
+                DeletionTargetName::Projections
+            ]
+        );
+        assert_eq!(
+            configured_deletion_targets(true),
+            vec![
+                DeletionTargetName::Canonical,
+                DeletionTargetName::Projections,
+                DeletionTargetName::Exports,
+            ]
+        );
     }
 }
