@@ -386,6 +386,25 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         principal_d_same_scope_bearer_token: "principal-d-same-scope-test-token".to_owned(),
     };
     let result = async {
+        let probe_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let probe_address = probe_listener.local_addr()?;
+        let probe_pool = pool.clone();
+        let probe_server = tokio::spawn(async move {
+            axum::serve(probe_listener, palimpsest_server::probe_router(probe_pool)).await
+        });
+        let unready = Client::new()
+            .get(format!("http://{probe_address}/readyz"))
+            .send()
+            .await?;
+        ensure!(unready.status() == StatusCode::SERVICE_UNAVAILABLE);
+        ensure!(
+            unready.headers().get(header::CACHE_CONTROL)
+                == Some(&header::HeaderValue::from_static("no-store"))
+        );
+        ensure!(unready.content_length().is_none_or(|length| length == 0));
+        probe_server.abort();
+        let _ = probe_server.await;
+
         palimpsest_postgres::migrate(&pool).await?;
         let restore_fixture = seed_restore_fence_fixture(&migration_pool).await?;
         verify_lexical_retrieval_policy(&migration_pool).await?;
