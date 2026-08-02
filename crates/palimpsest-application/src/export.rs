@@ -233,7 +233,13 @@ impl ExportPackageStore for InMemoryExportPackageStore {
             .inner
             .lock()
             .map_err(|_| ExportStoreError::Unavailable)?;
-        if state.published.contains_key(&export_id) {
+        if let Some(published) = state.published.get(&export_id) {
+            let Some(staged) = state.staging.get(&export_id) else {
+                return Err(ExportStoreError::NotFound);
+            };
+            if published != staged {
+                return Err(ExportStoreError::Conflict);
+            }
             state.staging.remove(&export_id);
             return Ok(());
         }
@@ -336,7 +342,19 @@ impl ExportPackageStore for FileExportPackageStore {
         let published = self.path(export_id, "zip");
         tokio::task::spawn_blocking(move || {
             if published.exists() {
-                let _ = std::fs::remove_file(staging);
+                let staged_bytes = std::fs::read(&staging).map_err(|error| {
+                    if error.kind() == std::io::ErrorKind::NotFound {
+                        ExportStoreError::NotFound
+                    } else {
+                        ExportStoreError::Unavailable
+                    }
+                })?;
+                let published_bytes =
+                    std::fs::read(&published).map_err(|_| ExportStoreError::Unavailable)?;
+                if staged_bytes != published_bytes {
+                    return Err(ExportStoreError::Conflict);
+                }
+                std::fs::remove_file(staging).map_err(|_| ExportStoreError::Unavailable)?;
                 return Ok(());
             }
             std::fs::rename(staging, published).map_err(|_| ExportStoreError::NotFound)
@@ -997,6 +1015,89 @@ mod tests {
             store.read(export_id).await,
             Err(ExportStoreError::NotFound)
         ));
+    }
+
+    #[tokio::test]
+    async fn package_store_rejects_a_different_published_object() {
+        let first = CanonicalHistoryPackage::build(
+            vec![record(
+                ExportRecordKind::Episode,
+                1,
+                10,
+                json!({"payload": "first"}),
+            )],
+            context(),
+        )
+        .unwrap();
+        let second = CanonicalHistoryPackage::build(
+            vec![record(
+                ExportRecordKind::Episode,
+                2,
+                10,
+                json!({"payload": "second"}),
+            )],
+            context(),
+        )
+        .unwrap();
+        let export_id = ExportId(Uuid::now_v7());
+        let store = InMemoryExportPackageStore::default();
+
+        store.stage(export_id, &first).await.unwrap();
+        store.publish(export_id).await.unwrap();
+        store.stage(export_id, &second).await.unwrap();
+
+        assert!(matches!(
+            store.publish(export_id).await,
+            Err(ExportStoreError::Conflict)
+        ));
+        assert_eq!(
+            store.read(export_id).await.unwrap(),
+            first.as_bytes().unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn file_package_store_rejects_a_different_published_object() {
+        let first = CanonicalHistoryPackage::build(
+            vec![record(
+                ExportRecordKind::Episode,
+                3,
+                10,
+                json!({"payload": "first"}),
+            )],
+            context(),
+        )
+        .unwrap();
+        let second = CanonicalHistoryPackage::build(
+            vec![record(
+                ExportRecordKind::Episode,
+                4,
+                10,
+                json!({"payload": "second"}),
+            )],
+            context(),
+        )
+        .unwrap();
+        let root = std::env::temp_dir().join(format!("palimpsest-export-{}", Uuid::now_v7()));
+        let export_id = ExportId(Uuid::now_v7());
+        let store = FileExportPackageStore::new(&root);
+
+        store.stage(export_id, &first).await.unwrap();
+        store.publish(export_id).await.unwrap();
+        store.stage(export_id, &second).await.unwrap();
+
+        assert!(matches!(
+            store.publish(export_id).await,
+            Err(ExportStoreError::Conflict)
+        ));
+        assert_eq!(
+            store.read(export_id).await.unwrap(),
+            first.as_bytes().unwrap()
+        );
+
+        store.discard_staging(export_id).await.unwrap();
+        store.discard_published(export_id).await.unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn zip_local_file_names(bytes: &[u8]) -> Vec<String> {

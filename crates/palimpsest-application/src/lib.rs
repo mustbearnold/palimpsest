@@ -1290,6 +1290,7 @@ impl MemoryService {
         .await
         {
             let _ = store.discard_staging(export_id).await;
+            let _ = store.discard_published(export_id).await;
             let _ = exports
                 .mark_export_failed(
                     tenant_id,
