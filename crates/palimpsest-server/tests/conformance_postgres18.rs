@@ -23,9 +23,10 @@ use std::{
 use time::{Duration as TimeDuration, OffsetDateTime};
 
 use palimpsest_application::{
-    CreateDeletionRequest, DELETION_MAX_ATTEMPTS, DeletionRepository, EmbeddingProvider,
-    EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse, MemoryService, RestoreFenceEntry,
-    RestoreFenceLedger,
+    CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DELETION_MAX_ATTEMPTS,
+    DeletionRepository, EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest,
+    EmbeddingResponse, ExportOperationState, ExportPackageMetadata, ExportRepository,
+    IdempotencyRequest, MemoryService, NewExport, RestoreFenceEntry, RestoreFenceLedger,
 };
 use palimpsest_conformance::retrieval_evaluation::{
     LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
@@ -495,6 +496,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         deletion_target_lease_recovers_after_worker_expiry(&pool, &migration_pool).await?;
         deletion_failed_operation_can_be_repaired_and_resumed(&pool, &migration_pool).await?;
         deletion_target_retry_exhaustion_remains_fenced(&pool, &migration_pool).await?;
+        export_worker_lease_recovery_fences_stale_completion(&pool, &migration_pool).await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let server_pool = pool.clone();
@@ -1271,6 +1273,112 @@ async fn deletion_target_lease_recovers_after_worker_expiry(
             .len()
             == 64
     );
+    Ok(())
+}
+
+async fn export_worker_lease_recovery_fences_stale_completion(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000060")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000061")?);
+    let principal_id = PrincipalId("export-lease-recovery-principal".to_owned());
+    sqlx::query(
+        "INSERT INTO memory.subject_lifecycles
+            (tenant_id, subject_id, lifecycle_state, state_version)
+         VALUES ($1, $2, 'active', 0)",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .execute(migration_pool)
+    .await
+    .context("seed active export lease-recovery lifecycle")?;
+
+    let repository = PostgresMemoryRepository::new(pool.clone());
+    let created = repository
+        .create_export(NewExport {
+            tenant_id,
+            subject_id,
+            export_id: palimpsest_domain::ExportId(Uuid::now_v7()),
+            principal_id: principal_id.clone(),
+            profile: CANONICAL_HISTORY_EXPORT_PROFILE.to_owned(),
+            idempotency: IdempotencyRequest {
+                key: "export-worker-lease-recovery".to_owned(),
+                fingerprint: "b".repeat(64),
+            },
+            authorization_scope_sha256: "a".repeat(64),
+            allowed_sensitivities: vec!["internal".to_owned()],
+            expires_at: OffsetDateTime::now_utc() + TimeDuration::hours(1),
+        })
+        .await
+        .context("create export lease-recovery operation")?;
+    ensure!(!created.replayed);
+
+    let first_worker = Uuid::now_v7();
+    let first_claim = repository
+        .claim_next_export_for_materialization(first_worker, 1)
+        .await
+        .context("claim export with first worker")?
+        .context("export was not claimable by first worker")?;
+    ensure!(first_claim.operation.state == ExportOperationState::Materializing);
+    ensure!(first_claim.operation.worker_lease_id == Some(first_worker));
+
+    let second_worker = Uuid::now_v7();
+    ensure!(
+        repository
+            .claim_next_export_for_materialization(second_worker, 1)
+            .await
+            .context("check live export worker lease")?
+            .is_none(),
+        "a live export worker lease was reclaimed early"
+    );
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+
+    let recovered_claim = repository
+        .claim_next_export_for_materialization(second_worker, 1)
+        .await
+        .context("reclaim expired export worker lease")?
+        .context("expired export worker lease was not recoverable")?;
+    ensure!(recovered_claim.operation.worker_lease_id == Some(second_worker));
+    ensure!(
+        recovered_claim.operation.status_version == first_claim.operation.status_version + 1,
+        "export lease recovery did not advance the durable status version"
+    );
+
+    let metadata = ExportPackageMetadata {
+        content_sha256: "0".repeat(64),
+        size_bytes: 0,
+        record_count: 0,
+    };
+    ensure!(
+        repository
+            .mark_export_ready(
+                tenant_id,
+                subject_id,
+                created.operation.export_id,
+                first_worker,
+                metadata.clone(),
+            )
+            .await
+            .is_err(),
+        "stale export worker finalized after its lease was reclaimed"
+    );
+    repository
+        .mark_export_ready(
+            tenant_id,
+            subject_id,
+            created.operation.export_id,
+            second_worker,
+            metadata,
+        )
+        .await
+        .context("finalize export under recovered worker lease")?;
+    let ready = repository
+        .get_export(tenant_id, subject_id, created.operation.export_id)
+        .await
+        .context("read recovered export")?;
+    ensure!(ready.state == ExportOperationState::Ready);
+    ensure!(ready.worker_lease_id.is_none());
     Ok(())
 }
 

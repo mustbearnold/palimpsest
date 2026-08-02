@@ -28,6 +28,11 @@ episode, export content, and export status unavailable. The retained
 tombstone is checked for the episode identifier, private marker, external
 identifier, and raw idempotency key; none are present.
 
+The export-worker lease corpus claims a fixed-seed operation with a one-second
+lease, proves that a live lease is not reclaimed, then reclaims it after
+expiry. The original worker cannot finalize the operation after reclamation;
+only the recovered worker can advance the operation to `ready`.
+
 The complete local suite, PostgreSQL conformance, repository contract, denied
 warnings lint, and OpenAPI lint are the required gates for this evidence.
 
