@@ -37,21 +37,27 @@ rehearsal, and operational release gates remain deployment work.
 
 ## Run locally
 
-Docker with Compose 2.20.0 or newer and the pinned Rust toolchain are required.
-Start the pinned PostgreSQL 18.4 plus pgvector 0.8.5 dependency and the Rust
-HTTP service with one command:
+The pinned Rust toolchain is required. If Docker Compose 2.20.0 or newer is
+available, the launcher uses the pinned PostgreSQL 18.4 plus pgvector 0.8.5
+image. Otherwise it uses a user-owned local PostgreSQL cluster on port 55432;
+the fallback requires PostgreSQL 18.4 plus pgvector 0.8.5 to already be
+installed. It never touches the system PostgreSQL service or another local
+cluster.
+
+Start the dependency and the Rust HTTP service with one command:
 
 ```bash
 bash scripts/dev-up.sh
 ```
 
-The service listens on `http://127.0.0.1:8080` and PostgreSQL listens only on
-`127.0.0.1:5432`. `GET /healthz` is a content-free liveness probe and
+The service listens on `http://127.0.0.1:8080`. Docker PostgreSQL listens only
+on `127.0.0.1:5432`; the local fallback uses `127.0.0.1:55432`. `GET /healthz` is a content-free liveness probe and
 `GET /readyz` checks database connectivity plus the exact successful SQLx
 migration set shipped by this binary. Both probes require no authentication
 and disclose no memory data. The HTTP service uses a synthetic, non-superuser
-PostgreSQL role so forced row-level security remains active. Override the
-`PALIMPSEST_*`
+PostgreSQL role so forced row-level security remains active. The local launcher
+allows the `internal` sensitivity by default so retrieval has a useful but
+explicitly narrow development scope. Override the `PALIMPSEST_*`
 environment variables when needed. Set `PALIMPSEST_EXPORT_ROOT` to a durable
 private filesystem path when enabling canonical-history exports; the development
 default is `var/palimpsest/exports`. Stop the service with `Ctrl+C`, then stop
@@ -74,9 +80,37 @@ unmatched ledger evidence fails closed. This repository still does not provide
 a backup/PITR adapter, backup disposition check, or the broad export/deletion
 negative HTTP conformance gate for every configured external target.
 
+With Docker, stop PostgreSQL without deleting its volume:
+
 ```bash
 docker compose stop postgres
 ```
+
+With the local fallback, stop its user-owned cluster without deleting its
+data:
+
+```bash
+pg_ctl --pgdata="$HOME/.local/state/palimpsest/postgres" stop
+```
+
+### Use Palimpsest from Codex
+
+Once the service is running, register its local MCP adapter once:
+
+```bash
+codex mcp add palimpsest \
+  --env PALIMPSEST_MCP_BASE_URL=http://127.0.0.1:8080 \
+  --env PALIMPSEST_BEARER_TOKEN=palimpsest-local-development-token \
+  --env PALIMPSEST_TENANT_ID=019be000-0000-7000-8000-000000000010 \
+  --env PALIMPSEST_SUBJECT_ID=019be000-0000-7000-8000-000000000020 \
+  --env PALIMPSEST_CASE_ID=019be000-0000-7000-8000-000000000030 \
+  -- python3 "$(pwd)/scripts/palimpsest_mcp.py"
+```
+
+Codex will then have `palimpsest_retrieve` for authorized current-memory
+searches and `palimpsest_remember` for explicitly requested saves. The adapter
+uses the HTTP API, keeps the configured tenant and subject scope, and never
+exposes delete or export operations. Verify registration with `codex mcp list`.
 
 Startup detects an incompatible legacy local volume and exits without deleting
 it. Preserve or back up needed local data before explicitly recreating a volume.
