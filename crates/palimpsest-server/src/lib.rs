@@ -30,11 +30,55 @@ pub fn app(
     )
 }
 
+pub fn app_without_workers(
+    runtime_pool: PgPool,
+    lifecycle_controller_pool: PgPool,
+    authenticator: Arc<dyn Authenticator>,
+) -> Router {
+    app_without_workers_with_embedding_provider(
+        runtime_pool,
+        lifecycle_controller_pool,
+        authenticator,
+        Arc::new(UnavailableEmbeddingProvider),
+    )
+}
+
 pub fn app_with_embedding_provider(
     runtime_pool: PgPool,
     lifecycle_controller_pool: PgPool,
     authenticator: Arc<dyn Authenticator>,
     embedding_provider: Arc<dyn EmbeddingProvider>,
+) -> Router {
+    app_with_embedding_provider_and_workers(
+        runtime_pool,
+        lifecycle_controller_pool,
+        authenticator,
+        embedding_provider,
+        true,
+    )
+}
+
+pub fn app_without_workers_with_embedding_provider(
+    runtime_pool: PgPool,
+    lifecycle_controller_pool: PgPool,
+    authenticator: Arc<dyn Authenticator>,
+    embedding_provider: Arc<dyn EmbeddingProvider>,
+) -> Router {
+    app_with_embedding_provider_and_workers(
+        runtime_pool,
+        lifecycle_controller_pool,
+        authenticator,
+        embedding_provider,
+        false,
+    )
+}
+
+fn app_with_embedding_provider_and_workers(
+    runtime_pool: PgPool,
+    lifecycle_controller_pool: PgPool,
+    authenticator: Arc<dyn Authenticator>,
+    embedding_provider: Arc<dyn EmbeddingProvider>,
+    start_workers: bool,
 ) -> Router {
     let probes = probe_router(runtime_pool.clone());
     let export_authorizer = Arc::new(HttpExportWorkerAuthorizer {
@@ -46,8 +90,10 @@ pub fn app_with_embedding_provider(
         embedding_provider,
     )
     .with_export_worker_authorizer(export_authorizer);
-    spawn_deletion_worker(service.clone());
-    spawn_export_worker(service.clone());
+    if start_workers {
+        spawn_deletion_worker(service.clone());
+        spawn_export_worker(service.clone());
+    }
     probes.merge(palimpsest_http::router(service, authenticator))
 }
 

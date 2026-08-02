@@ -365,10 +365,10 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     .await?;
     let options = PgConnectOptions::from_str(&database_url)?.database(&database_name);
     let test_database_url = options.to_url_lossy().to_string();
-    let pool = PgPool::connect_with(options).await?;
+    let mut pool = PgPool::connect_with(options).await?;
     let migration_options =
         PgConnectOptions::from_str(&migration_database_url)?.database(&database_name);
-    let migration_pool = PgPool::connect_with(migration_options).await?;
+    let mut migration_pool = PgPool::connect_with(migration_options).await?;
     let tenant_id = Uuid::parse_str("019be000-0000-7000-8000-000000000010")?;
     let subject_id = Uuid::parse_str("019be000-0000-7000-8000-000000000020")?;
     let target = Target {
@@ -558,6 +558,94 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         export_worker_fails_closed_on_authorization_revocation(&pool, &migration_pool).await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
             .await?;
+        let restore_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let restore_address = restore_listener.local_addr()?;
+        let restore_pool = pool.clone();
+        let restore_authenticator = authenticator.clone();
+        let restore_server = tokio::spawn(async move {
+            axum::serve(
+                restore_listener,
+                palimpsest_server::app_without_workers(
+                    restore_pool.clone(),
+                    restore_pool,
+                    restore_authenticator,
+                ),
+            )
+            .await
+        });
+        let restore_target = Target {
+            base_url: format!("http://{restore_address}"),
+            ..target.clone()
+        };
+        let client = Client::new();
+        let health = client
+            .get(format!("{}/healthz", restore_target.base_url))
+            .send()
+            .await?;
+        ensure!(health.status() == StatusCode::OK);
+        ensure!(
+            health.headers().get(header::CACHE_CONTROL)
+                == Some(&header::HeaderValue::from_static("no-store"))
+        );
+        ensure!(health.content_length().is_none_or(|length| length == 0));
+        let readiness = client
+            .get(format!("{}/readyz", restore_target.base_url))
+            .send()
+            .await?;
+        ensure!(readiness.status() == StatusCode::OK);
+        ensure!(
+            readiness.headers().get(header::CACHE_CONTROL)
+                == Some(&header::HeaderValue::from_static("no-store"))
+        );
+        ensure!(readiness.content_length().is_none_or(|length| length == 0));
+        populate_restore_corpus_over_http(&restore_target, &restore_fixture).await?;
+        restore_server.abort();
+        let _ = restore_server.await;
+
+        let (snapshot_ledger, snapshot_ledger_bytes) =
+            build_restore_fence_ledger(&migration_pool, &restore_fixture).await?;
+        pool.close().await;
+        migration_pool.close().await;
+        let snapshot_database_name =
+            format!("palimpsest_restore_snapshot_{}", Uuid::now_v7().simple());
+        sqlx::query(AssertSqlSafe(format!(
+            "CREATE DATABASE \"{snapshot_database_name}\" TEMPLATE \"{database_name}\""
+        )))
+        .execute(&admin_pool)
+        .await
+        .context("create pre-deletion restore snapshot")?;
+        let snapshot_result = async {
+            pool = PgPool::connect_with(
+                PgConnectOptions::from_str(&database_url)?.database(&database_name),
+            )
+            .await?;
+            migration_pool = PgPool::connect_with(
+                PgConnectOptions::from_str(&migration_database_url)?.database(&database_name),
+            )
+            .await?;
+            let snapshot_database_url = PgConnectOptions::from_str(&database_url)?
+                .database(&snapshot_database_name)
+                .to_url_lossy()
+                .to_string();
+            rehearse_predeletion_restore_copy(
+                &snapshot_database_url,
+                &snapshot_ledger_bytes,
+                &snapshot_ledger.ledger_sha256,
+                &restore_target,
+                &restore_fixture,
+                authenticator.clone(),
+            )
+            .await
+        }
+        .await;
+        sqlx::query(AssertSqlSafe(format!(
+            "DROP DATABASE \"{snapshot_database_name}\" WITH (FORCE)"
+        )))
+        .execute(&migration_admin_pool)
+        .await
+        .context("drop pre-deletion restore snapshot")?;
+        snapshot_result?;
+
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let server_pool = pool.clone();
@@ -573,28 +661,6 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             base_url: format!("http://{address}"),
             ..target.clone()
         };
-        let client = Client::new();
-        let health = client
-            .get(format!("{}/healthz", scenario_target.base_url))
-            .send()
-            .await?;
-        ensure!(health.status() == StatusCode::OK);
-        ensure!(
-            health.headers().get(header::CACHE_CONTROL)
-                == Some(&header::HeaderValue::from_static("no-store"))
-        );
-        ensure!(health.content_length().is_none_or(|length| length == 0));
-        let readiness = client
-            .get(format!("{}/readyz", scenario_target.base_url))
-            .send()
-            .await?;
-        ensure!(readiness.status() == StatusCode::OK);
-        ensure!(
-            readiness.headers().get(header::CACHE_CONTROL)
-                == Some(&header::HeaderValue::from_static("no-store"))
-        );
-        ensure!(readiness.content_length().is_none_or(|length| length == 0));
-        populate_restore_corpus_over_http(&scenario_target, &restore_fixture).await?;
         exercise_restore_fence_replay(&pool, &migration_pool, &restore_fixture, &test_database_url)
             .await?;
         verify_restore_replay_is_hidden_over_http(&scenario_target, &restore_fixture).await?;
@@ -785,6 +851,126 @@ async fn seed_restore_fence_fixture(migration_pool: &PgPool) -> Result<RestoreFi
         subject_id,
         episode_id,
     })
+}
+
+async fn build_restore_fence_ledger(
+    migration_pool: &PgPool,
+    fixture: &RestoreFixture,
+) -> Result<(RestoreFenceLedger, Vec<u8>)> {
+    let scope_digest: String = sqlx::query_scalar("SELECT memory.deletion_scope_digest($1, $2)")
+        .bind(fixture.tenant_id)
+        .bind(fixture.subject_id)
+        .fetch_one(migration_pool)
+        .await?;
+    let now = OffsetDateTime::now_utc();
+    let ledger = RestoreFenceLedger::build(
+        now,
+        vec![RestoreFenceEntry::new(
+            scope_digest,
+            1,
+            now - TimeDuration::minutes(1),
+            now + TimeDuration::hours(1),
+        )?],
+    )?;
+    let bytes = ledger.to_bytes()?;
+    Ok((ledger, bytes))
+}
+
+async fn rehearse_predeletion_restore_copy(
+    database_url: &str,
+    ledger_bytes: &[u8],
+    expected_ledger_sha256: &str,
+    target_template: &Target,
+    fixture: &RestoreFixture,
+    authenticator: Arc<dyn Authenticator>,
+) -> Result<()> {
+    let pool = PgPool::connect(database_url)
+        .await
+        .context("connect to pre-deletion restore copy")?;
+
+    let first_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let first_address = first_listener.local_addr()?;
+    let first_pool = pool.clone();
+    let first_authenticator = authenticator.clone();
+    let first_server = tokio::spawn(async move {
+        axum::serve(
+            first_listener,
+            palimpsest_server::app_without_workers(
+                first_pool.clone(),
+                first_pool,
+                first_authenticator,
+            ),
+        )
+        .await
+    });
+    let copy_target = Target {
+        base_url: format!("http://{first_address}"),
+        ..target_template.clone()
+    };
+    let visible_result = verify_restore_corpus_is_visible_over_http(&copy_target, fixture).await;
+    first_server.abort();
+    let _ = first_server.await;
+    visible_result?;
+
+    let restore_status =
+        run_restore_mode_process(database_url, ledger_bytes, expected_ledger_sha256).await?;
+    ensure!(
+        restore_status.success(),
+        "restore replay failed against the pre-deletion copy"
+    );
+
+    let second_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let second_address = second_listener.local_addr()?;
+    let second_pool = pool.clone();
+    let second_authenticator = authenticator;
+    let second_server = tokio::spawn(async move {
+        axum::serve(
+            second_listener,
+            palimpsest_server::app_without_workers(
+                second_pool.clone(),
+                second_pool,
+                second_authenticator,
+            ),
+        )
+        .await
+    });
+    let hidden_target = Target {
+        base_url: format!("http://{second_address}"),
+        ..copy_target
+    };
+    let hidden_result = verify_restore_replay_is_hidden_over_http(&hidden_target, fixture).await;
+    second_server.abort();
+    let _ = second_server.await;
+    pool.close().await;
+    hidden_result
+}
+
+async fn verify_restore_corpus_is_visible_over_http(
+    target: &Target,
+    fixture: &RestoreFixture,
+) -> Result<()> {
+    let response = Client::new()
+        .get(format!(
+            "{}/v1/tenants/{}/subjects/{}/episodes/{}",
+            target.base_url, fixture.tenant_id, fixture.subject_id, fixture.episode_id
+        ))
+        .bearer_auth("restore-conformance-token")
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    ensure!(
+        status == StatusCode::OK,
+        "pre-deletion restore copy did not serve the private episode: {status}"
+    );
+    let episode_id = fixture.episode_id.to_string();
+    for required in ["restore", "private", episode_id.as_str()] {
+        ensure!(
+            body.contains(required),
+            "pre-deletion restore copy omitted {required}"
+        );
+    }
+    Ok(())
 }
 
 async fn exercise_restore_fence_replay(

@@ -19,6 +19,13 @@ transitions the subject to `deleted`, checks for residual rows, and records a
 content-free idempotent receipt keyed by the ledger digest. A repeated replay
 returns the recorded result without re-running the purge.
 
+The conformance fixture also creates a PostgreSQL template copy after the
+public HTTP restore corpus is populated. That pre-deletion copy serves the
+private fixture before replay, then the real restore-mode binary applies the
+independent ledger and the same public endpoint returns a redacted `404`.
+This is a database-copy rehearsal, not a claim about PostgreSQL PITR or a
+backup provider.
+
 ## Evidence
 
 - The Rust conformance fixture inserts a private episode, rejects an incorrect
@@ -39,6 +46,9 @@ returns the recorded result without re-running the purge.
   binary. A wrong expected digest exits before database mutation; a verified
   ledger exits successfully, and a second process invocation proves the
   content-free replay receipt is idempotent.
+- The pre-deletion copy is exercised through a worker-free public HTTP router
+  before and after restore-mode, so the negative result is not inferred only
+  from privileged row counts.
 - Application tests cover missing, malformed, unsupported, stale, future,
   unordered, duplicate, noncanonical, and digest-mismatched ledgers without
   echoing ledger content in errors.
@@ -52,8 +62,8 @@ returns the recorded result without re-running the purge.
 
 ## Boundary
 
-This is deterministic replay and purge evidence, not a production recovery
-claim. Backup/PITR and object-storage adapters, backup-expiry disposition,
-cache-loss evidence, fault injection after every external effect, a full
-black-box pre-deletion recovery fixture, and broad negative HTTP conformance
-across the full export/deletion corpus remain unproven.
+This is deterministic replay and database-copy recovery evidence, not a
+production recovery claim. Backup/PITR and object-storage adapters,
+backup-expiry disposition, cache-loss evidence, fault injection after every
+external effect, and broad negative HTTP conformance across the full
+export/deletion corpus remain unproven.

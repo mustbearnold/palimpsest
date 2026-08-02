@@ -71,8 +71,8 @@ content-free ledger, replays every matching scope's canonical and derived-data
 purge, records an idempotent content-free receipt, checks the returned counts
 and ledger digest internally, and exits without binding HTTP. Missing, stale, corrupt, or
 unmatched ledger evidence fails closed. This repository still does not provide
-a backup/PITR adapter, backup disposition check, or the complete black-box
-restore rehearsal and negative HTTP conformance gate.
+a backup/PITR adapter, backup disposition check, or the broad export/deletion
+negative HTTP conformance gate for every configured external target.
 
 ```bash
 docker compose stop postgres
