@@ -83,6 +83,13 @@ static PROVIDER_EFFECTS: LazyLock<Mutex<HashSet<Uuid>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Clone, Copy, Debug)]
+struct RestoreFixture {
+    tenant_id: Uuid,
+    subject_id: Uuid,
+    episode_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug)]
 enum EmbeddingFixtureMode {
     Valid = 0,
     Unavailable = 1,
@@ -341,7 +348,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     };
     let result = async {
         palimpsest_postgres::migrate(&pool).await?;
-        exercise_restore_fence_replay(&pool, &migration_pool).await?;
+        let restore_fixture = exercise_restore_fence_replay(&pool, &migration_pool).await?;
         verify_lexical_retrieval_policy(&migration_pool).await?;
         sqlx::query(
             r#"
@@ -449,6 +456,16 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     operation_grants: vec![],
                 },
             ),
+            (
+                "restore-conformance-token".to_owned(),
+                PrincipalScope {
+                    principal_id: PrincipalId("restore-conformance".to_owned()),
+                    tenant_id: TenantId(restore_fixture.tenant_id),
+                    subject_ids: vec![SubjectId(restore_fixture.subject_id)],
+                    allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
+                    operation_grants: vec![],
+                },
+            ),
         ]));
         deletion_target_lease_recovers_after_worker_expiry(&pool, &migration_pool).await?;
         deletion_failed_operation_can_be_repaired_and_resumed(&pool, &migration_pool).await?;
@@ -468,6 +485,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             base_url: format!("http://{address}"),
             ..target.clone()
         };
+        verify_restore_replay_is_hidden_over_http(&scenario_target, &restore_fixture).await?;
         let scenario = async {
             records_and_reads_an_immutable_episode(&scenario_target).await?;
             creates_an_attributable_fact_revision(&scenario_target).await?;
@@ -608,7 +626,10 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     result
 }
 
-async fn exercise_restore_fence_replay(pool: &PgPool, migration_pool: &PgPool) -> Result<()> {
+async fn exercise_restore_fence_replay(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<RestoreFixture> {
     let tenant_id = Uuid::parse_str("019be000-0000-7000-8000-000000000310")?;
     let subject_id = Uuid::parse_str("019be000-0000-7000-8000-000000000311")?;
     let case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000312")?;
@@ -720,6 +741,38 @@ async fn exercise_restore_fence_replay(pool: &PgPool, migration_pool: &PgPool) -
         .await?;
     assert_eq!(runtime_episode_count, 0);
     runtime_transaction.rollback().await?;
+    Ok(RestoreFixture {
+        tenant_id,
+        subject_id,
+        episode_id,
+    })
+}
+
+async fn verify_restore_replay_is_hidden_over_http(
+    target: &Target,
+    fixture: &RestoreFixture,
+) -> Result<()> {
+    let response = Client::new()
+        .get(format!(
+            "{}/v1/tenants/{}/subjects/{}/episodes/{}",
+            target.base_url, fixture.tenant_id, fixture.subject_id, fixture.episode_id
+        ))
+        .bearer_auth("restore-conformance-token")
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    ensure!(
+        status == StatusCode::NOT_FOUND,
+        "replayed private episode returned {status}"
+    );
+    let episode_id = fixture.episode_id.to_string();
+    for forbidden in ["restore", "private", episode_id.as_str()] {
+        ensure!(
+            !body.contains(forbidden),
+            "restore replay response disclosed {forbidden}"
+        );
+    }
     Ok(())
 }
 

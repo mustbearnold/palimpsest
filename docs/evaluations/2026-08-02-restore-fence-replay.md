@@ -24,8 +24,9 @@ returns the recorded result without re-running the purge.
 - The Rust conformance fixture inserts a private episode, rejects an incorrect
   independently supplied digest, successfully purges the matched scope,
   verifies the deleted lifecycle and zero episode rows through both the
-  privileged and scoped runtime connections, and repeats the replay to prove
-  idempotency.
+  privileged and scoped runtime connections, and verifies that a normal HTTP
+  client receives a redacted `404` without the payload or episode identifier.
+  It repeats the replay to prove idempotency.
 - Application tests cover missing, malformed, unsupported, stale, future,
   unordered, duplicate, noncanonical, and digest-mismatched ledgers without
   echoing ledger content in errors.
@@ -42,5 +43,5 @@ returns the recorded result without re-running the purge.
 This is deterministic replay and purge evidence, not a production recovery
 claim. Backup/PITR and object-storage adapters, backup-expiry disposition,
 cache-loss evidence, fault injection after every external effect, a full
-black-box pre-deletion recovery fixture, negative HTTP conformance after
-replay, and production release gates remain unproven.
+black-box pre-deletion recovery fixture, and broad negative HTTP conformance
+across the full export/deletion corpus remain unproven.
