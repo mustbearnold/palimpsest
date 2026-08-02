@@ -64,6 +64,8 @@ pub struct ProjectionRebuildReport {
     pub failed: usize,
 }
 
+const EMBEDDING_PROJECTION_LEASE_POLICY_ID: &str = "embedding-projection-v1";
+
 #[derive(Clone, Debug)]
 struct ProjectionJob {
     tenant_id: uuid::Uuid,
@@ -134,6 +136,17 @@ impl EmbeddingProjectionCoordinator {
         let limit = i64::try_from(batch_size).map_err(unexpected)?;
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, tenant_id, subject_id).await?;
+        let lease_seconds: i32 = sqlx::query_scalar(
+            r#"
+            SELECT lease_seconds
+            FROM memory.embedding_projection_lease_policies
+            WHERE policy_id = $1
+            "#,
+        )
+        .bind(EMBEDDING_PROJECTION_LEASE_POLICY_ID)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
         sqlx::query("SELECT memory.enqueue_missing_fact_revision_embedding_projections()")
             .execute(&mut *transaction)
             .await
@@ -143,12 +156,15 @@ impl EmbeddingProjectionCoordinator {
             UPDATE memory.fact_revision_embedding_projections
             SET status = 'pending',
                 generation_attempt_id = NULL,
-                generation_started_at = NULL
+                generation_started_at = NULL,
+                generation_lease_expires_at = NULL
             WHERE tenant_id = $1
               AND subject_id = $2
               AND status = 'generating'
-              AND generation_started_at
-                    < clock_timestamp() - interval '15 minutes'
+              AND (
+                  generation_lease_expires_at IS NULL
+                  OR generation_lease_expires_at <= clock_timestamp()
+              )
             "#,
         )
         .bind(tenant_id.0)
@@ -298,7 +314,9 @@ impl EmbeddingProjectionCoordinator {
                 UPDATE memory.fact_revision_embedding_projections
                 SET status = 'generating',
                     generation_attempt_id = $12,
-                    generation_started_at = clock_timestamp()
+                    generation_started_at = clock_timestamp(),
+                    generation_lease_expires_at = clock_timestamp()
+                        + make_interval(secs => $13)
                 WHERE tenant_id = $1
                   AND subject_id = $2
                   AND case_id = $3
@@ -325,6 +343,7 @@ impl EmbeddingProjectionCoordinator {
             .bind(&job.projection_profile_version)
             .bind(&job.projection_profile_sha256)
             .bind(job.generation_attempt_id)
+            .bind(lease_seconds)
             .execute(&mut *transaction)
             .await
             .map_err(unexpected)?;
@@ -449,6 +468,7 @@ impl EmbeddingProjectionCoordinator {
                 embedding = $17,
                 vector_sha256 = $18,
                 failure_code = NULL,
+                generation_lease_expires_at = NULL,
                 generated_at = generated.at
             FROM generated
             WHERE projection.tenant_id = $1
@@ -517,6 +537,7 @@ impl EmbeddingProjectionCoordinator {
                 embedding = NULL,
                 vector_sha256 = NULL,
                 failure_code = $15,
+                generation_lease_expires_at = NULL,
                 generated_at = NULL
             FROM failed
             WHERE projection.tenant_id = $1

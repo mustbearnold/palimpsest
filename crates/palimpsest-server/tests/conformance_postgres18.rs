@@ -1895,6 +1895,7 @@ async fn runs_hybrid_retrieval_conformance(
         verify_embedding_projection_rows(pool, target, &fixture).await?;
         verify_no_ann_indexes(pool).await?;
         exercise_concurrent_projection_claim(pool, migration_pool, target, &fixture).await?;
+        exercise_projection_lease_expiry(migration_pool, target, &fixture, &coordinator).await?;
 
         apply_corpus_lifecycle(pool, target, &prepared_corpus).await?;
         tokio::time::sleep(Duration::from_millis(1_100)).await;
@@ -2627,6 +2628,86 @@ async fn exercise_concurrent_projection_claim(
         released_projection_lease_count == 0,
         "completed projection worker retained its subject content lease"
     );
+    Ok(())
+}
+
+async fn exercise_projection_lease_expiry(
+    migration_pool: &PgPool,
+    target: &Target,
+    fixture: &HybridFusionFixture,
+    coordinator: &EmbeddingProjectionCoordinator,
+) -> Result<()> {
+    let policy = sqlx::query(
+        r#"
+        SELECT lease_seconds, renewal_interval_seconds
+        FROM memory.embedding_projection_lease_policies
+        WHERE policy_id = 'embedding-projection-v1'
+        "#,
+    )
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(policy.try_get::<i32, _>("lease_seconds")? == 60);
+    ensure!(policy.try_get::<i32, _>("renewal_interval_seconds")? == 20);
+
+    let mut transaction = migration_pool.begin().await?;
+    set_retrieval_test_scope(&mut transaction, target).await?;
+    let claimed = sqlx::query(
+        r#"
+        UPDATE memory.fact_revision_embedding_projections
+        SET status = 'generating',
+            embedding = NULL,
+            vector_sha256 = NULL,
+            failure_code = NULL,
+            generation_attempt_id = $4,
+            generation_started_at = clock_timestamp(),
+            generation_lease_expires_at = clock_timestamp() + interval '1 hour',
+            generated_at = NULL
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND revision_id = $3
+          AND status = 'ready'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.alpha_revision_id)
+    .bind(Uuid::now_v7())
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(claimed.rows_affected() == 1);
+    transaction.commit().await?;
+
+    let not_reclaimed = coordinator
+        .rebuild_pending(TenantId(target.tenant_id), SubjectId(target.subject_id), 1)
+        .await?;
+    ensure!(
+        not_reclaimed.attempted == 0,
+        "a live projection claim was reclaimed before its configured lease expired"
+    );
+
+    let mut transaction = migration_pool.begin().await?;
+    set_retrieval_test_scope(&mut transaction, target).await?;
+    sqlx::query(
+        r#"
+        UPDATE memory.fact_revision_embedding_projections
+        SET generation_lease_expires_at = clock_timestamp() - interval '1 second'
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND revision_id = $3
+          AND status = 'generating'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.alpha_revision_id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+
+    let reclaimed = coordinator
+        .rebuild_pending(TenantId(target.tenant_id), SubjectId(target.subject_id), 1)
+        .await?;
+    ensure!(reclaimed.attempted == 1 && reclaimed.ready == 1);
     Ok(())
 }
 
@@ -3816,6 +3897,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.recency_profiles, \
                  memory.embedding_profiles, \
                  memory.embedding_projection_profiles, \
+                 memory.embedding_projection_lease_policies, \
                  memory.fact_retrieval_metadata_policies, \
                  memory.fact_retention_policies, \
                  memory.search_projection_schemas, \
