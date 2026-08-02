@@ -182,7 +182,9 @@ async fn grant_runtime_content_lease_functions(
          memory.acquire_subject_content_lease(uuid, uuid, uuid, text), \
          memory.release_subject_content_lease(uuid, uuid, uuid, text), \
          memory.claim_next_export_operation(uuid, integer), \
-         memory.claim_next_expired_export_operation(uuid, integer) \
+         memory.claim_next_expired_export_operation(uuid, integer), \
+         memory.deletion_workflow_allows(uuid, uuid), \
+         memory.restore_replay_allows(uuid, uuid) \
          TO {quoted_runtime_role}"
     )))
     .execute(migration_pool)
