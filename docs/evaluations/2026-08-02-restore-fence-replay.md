@@ -26,7 +26,9 @@ returns the recorded result without re-running the purge.
   verifies the deleted lifecycle and zero episode rows through both the
   privileged and scoped runtime connections, and verifies that a normal HTTP
   client receives a redacted `404` without the payload or episode identifier.
-  It repeats the replay to prove idempotency.
+  It repeats the replay to prove idempotency. Mismatched-digest and
+  unmatched-scope ledgers are rejected before purge, with the original
+  episode still present after each rejected attempt.
 - Application tests cover missing, malformed, unsupported, stale, future,
   unordered, duplicate, noncanonical, and digest-mismatched ledgers without
   echoing ledger content in errors.

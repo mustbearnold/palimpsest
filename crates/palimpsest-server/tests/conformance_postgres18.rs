@@ -680,7 +680,7 @@ async fn exercise_restore_fence_replay(
     let ledger = RestoreFenceLedger::build(
         now,
         vec![RestoreFenceEntry::new(
-            scope_digest,
+            scope_digest.clone(),
             1,
             now - TimeDuration::minutes(1),
             now + TimeDuration::hours(1),
@@ -695,6 +695,49 @@ async fn exercise_restore_fence_replay(
             .is_err(),
         "restore replay must reject a mismatched independent digest"
     );
+    let episode_count_after_digest_mismatch: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM memory.episodes WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    assert_eq!(episode_count_after_digest_mismatch, 1);
+
+    let unmatched_ledger = RestoreFenceLedger::build(
+        now,
+        vec![
+            RestoreFenceEntry::new(
+                scope_digest,
+                1,
+                now - TimeDuration::minutes(1),
+                now + TimeDuration::hours(1),
+            )?,
+            RestoreFenceEntry::new(
+                format!("v1:{}", "0".repeat(64)),
+                1,
+                now - TimeDuration::minutes(1),
+                now + TimeDuration::hours(1),
+            )?,
+        ],
+    )?;
+    let unmatched_bytes = unmatched_ledger.to_bytes()?;
+    assert!(
+        repository
+            .replay_restore_fence_ledger(&unmatched_bytes, &unmatched_ledger.ledger_sha256)
+            .await
+            .is_err(),
+        "restore replay must reject a ledger with an unmatched scope"
+    );
+    let episode_count_after_unmatched_scope: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM memory.episodes WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    assert_eq!(episode_count_after_unmatched_scope, 1);
+
     let report = repository
         .replay_restore_fence_ledger(&ledger_bytes, &ledger.ledger_sha256)
         .await
