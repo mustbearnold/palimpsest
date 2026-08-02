@@ -12,9 +12,10 @@ truth.
 
 The repository contains a checked development slice for the PostgreSQL-backed
 HTTP service, including temporal memory, hybrid retrieval, canonical-history
-exports, and fenced subject deletion. It is not a production release: cache,
-artifact, backup/PITR, external identity, SDK, and operational release gates
-remain deployment work.
+exports, fenced subject deletion, and a fail-closed verifier for an independent
+deletion-fence ledger. It is not a production release: cache, artifact,
+backup/PITR adapters, external identity, SDK, restore rehearsal, and
+operational release gates remain deployment work.
 
 ## Product commitments
 

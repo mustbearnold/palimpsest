@@ -20,6 +20,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub mod export;
+pub mod recovery;
 
 pub use export::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, EXPORT_RETENTION_HOURS,
@@ -27,6 +28,10 @@ pub use export::{
     ExportPackageError, ExportPackageMetadata, ExportPackageStore, ExportProcessingContext,
     ExportRecord, ExportRecordKind, ExportRepository, ExportStoreError, FileExportPackageStore,
     InMemoryExportPackageStore, NewExport,
+};
+pub use recovery::{
+    RESTORE_FENCE_LEDGER_PROFILE, RESTORE_FENCE_LEDGER_SCHEMA_VERSION, RestoreFenceEntry,
+    RestoreFenceLedger, RestoreFenceLedgerError, verify_restore_fence_ledger,
 };
 
 const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
