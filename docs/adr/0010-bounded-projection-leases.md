@@ -24,8 +24,9 @@ the expiry. The attempt token remains the finalization fence, so an abandoned
 worker cannot overwrite a later claim.
 
 The policy row is readable by runtime workers and immutable after migration.
-The next projection-worker slice adds heartbeat renewal at the recorded
-renewal interval while provider I/O is active.
+While provider I/O is active, the coordinator renews the matching attempt at
+the recorded renewal interval. Renewal stops when the attempt no longer owns
+the claim or when the subject fence prevents a new scoped transaction.
 
 ## Consequences
 
@@ -35,6 +36,5 @@ renewal interval while provider I/O is active.
   claim remains recoverable without waiting fifteen minutes.
 - Lease expiry is operational metadata only; embeddings remain derived and
   source/profile/input digests remain the authority.
-- Provider work still has the existing bounded subject content lease until the
-  heartbeat renewal slice is delivered. This ADR does not claim provider
-  latency, cost, or production readiness.
+- Provider work still has the existing bounded subject content lease; this ADR
+  does not claim provider latency, cost, or production readiness.

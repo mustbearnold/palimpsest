@@ -9,6 +9,7 @@ use axum::{
 };
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
+use sqlx::types::time::OffsetDateTime;
 use std::{
     collections::{BTreeMap, HashSet},
     env,
@@ -2595,13 +2596,45 @@ async fn exercise_concurrent_projection_claim(
         projection_lease_count == 1,
         "projection provider work did not retain exactly one subject content lease"
     );
+    let initial_projection_lease: OffsetDateTime = sqlx::query_scalar(
+        r#"
+        SELECT generation_lease_expires_at
+        FROM memory.fact_revision_embedding_projections
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND revision_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.delta_revision_id)
+    .fetch_one(migration_pool)
+    .await?;
     let second = tokio::spawn(async move {
         second_coordinator
             .rebuild_pending(tenant_id, subject_id, 1)
             .await
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(Duration::from_secs(21)).await;
     let calls_while_claimed = provider.calls.load(Ordering::SeqCst);
+    let renewed_projection_lease: OffsetDateTime = sqlx::query_scalar(
+        r#"
+        SELECT generation_lease_expires_at
+        FROM memory.fact_revision_embedding_projections
+        WHERE tenant_id = $1
+          AND subject_id = $2
+          AND revision_id = $3
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fixture.delta_revision_id)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(
+        renewed_projection_lease > initial_projection_lease,
+        "active projection provider work did not renew its claim lease"
+    );
     provider.release.notify_waiters();
     let first_report = first.await??;
     let second_report = second.await??;

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 use palimpsest_application::{
     AdvanceDeletionOutcome, AppendOutcome, CheckpointMutationOutcome, CheckpointRepository,
@@ -136,9 +138,9 @@ impl EmbeddingProjectionCoordinator {
         let limit = i64::try_from(batch_size).map_err(unexpected)?;
         let mut transaction = self.pool.begin().await.map_err(unexpected)?;
         set_scope(&mut transaction, tenant_id, subject_id).await?;
-        let lease_seconds: i32 = sqlx::query_scalar(
+        let policy = sqlx::query(
             r#"
-            SELECT lease_seconds
+            SELECT lease_seconds, renewal_interval_seconds
             FROM memory.embedding_projection_lease_policies
             WHERE policy_id = $1
             "#,
@@ -147,6 +149,10 @@ impl EmbeddingProjectionCoordinator {
         .fetch_one(&mut *transaction)
         .await
         .map_err(unexpected)?;
+        let lease_seconds: i32 = policy.try_get("lease_seconds").map_err(unexpected)?;
+        let renewal_interval_seconds: i32 = policy
+            .try_get("renewal_interval_seconds")
+            .map_err(unexpected)?;
         sqlx::query("SELECT memory.enqueue_missing_fact_revision_embedding_projections()")
             .execute(&mut *transaction)
             .await
@@ -394,6 +400,12 @@ impl EmbeddingProjectionCoordinator {
                     content: job.content.clone(),
                 })
                 .collect::<Vec<_>>();
+            let heartbeat = self.spawn_projection_lease_heartbeat(
+                tenant_id,
+                subject_id,
+                generation_attempt_id,
+                Duration::from_secs(u64::try_from(renewal_interval_seconds).map_err(unexpected)?),
+            );
             let response = self
                 .provider
                 .embed(EmbeddingRequest {
@@ -402,6 +414,8 @@ impl EmbeddingProjectionCoordinator {
                     inputs,
                 })
                 .await;
+            heartbeat.abort();
+            let _ = heartbeat.await;
             let outputs = match response.and_then(|response| {
                 let expected = profile_jobs
                     .iter()
@@ -445,6 +459,72 @@ impl EmbeddingProjectionCoordinator {
             offset = end;
         }
         Ok(report)
+    }
+
+    fn spawn_projection_lease_heartbeat(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        generation_attempt_id: uuid::Uuid,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
+        let coordinator = self.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                match coordinator
+                    .renew_projection_lease(tenant_id, subject_id, generation_attempt_id)
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) | Err(_) => break,
+                }
+            }
+        })
+    }
+
+    async fn renew_projection_lease(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        generation_attempt_id: uuid::Uuid,
+    ) -> Result<bool, RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope(&mut transaction, tenant_id, subject_id).await?;
+        let lease_seconds: i32 = sqlx::query_scalar(
+            r#"
+            SELECT lease_seconds
+            FROM memory.embedding_projection_lease_policies
+            WHERE policy_id = $1
+            "#,
+        )
+        .bind(EMBEDDING_PROJECTION_LEASE_POLICY_ID)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        let updated = sqlx::query(
+            r#"
+            UPDATE memory.fact_revision_embedding_projections
+            SET generation_lease_expires_at = clock_timestamp()
+                + make_interval(secs => $4)
+            WHERE tenant_id = $1
+              AND subject_id = $2
+              AND status = 'generating'
+              AND generation_attempt_id = $3
+              AND generation_lease_expires_at > clock_timestamp()
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .bind(generation_attempt_id)
+        .bind(lease_seconds)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unexpected)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(updated.rows_affected() > 0)
     }
 
     async fn mark_projection_ready(
