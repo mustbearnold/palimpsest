@@ -1503,8 +1503,36 @@ async fn exercise_export_and_deletion_http(
     } else {
         format!("{base_url}{episode_location}")
     };
+    let episode_id = episode_location
+        .rsplit('/')
+        .next()
+        .context("export/deletion episode Location omitted its identifier")?
+        .to_owned();
 
     let export_url = format!("{secondary_prefix}/exports");
+    let no_export_grant = client
+        .post(&export_url)
+        .bearer_auth(&target.bearer_token)
+        .header("Idempotency-Key", "export-delete-no-grant")
+        .send()
+        .await?;
+    let no_export_grant_status = no_export_grant.status();
+    let no_export_grant_body = no_export_grant.text().await?;
+    ensure!(
+        no_export_grant_status == StatusCode::NOT_FOUND,
+        "same-scope export without a grant disclosed an operation: {}",
+        no_export_grant_status
+    );
+    for forbidden in [
+        episode_id.as_str(),
+        "export-delete-private-marker",
+        "export-delete-no-grant",
+    ] {
+        ensure!(
+            !no_export_grant_body.contains(forbidden),
+            "same-scope export denial disclosed {forbidden}"
+        );
+    }
     let export_response = client
         .post(&export_url)
         .bearer_auth(bearer_token)
@@ -1613,6 +1641,28 @@ async fn exercise_export_and_deletion_http(
         String::from_utf8_lossy(&content).contains("export-delete-private-marker"),
         "export package omitted the authorized marker"
     );
+    let no_export_read = client
+        .get(&export_status_url)
+        .bearer_auth(&target.bearer_token)
+        .send()
+        .await?;
+    let no_export_read_status = no_export_read.status();
+    let no_export_read_body = no_export_read.text().await?;
+    ensure!(
+        no_export_read_status == StatusCode::NOT_FOUND,
+        "same-scope export read without a grant disclosed an operation: {}",
+        no_export_read_status
+    );
+    for forbidden in [
+        export_id.as_str(),
+        episode_id.as_str(),
+        "export-delete-private-marker",
+    ] {
+        ensure!(
+            !no_export_read_body.contains(forbidden),
+            "same-scope export read disclosed {forbidden}"
+        );
+    }
 
     let hidden_export = client
         .get(format!(
@@ -1670,6 +1720,29 @@ async fn exercise_export_and_deletion_http(
     } else {
         format!("{base_url}{deletion_status_url}")
     };
+    let no_deletion_grant_read = client
+        .get(&deletion_status_url)
+        .bearer_auth(&target.bearer_token)
+        .send()
+        .await?;
+    let no_deletion_grant_status = no_deletion_grant_read.status();
+    let no_deletion_grant_body = no_deletion_grant_read.text().await?;
+    ensure!(
+        no_deletion_grant_status == StatusCode::NOT_FOUND,
+        "same-scope deletion read without a grant disclosed an operation: {}",
+        no_deletion_grant_status
+    );
+    for forbidden in [
+        deletion_id.as_str(),
+        episode_id.as_str(),
+        "export-delete-private-marker",
+        "export-delete-deletion",
+    ] {
+        ensure!(
+            !no_deletion_grant_body.contains(forbidden),
+            "same-scope deletion denial disclosed {forbidden}"
+        );
+    }
     let deletion_replay = client
         .post(&deletion_url)
         .bearer_auth(bearer_token)
@@ -1767,6 +1840,29 @@ async fn exercise_export_and_deletion_http(
     let expired_body: Value = expired_status.json().await?;
     ensure!(expired_body["lifecycle_state"] == "expired");
     ensure!(expired_body["outcome"]["live_disposition"] == "purged_and_verified");
+
+    let tombstone_material: String = sqlx::query_scalar(
+        "SELECT concat_ws(' ', scope_digest, idempotency_key_digest,
+            request_fingerprint_sha256, policy_version, worker_release,
+            target_summary::text, verification_digest, backup_policy_id)
+         FROM memory.deletion_tombstones
+         WHERE tenant_id = $1 AND operation_id = $2",
+    )
+    .bind(target.tenant_id)
+    .bind(Uuid::parse_str(&deletion_id)?)
+    .fetch_one(migration_pool)
+    .await?;
+    for forbidden in [
+        episode_id.as_str(),
+        "export-delete-episode",
+        "export-delete-private-marker",
+        "export-delete-deletion",
+    ] {
+        ensure!(
+            !tombstone_material.contains(forbidden),
+            "deletion tombstone retained {forbidden}"
+        );
+    }
 
     let deleted_episode = client
         .get(&episode_location)
