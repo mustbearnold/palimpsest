@@ -38,6 +38,11 @@ The same corpus forces the configured filesystem store to reject staging. The
 worker returns an unavailable result, records the sanitized
 `package_store_failed` terminal state, and leaves package metadata absent.
 
+A separate worker fixture denies the persisted export grant after the operation
+is queued. The worker records `authorization_revoked`, clears its claim, and
+returns without materializing content; the operation does not remain stranded
+in `materializing` until lease expiry.
+
 The deletion worker is also run with a queued export and the same unavailable
 store after the subject fence is committed. It records `target_effect_failed`,
 keeps the export target pending and the operation in `purging`, and reports no

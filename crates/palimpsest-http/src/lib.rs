@@ -1699,6 +1699,13 @@ impl Problem {
                 "deletion_worker_recovery_failed",
                 "The deletion worker could not release its operation lease after a target failure.",
             ),
+            ServiceError::ExportWorkerRecoveryFailed => Self::new(
+                "export-worker-recovery-failed",
+                "Export worker recovery failed",
+                StatusCode::SERVICE_UNAVAILABLE,
+                "export_worker_recovery_failed",
+                "The export worker could not release its content lease after a failure.",
+            ),
             ServiceError::Invalid(detail) => {
                 Self::bad_request("invalid_request", "Request is invalid", detail)
             }

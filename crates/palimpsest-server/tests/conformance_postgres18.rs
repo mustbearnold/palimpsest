@@ -26,8 +26,8 @@ use palimpsest_application::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DELETION_MAX_ATTEMPTS,
     DeletionRepository, EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest,
     EmbeddingResponse, ExportOperationState, ExportPackageMetadata, ExportRepository,
-    ExportWorkerAuthorizer, FileExportPackageStore, IdempotencyRequest, MemoryService, NewExport,
-    RestoreFenceEntry, RestoreFenceLedger, ServiceError,
+    ExportWorkerAuthorizer, FileExportPackageStore, IdempotencyRequest, InMemoryExportPackageStore,
+    MemoryService, NewExport, RestoreFenceEntry, RestoreFenceLedger, ServiceError,
 };
 use palimpsest_conformance::retrieval_evaluation::{
     LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
@@ -93,6 +93,20 @@ struct RestoreFixture {
 
 struct StaticExportWorkerAuthorizer {
     authenticator: Arc<StaticAuthenticator>,
+}
+
+struct DenyingExportWorkerAuthorizer;
+
+impl ExportWorkerAuthorizer for DenyingExportWorkerAuthorizer {
+    fn authorize_export(
+        &self,
+        _principal_id: &PrincipalId,
+        _tenant_id: TenantId,
+        _subject_id: SubjectId,
+        _authorization_scope_sha256: &str,
+    ) -> std::result::Result<PrincipalScope, ServiceError> {
+        Err(ServiceError::NotFound)
+    }
 }
 
 impl ExportWorkerAuthorizer for StaticExportWorkerAuthorizer {
@@ -522,6 +536,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         deletion_target_retry_exhaustion_remains_fenced(&pool, &migration_pool).await?;
         export_worker_lease_recovery_fences_stale_completion(&pool, &migration_pool).await?;
         export_worker_fails_closed_on_store_failure(&pool, &migration_pool).await?;
+        export_worker_fails_closed_on_authorization_revocation(&pool, &migration_pool).await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
             .await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -1481,6 +1496,67 @@ async fn export_worker_fails_closed_on_store_failure(
     );
     ensure!(operation.state == ExportOperationState::Failed);
     ensure!(operation.failure_code.as_deref() == Some("package_store_failed"));
+    ensure!(operation.content_sha256.is_none());
+    ensure!(operation.size_bytes.is_none());
+    ensure!(operation.record_count.is_none());
+    Ok(())
+}
+
+async fn export_worker_fails_closed_on_authorization_revocation(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-0000-8000-000000000066")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-0000-8000-000000000067")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("export-authorization-revocation-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
+        operation_grants: vec![OperationGrant::CanonicalHistoryExport],
+    };
+    sqlx::query(
+        "INSERT INTO memory.subject_lifecycles
+            (tenant_id, subject_id, lifecycle_state, state_version)
+         VALUES ($1, $2, 'active', 0)",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .execute(migration_pool)
+    .await
+    .context("seed active export authorization-revocation lifecycle")?;
+
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    )
+    .with_export_components(
+        repository.clone(),
+        Arc::new(InMemoryExportPackageStore::default()),
+    )
+    .with_export_worker_authorizer(Arc::new(DenyingExportWorkerAuthorizer));
+    let created = service
+        .create_export(
+            &principal,
+            tenant_id,
+            subject_id,
+            "export-authorization-revocation".to_owned(),
+        )
+        .await
+        .context("create export before authorization revocation")?;
+
+    ensure!(service.run_export_worker_once().await?);
+    let operation = repository
+        .get_export(tenant_id, subject_id, created.operation.export_id)
+        .await
+        .context("read authorization-revoked export operation")?;
+    ensure!(operation.state == ExportOperationState::Failed);
+    ensure!(operation.failure_code.as_deref() == Some("authorization_revoked"));
+    ensure!(operation.worker_lease_id.is_none());
     ensure!(operation.content_sha256.is_none());
     ensure!(operation.size_bytes.is_none());
     ensure!(operation.record_count.is_none());

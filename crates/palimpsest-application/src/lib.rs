@@ -554,6 +554,8 @@ pub enum ServiceError {
     RetrievalTooLarge,
     #[error("deletion worker target failure and operation lease release both failed")]
     DeletionWorkerRecoveryFailed,
+    #[error("export worker recovery failed")]
+    ExportWorkerRecoveryFailed,
     #[error("service unavailable")]
     Unavailable,
 }
@@ -1086,26 +1088,84 @@ impl MemoryService {
         };
         let tenant_id = materialization.operation.tenant_id;
         let subject_id = materialization.operation.subject_id;
-        let principal = authorizer.authorize_export(
+        let principal = match authorizer.authorize_export(
             &materialization.operation.principal_id,
             tenant_id,
             subject_id,
             &materialization.operation.authorization_scope_sha256,
-        )?;
-        authorize_operation(
+        ) {
+            Ok(principal) => principal,
+            Err(ServiceError::NotFound) => {
+                exports
+                    .mark_export_failed(
+                        tenant_id,
+                        subject_id,
+                        materialization.operation.export_id,
+                        worker_lease_id,
+                        "authorization_revoked",
+                    )
+                    .await
+                    .map_err(map_repository)?;
+                return Ok(true);
+            }
+            Err(error) => return Err(error),
+        };
+        if let Err(error) = authorize_operation(
             &principal,
             tenant_id,
             subject_id,
             OperationGrant::CanonicalHistoryExport,
-        )?;
+        ) {
+            if !matches!(error, ServiceError::NotFound) {
+                return Err(error);
+            }
+            exports
+                .mark_export_failed(
+                    tenant_id,
+                    subject_id,
+                    materialization.operation.export_id,
+                    worker_lease_id,
+                    "authorization_revoked",
+                )
+                .await
+                .map_err(map_repository)?;
+            return Ok(true);
+        }
         if export_authorization_scope_sha256(&principal, tenant_id, subject_id)?
             != materialization.operation.authorization_scope_sha256
         {
-            return Err(ServiceError::NotFound);
+            exports
+                .mark_export_failed(
+                    tenant_id,
+                    subject_id,
+                    materialization.operation.export_id,
+                    worker_lease_id,
+                    "authorization_revoked",
+                )
+                .await
+                .map_err(map_repository)?;
+            return Ok(true);
         }
-        let permit = self
+        let permit = match self
             .acquire_subject_content_lease(&principal, tenant_id, subject_id)
-            .await?;
+            .await
+        {
+            Ok(permit) => permit,
+            Err(ServiceError::NotFound) => {
+                exports
+                    .mark_export_failed(
+                        tenant_id,
+                        subject_id,
+                        materialization.operation.export_id,
+                        worker_lease_id,
+                        "lifecycle_revoked",
+                    )
+                    .await
+                    .map_err(map_repository)?;
+                return Ok(true);
+            }
+            Err(error) => return Err(error),
+        };
         let result = self
             .materialize_claimed_export_with_lease(
                 &permit,
@@ -1120,9 +1180,7 @@ impl MemoryService {
         match (result, release_result) {
             (Ok(()), Ok(())) => Ok(true),
             (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-            (Err(error), Err(release_error)) => Err(ServiceError::Invalid(format!(
-                "export worker failed ({error}); lease release failed ({release_error})"
-            ))),
+            (Err(_), Err(_)) => Err(ServiceError::ExportWorkerRecoveryFailed),
         }
     }
 
@@ -1175,9 +1233,7 @@ impl MemoryService {
         match (result, release_result) {
             (Ok(()), Ok(())) => Ok(()),
             (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-            (Err(error), Err(release_error)) => Err(ServiceError::Invalid(format!(
-                "export materialization failed ({error}); lease release failed ({release_error})"
-            ))),
+            (Err(_), Err(_)) => Err(ServiceError::ExportWorkerRecoveryFailed),
         }
     }
 

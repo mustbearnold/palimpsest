@@ -146,6 +146,13 @@ closed and publishes nothing. The worker reauthorizes and rechecks lifecycle
 immediately before atomic publication. Every content request repeats those
 checks and holds a subject content lease for the response.
 
+If the worker's trusted authorization lookup no longer grants the persisted
+operation, or the subject fence prevents a content lease, the worker records a
+sanitized terminal failure (`authorization_revoked` or `lifecycle_revoked`),
+clears its worker lease, and publishes no package. Lease-cleanup failures are
+reported through a stable service-unavailable class rather than embedding
+repository or provider error text in an `Invalid` response.
+
 The package is an integrity-checked ZIP whose semantic files are UTF-8 JSON or
 NDJSON:
 
