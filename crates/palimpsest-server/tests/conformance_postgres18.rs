@@ -348,7 +348,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     };
     let result = async {
         palimpsest_postgres::migrate(&pool).await?;
-        let restore_fixture = exercise_restore_fence_replay(&pool, &migration_pool).await?;
+        let restore_fixture = seed_restore_fence_fixture(&migration_pool).await?;
         verify_lexical_retrieval_policy(&migration_pool).await?;
         sqlx::query(
             r#"
@@ -466,6 +466,31 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                     operation_grants: vec![],
                 },
             ),
+            (
+                "restore-corpus-token".to_owned(),
+                PrincipalScope {
+                    principal_id: PrincipalId("principal-a".to_owned()),
+                    tenant_id: TenantId(restore_fixture.tenant_id),
+                    subject_ids: vec![SubjectId(restore_fixture.subject_id)],
+                    allowed_sensitivities: vec![
+                        Sensitivity::try_from("internal".to_owned())?,
+                        Sensitivity::try_from("restricted".to_owned())?,
+                    ],
+                    operation_grants: vec![],
+                },
+            ),
+            (
+                "restore-corpus-principal-c-token".to_owned(),
+                PrincipalScope {
+                    principal_id: PrincipalId("principal-c".to_owned()),
+                    tenant_id: TenantId(restore_fixture.tenant_id),
+                    subject_ids: vec![SubjectId(Uuid::parse_str(
+                        "019be000-0000-7000-8000-000000000317",
+                    )?)],
+                    allowed_sensitivities: vec![Sensitivity::try_from("restricted".to_owned())?],
+                    operation_grants: vec![],
+                },
+            ),
         ]));
         deletion_target_lease_recovers_after_worker_expiry(&pool, &migration_pool).await?;
         deletion_failed_operation_can_be_repaired_and_resumed(&pool, &migration_pool).await?;
@@ -485,6 +510,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             base_url: format!("http://{address}"),
             ..target.clone()
         };
+        populate_restore_corpus_over_http(&scenario_target, &restore_fixture).await?;
+        exercise_restore_fence_replay(&pool, &migration_pool, &restore_fixture).await?;
         verify_restore_replay_is_hidden_over_http(&scenario_target, &restore_fixture).await?;
         let scenario = async {
             records_and_reads_an_immutable_episode(&scenario_target).await?;
@@ -626,10 +653,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     result
 }
 
-async fn exercise_restore_fence_replay(
-    pool: &PgPool,
-    migration_pool: &PgPool,
-) -> Result<RestoreFixture> {
+async fn seed_restore_fence_fixture(migration_pool: &PgPool) -> Result<RestoreFixture> {
     let tenant_id = Uuid::parse_str("019be000-0000-7000-8000-000000000310")?;
     let subject_id = Uuid::parse_str("019be000-0000-7000-8000-000000000311")?;
     let case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000312")?;
@@ -671,6 +695,46 @@ async fn exercise_restore_fence_replay(
     .execute(migration_pool)
     .await?;
 
+    Ok(RestoreFixture {
+        tenant_id,
+        subject_id,
+        episode_id,
+    })
+}
+
+async fn exercise_restore_fence_replay(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+    fixture: &RestoreFixture,
+) -> Result<()> {
+    let tenant_id = fixture.tenant_id;
+    let subject_id = fixture.subject_id;
+    let populated_counts = restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?;
+    let mut populated_durable_counts = populated_counts.clone();
+    populated_durable_counts.remove("subject_content_leases");
+    for table_name in [
+        "episodes",
+        "facts",
+        "fact_revision_evidence",
+        "fact_revision_governance",
+        "fact_revision_search_documents",
+        "fact_revisions",
+        "checkpoints",
+        "checkpoint_revisions",
+        "retrieval_idempotency_reservations",
+        "retrieval_manifest_items",
+        "retrieval_receipts",
+    ] {
+        ensure!(
+            populated_counts
+                .get(table_name)
+                .copied()
+                .unwrap_or_default()
+                > 0,
+            "restore corpus did not populate {table_name}"
+        );
+    }
+
     let scope_digest: String = sqlx::query_scalar("SELECT memory.deletion_scope_digest($1, $2)")
         .bind(tenant_id)
         .bind(subject_id)
@@ -702,7 +766,14 @@ async fn exercise_restore_fence_replay(
     .bind(subject_id)
     .fetch_one(migration_pool)
     .await?;
-    assert_eq!(episode_count_after_digest_mismatch, 1);
+    assert_eq!(
+        episode_count_after_digest_mismatch,
+        populated_counts["episodes"]
+    );
+    assert_eq!(
+        durable_restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?,
+        populated_durable_counts
+    );
 
     let unmatched_ledger = RestoreFenceLedger::build(
         now,
@@ -736,7 +807,14 @@ async fn exercise_restore_fence_replay(
     .bind(subject_id)
     .fetch_one(migration_pool)
     .await?;
-    assert_eq!(episode_count_after_unmatched_scope, 1);
+    assert_eq!(
+        episode_count_after_unmatched_scope,
+        populated_counts["episodes"]
+    );
+    assert_eq!(
+        durable_restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?,
+        populated_durable_counts
+    );
 
     let report = repository
         .replay_restore_fence_ledger(&ledger_bytes, &ledger.ledger_sha256)
@@ -746,6 +824,11 @@ async fn exercise_restore_fence_replay(
     assert_eq!(report.scopes_purged, 1);
     assert_eq!(report.residual_rows, 0);
     assert_eq!(report.ledger_sha256, ledger.ledger_sha256);
+    let residual_counts = restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?;
+    assert!(
+        residual_counts.values().all(|count| *count == 0),
+        "restore replay left scoped rows: {residual_counts:?}"
+    );
 
     let state: String = sqlx::query_scalar(
         "SELECT lifecycle_state FROM memory.subject_lifecycles WHERE tenant_id = $1 AND subject_id = $2",
@@ -784,11 +867,127 @@ async fn exercise_restore_fence_replay(
         .await?;
     assert_eq!(runtime_episode_count, 0);
     runtime_transaction.rollback().await?;
-    Ok(RestoreFixture {
-        tenant_id,
-        subject_id,
-        episode_id,
-    })
+    Ok(())
+}
+
+async fn populate_restore_corpus_over_http(
+    server_target: &Target,
+    fixture: &RestoreFixture,
+) -> Result<()> {
+    let principal_a_secondary_subject_id = Uuid::parse_str("019be000-0000-7000-8000-000000000314")?;
+    let target = Target {
+        base_url: server_target.base_url.clone(),
+        bearer_token: "restore-corpus-token".to_owned(),
+        tenant_id: fixture.tenant_id,
+        subject_id: fixture.subject_id,
+        principal_a_secondary_subject_id,
+        principal_a_internal_bearer_token: "restore-corpus-token".to_owned(),
+        principal_b_bearer_token: "unused-principal-b-token".to_owned(),
+        principal_b_tenant_id: Uuid::parse_str("019be000-0000-7000-8000-000000000315")?,
+        principal_b_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000316")?,
+        principal_c_bearer_token: "restore-corpus-principal-c-token".to_owned(),
+        principal_c_subject_id: Uuid::parse_str("019be000-0000-7000-8000-000000000317")?,
+        principal_d_same_scope_bearer_token: "unused-principal-d-token".to_owned(),
+    };
+    records_and_reads_an_immutable_episode(&target).await?;
+    creates_an_attributable_fact_revision(&target).await?;
+    creates_and_replays_a_lexical_retrieval_receipt(&target).await?;
+    saves_and_reads_a_resumable_checkpoint(&target).await?;
+    Ok(())
+}
+
+async fn restore_scope_row_counts(
+    migration_pool: &PgPool,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+) -> Result<BTreeMap<String, i64>> {
+    let rows = sqlx::query_as::<_, (String, i64)>(
+        r#"
+        SELECT table_name, row_count
+        FROM (
+            SELECT 'episodes'::text AS table_name, count(*)::bigint AS row_count
+            FROM memory.episodes WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'facts', count(*)::bigint
+            FROM memory.facts WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revisions', count(*)::bigint
+            FROM memory.fact_revisions WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revision_evidence', count(*)::bigint
+            FROM memory.fact_revision_evidence WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revision_governance', count(*)::bigint
+            FROM memory.fact_revision_governance WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revision_search_documents', count(*)::bigint
+            FROM memory.fact_revision_search_documents
+            WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revision_embedding_projections', count(*)::bigint
+            FROM memory.fact_revision_embedding_projections
+            WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'checkpoints', count(*)::bigint
+            FROM memory.checkpoints WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'checkpoint_revisions', count(*)::bigint
+            FROM memory.checkpoint_revisions WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'checkpoint_effect_intents', count(*)::bigint
+            FROM memory.checkpoint_effect_intents
+            WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'checkpoint_effect_receipts', count(*)::bigint
+            FROM memory.checkpoint_effect_receipts
+            WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'outbox_intents', count(*)::bigint
+            FROM memory.outbox_intents WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'idempotency_receipts', count(*)::bigint
+            FROM memory.idempotency_receipts WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'write_audit_receipts', count(*)::bigint
+            FROM memory.write_audit_receipts WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'retrieval_receipts', count(*)::bigint
+            FROM memory.retrieval_receipts WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'retrieval_manifest_items', count(*)::bigint
+            FROM memory.retrieval_manifest_items WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'retrieval_idempotency_reservations', count(*)::bigint
+            FROM memory.retrieval_idempotency_reservations
+            WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'export_manifest_items', count(*)::bigint
+            FROM memory.export_manifest_items WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'export_operations', count(*)::bigint
+            FROM memory.export_operations WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'subject_content_leases', count(*)::bigint
+            FROM memory.subject_content_leases WHERE tenant_id = $1 AND subject_id = $2
+        ) AS counts
+        ORDER BY table_name
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .fetch_all(migration_pool)
+    .await?;
+    Ok(rows.into_iter().collect())
+}
+
+async fn durable_restore_scope_row_counts(
+    migration_pool: &PgPool,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+) -> Result<BTreeMap<String, i64>> {
+    let mut counts = restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?;
+    counts.remove("subject_content_leases");
+    Ok(counts)
 }
 
 async fn verify_restore_replay_is_hidden_over_http(

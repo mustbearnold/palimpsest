@@ -1,7 +1,7 @@
 # Restore-fence replay evaluation
 
 Date: 2026-08-02
-Commit: `d6fa1429bff56c5ff298accc36bac8845fb3f7fd`
+Baseline implementation commit: `d6fa1429bff56c5ff298accc36bac8845fb3f7fd`
 Profile: PostgreSQL 18 plus pgvector 0.8.5, forced RLS, privileged restore authority
 
 ## Outcome
@@ -29,6 +29,12 @@ returns the recorded result without re-running the purge.
   It repeats the replay to prove idempotency. Mismatched-digest and
   unmatched-scope ledgers are rejected before purge, with the original
   episode still present after each rejected attempt.
+- The same fixture now seeds the restore scope through the public HTTP write
+  paths for episodes, fact revisions and evidence, lexical retrieval receipts,
+  and resumable checkpoints. It requires those canonical, projection, receipt,
+  and checkpoint rows to exist before replay, compares every durable scoped row
+  count after each rejected ledger, and requires every replay-purge residual
+  count to be zero.
 - Application tests cover missing, malformed, unsupported, stale, future,
   unordered, duplicate, noncanonical, and digest-mismatched ledgers without
   echoing ledger content in errors.
