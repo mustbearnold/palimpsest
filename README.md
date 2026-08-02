@@ -125,9 +125,9 @@ python3 -m pip install ./clients/python
 ```
 
 `PalimpsestClient` provides `remember`, `recall`, `correct`, and `forget`, plus
-the lower-level episode, fact, temporal as-of, retrieval-page, and deletion
-status methods. It uses the same authorized HTTP boundary as MCP and never
-connects directly to PostgreSQL. See the [Python client guide](clients/python/README.md)
+the lower-level episode, fact, temporal as-of, checkpoint, retrieval-page, and
+deletion status methods. It uses the same authorized HTTP boundary as MCP and
+never connects directly to PostgreSQL. See the [Python client guide](clients/python/README.md)
 and [client boundary ADR](docs/adr/0013-python-client-boundary.md).
 
 ## Validation

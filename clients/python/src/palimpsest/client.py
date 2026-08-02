@@ -206,6 +206,90 @@ class PalimpsestClient:
         path = f"{self._scope_path()}/facts/{_uuid_string(fact_id, 'fact_id')}/as-of?{query}"
         return self._json_request("GET", path)
 
+    def get_checkpoint(self, agent_id: str, thread_id: str) -> JsonObject:
+        return self.get_checkpoint_response(agent_id, thread_id).data
+
+    def get_checkpoint_response(self, agent_id: str, thread_id: str) -> PalimpsestResponse:
+        path = self._checkpoint_path(agent_id, thread_id)
+        return self._json_response("GET", path)
+
+    def save_checkpoint(
+        self,
+        agent_id: str,
+        thread_id: str,
+        *,
+        state: Any,
+        state_schema_version: int,
+        effect_transitions: Sequence[Mapping[str, Any]],
+        provenance: Mapping[str, Any],
+        sensitivity: str,
+        retention_policy_id: str,
+        case_id: str | None = None,
+        parent_revision_id: str | None = None,
+        if_match: str | None = None,
+        if_none_match: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        return self.save_checkpoint_response(
+            agent_id,
+            thread_id,
+            state=state,
+            state_schema_version=state_schema_version,
+            effect_transitions=effect_transitions,
+            provenance=provenance,
+            sensitivity=sensitivity,
+            retention_policy_id=retention_policy_id,
+            case_id=case_id,
+            parent_revision_id=parent_revision_id,
+            if_match=if_match,
+            if_none_match=if_none_match,
+            idempotency_key=idempotency_key,
+        ).data
+
+    def save_checkpoint_response(
+        self,
+        agent_id: str,
+        thread_id: str,
+        *,
+        state: Any,
+        state_schema_version: int,
+        effect_transitions: Sequence[Mapping[str, Any]],
+        provenance: Mapping[str, Any],
+        sensitivity: str,
+        retention_policy_id: str,
+        case_id: str | None = None,
+        parent_revision_id: str | None = None,
+        if_match: str | None = None,
+        if_none_match: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> PalimpsestResponse:
+        if (if_match is None) == (if_none_match is None):
+            raise PalimpsestConfigurationError("supply exactly one of if_match or if_none_match")
+        if if_none_match is not None and if_none_match != "*":
+            raise PalimpsestConfigurationError("if_none_match must be '*'")
+        if isinstance(state_schema_version, bool) or not isinstance(state_schema_version, int) or state_schema_version < 1:
+            raise PalimpsestConfigurationError("state_schema_version must be a positive integer")
+        body = {
+            "case_id": self._case(case_id),
+            "parent_revision_id": None
+            if parent_revision_id is None
+            else _uuid_string(parent_revision_id, "parent_revision_id"),
+            "state": state,
+            "state_schema_version": state_schema_version,
+            "effect_transitions": [dict(effect) for effect in effect_transitions],
+            "provenance": dict(provenance),
+            "sensitivity": _non_empty_text(sensitivity, "sensitivity"),
+            "retention_policy_id": _non_empty_text(retention_policy_id, "retention_policy_id"),
+        }
+        return self._json_response(
+            "PUT",
+            self._checkpoint_path(agent_id, thread_id),
+            body=body,
+            idempotency_key=_idempotency_key(idempotency_key),
+            if_match=if_match,
+            if_none_match=if_none_match,
+        )
+
     def supersede_fact(
         self,
         fact_id: str,
@@ -411,6 +495,12 @@ class PalimpsestClient:
 
     def _scope_path(self) -> str:
         return f"/v1/tenants/{parse.quote(self.tenant_id, safe='')}/subjects/{parse.quote(self.subject_id, safe='')}"
+
+    def _checkpoint_path(self, agent_id: str, thread_id: str) -> str:
+        return (
+            f"{self._scope_path()}/agents/{_uuid_string(agent_id, 'agent_id')}"
+            f"/threads/{_uuid_string(thread_id, 'thread_id')}/checkpoint"
+        )
 
     def _json_request(
         self,

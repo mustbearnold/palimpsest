@@ -50,6 +50,9 @@ deletion = client.forget(idempotency_key="case-123-forget-1")
 client.wait_for_deletion(deletion["operation_id"], timeout_seconds=60)
 ```
 
+The same client also exposes conditional checkpoint read/save methods for
+resumable agent threads.
+
 `remember` intentionally performs two durable requests: the immutable episode
 is committed first, then the governed fact cites it. If promotion fails,
 `PartialRememberError.episode` exposes the saved evidence and the original

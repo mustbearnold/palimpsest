@@ -26,6 +26,9 @@ CASE = "019be000-0000-7000-8000-000000000030"
 EPISODE = "019be000-0000-7000-8000-000000000040"
 FACT = "019be000-0000-7000-8000-000000000050"
 REVISION = "019be000-0000-7000-8000-000000000060"
+AGENT = "019be000-0000-7000-8000-000000000090"
+THREAD = "019be000-0000-7000-8000-0000000000a0"
+CHECKPOINT_REVISION = "019be000-0000-7000-8000-0000000000b0"
 
 
 class FakeApi(BaseHTTPRequestHandler):
@@ -72,7 +75,14 @@ class FakeApi(BaseHTTPRequestHandler):
                 "body": body,
             }
         )
-        self._json(200, {"fact_id": FACT, "revision_id": "019be000-0000-7000-8000-000000000080"})
+        if self.path.endswith("/checkpoint"):
+            self._json_with_etag(
+                201 if self.headers.get("If-None-Match") == "*" else 200,
+                {"checkpoint_revision_id": CHECKPOINT_REVISION, "state": body["state"]},
+                '"checkpoint-1"',
+            )
+        else:
+            self._json(200, {"fact_id": FACT, "revision_id": "019be000-0000-7000-8000-000000000080"})
 
     def do_GET(self) -> None:  # noqa: N802
         self.requests.append(
@@ -89,6 +99,13 @@ class FakeApi(BaseHTTPRequestHandler):
                 self._json_with_etag(200, {"lifecycle_state": "completed"}, '"completed-2"')
                 return
             self._json_with_etag(200, {"lifecycle_state": "pending"}, '"pending-1"')
+            return
+        if self.path.endswith("/checkpoint"):
+            self._json_with_etag(
+                200,
+                {"checkpoint_revision_id": CHECKPOINT_REVISION, "state": {"step": "saved"}},
+                '"checkpoint-1"',
+            )
             return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -185,6 +202,38 @@ class ClientTests(unittest.TestCase):
 
         self.assertEqual(FakeApi.requests[0]["headers"]["If-Match"], '"revision-1"')
         self.assertEqual(FakeApi.requests[1]["headers"]["Idempotency-Key"], "forget-1")
+
+    def test_checkpoint_creation_and_advance_use_exclusive_preconditions(self) -> None:
+        created = self.client.save_checkpoint_response(
+            AGENT,
+            THREAD,
+            state={"step": "start"},
+            state_schema_version=1,
+            effect_transitions=[],
+            provenance={"source_type": "test", "source_uri": None, "external_id": None},
+            sensitivity="internal",
+            retention_policy_id="checkpoint-active-30d-v1",
+            if_none_match="*",
+            idempotency_key="checkpoint-1",
+        )
+        self.client.save_checkpoint(
+            AGENT,
+            THREAD,
+            state={"step": "finish"},
+            state_schema_version=1,
+            effect_transitions=[],
+            provenance={"source_type": "test", "source_uri": None, "external_id": None},
+            sensitivity="internal",
+            retention_policy_id="checkpoint-active-30d-v1",
+            if_match=created.etag,
+            idempotency_key="checkpoint-2",
+        )
+        current = self.client.get_checkpoint_response(AGENT, THREAD)
+
+        checkpoint_requests = [item for item in FakeApi.requests if item["path"].endswith("/checkpoint")]
+        self.assertEqual(checkpoint_requests[0]["headers"]["If-None-Match"], "*")
+        self.assertEqual(checkpoint_requests[1]["headers"]["If-Match"], '"checkpoint-1"')
+        self.assertEqual(current.etag, '"checkpoint-1"')
 
     def test_fact_response_exposes_etag_for_a_conditional_correction(self) -> None:
         response = self.client.get_fact_response(FACT)

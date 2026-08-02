@@ -16,7 +16,7 @@ Ship `clients/python` as a thin, dependency-free Python client for the existing
 `/v1` API. It fixes one tenant and subject scope at construction and requires an
 explicit bearer token; request path values never grant authority. It exposes
 low-level episode, fact, correction, retrieval, temporal as-of, and deletion
-operations plus four adoption-facing helpers:
+operations plus conditional checkpoint support and four adoption-facing helpers:
 
 - `remember` appends an immutable episode and then promotes a governed fact;
 - `recall` creates an authorized current or explicit as-of retrieval receipt;
@@ -24,6 +24,10 @@ operations plus four adoption-facing helpers:
 - `forget` starts the server-owned subject deletion state machine, and
   `wait_for_deletion` follows it with ETag-aware conditional polling until a
   terminal result.
+
+Checkpoint reads and writes use the same exact-one-precondition rule as the
+HTTP contract: creation requires `If-None-Match: *`, while an advance requires
+the current strong `If-Match` ETag.
 
 The client generates idempotency keys when omitted, but callers must provide a
 stable key for a retry. `remember` derives distinct episode and fact keys. If
