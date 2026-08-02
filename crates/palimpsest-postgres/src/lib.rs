@@ -66,6 +66,14 @@ pub struct ProjectionRebuildReport {
     pub failed: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RestoreFenceReplayReport {
+    pub scopes_found: u64,
+    pub scopes_purged: u64,
+    pub residual_rows: u64,
+    pub ledger_sha256: String,
+}
+
 const EMBEDDING_PROJECTION_LEASE_POLICY_ID: &str = "embedding-projection-v1";
 
 #[derive(Clone, Debug)]
@@ -3214,6 +3222,39 @@ async fn checkpoint_revision_is_active(
 impl PostgresMemoryRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn replay_restore_fence_ledger(
+        &self,
+        ledger_bytes: &[u8],
+        expected_ledger_sha256: &str,
+    ) -> Result<RestoreFenceReplayReport, RepositoryError> {
+        let row = sqlx::query(
+            r#"
+            SELECT scopes_found, scopes_purged, residual_rows, ledger_sha256
+            FROM memory.replay_restore_fence_ledger($1, $2)
+            "#,
+        )
+        .bind(ledger_bytes.to_vec())
+        .bind(expected_ledger_sha256)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(unexpected)?;
+        let scopes_found =
+            u64::try_from(row.try_get::<i64, _>("scopes_found").map_err(unexpected)?)
+                .map_err(unexpected)?;
+        let scopes_purged =
+            u64::try_from(row.try_get::<i64, _>("scopes_purged").map_err(unexpected)?)
+                .map_err(unexpected)?;
+        let residual_rows =
+            u64::try_from(row.try_get::<i64, _>("residual_rows").map_err(unexpected)?)
+                .map_err(unexpected)?;
+        Ok(RestoreFenceReplayReport {
+            scopes_found,
+            scopes_purged,
+            residual_rows,
+            ledger_sha256: row.try_get("ledger_sha256").map_err(unexpected)?,
+        })
     }
 }
 

@@ -9,7 +9,6 @@ use axum::{
 };
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
-use sqlx::types::time::OffsetDateTime;
 use std::{
     collections::{BTreeMap, HashSet},
     env,
@@ -21,10 +20,12 @@ use std::{
     },
     time::Duration,
 };
+use time::{Duration as TimeDuration, OffsetDateTime};
 
 use palimpsest_application::{
     CreateDeletionRequest, DELETION_MAX_ATTEMPTS, DeletionRepository, EmbeddingProvider,
-    EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse, MemoryService,
+    EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse, MemoryService, RestoreFenceEntry,
+    RestoreFenceLedger,
 };
 use palimpsest_conformance::retrieval_evaluation::{
     LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
@@ -340,6 +341,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     };
     let result = async {
         palimpsest_postgres::migrate(&pool).await?;
+        exercise_restore_fence_replay(&pool, &migration_pool).await?;
         verify_lexical_retrieval_policy(&migration_pool).await?;
         sqlx::query(
             r#"
@@ -604,6 +606,121 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     .await?;
     migration_admin_pool.close().await;
     result
+}
+
+async fn exercise_restore_fence_replay(pool: &PgPool, migration_pool: &PgPool) -> Result<()> {
+    let tenant_id = Uuid::parse_str("019be000-0000-7000-8000-000000000310")?;
+    let subject_id = Uuid::parse_str("019be000-0000-7000-8000-000000000311")?;
+    let case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000312")?;
+    let episode_id = Uuid::parse_str("019be000-0000-7000-8000-000000000313")?;
+    let payload = r#"{"restore":"private"}"#;
+
+    sqlx::query(
+        r#"
+        INSERT INTO memory.subject_lifecycles (
+            tenant_id, subject_id, lifecycle_state, state_version
+        )
+        VALUES ($1, $2, 'active', 0)
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .execute(migration_pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO memory.episodes (
+            tenant_id, subject_id, case_id, episode_id, kind, observed_at,
+            writer_principal_id, source_type, sensitivity, retention_policy_id,
+            schema_version, payload, payload_sha256
+        )
+        VALUES (
+            $1, $2, $3, $4, 'observation', clock_timestamp(),
+            'restore-conformance', 'restore-fixture', 'internal', 'standard',
+            1, $5::jsonb,
+            encode(public.digest(convert_to($5, 'UTF8'), 'sha256'), 'hex')
+        )
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .bind(case_id)
+    .bind(episode_id)
+    .bind(payload)
+    .execute(migration_pool)
+    .await?;
+
+    let scope_digest: String = sqlx::query_scalar("SELECT memory.deletion_scope_digest($1, $2)")
+        .bind(tenant_id)
+        .bind(subject_id)
+        .fetch_one(migration_pool)
+        .await?;
+    let now = OffsetDateTime::now_utc();
+    let ledger = RestoreFenceLedger::build(
+        now,
+        vec![RestoreFenceEntry::new(
+            scope_digest,
+            1,
+            now - TimeDuration::minutes(1),
+            now + TimeDuration::hours(1),
+        )?],
+    )?;
+    let ledger_bytes = ledger.to_bytes()?;
+    let repository = PostgresMemoryRepository::new(migration_pool.clone());
+    assert!(
+        repository
+            .replay_restore_fence_ledger(&ledger_bytes, &"0".repeat(64))
+            .await
+            .is_err(),
+        "restore replay must reject a mismatched independent digest"
+    );
+    let report = repository
+        .replay_restore_fence_ledger(&ledger_bytes, &ledger.ledger_sha256)
+        .await
+        .map_err(|error| anyhow::anyhow!("restore replay fixture failed: {error}"))?;
+    assert_eq!(report.scopes_found, 1);
+    assert_eq!(report.scopes_purged, 1);
+    assert_eq!(report.residual_rows, 0);
+    assert_eq!(report.ledger_sha256, ledger.ledger_sha256);
+
+    let state: String = sqlx::query_scalar(
+        "SELECT lifecycle_state FROM memory.subject_lifecycles WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    assert_eq!(state, "deleted");
+    let episode_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM memory.episodes WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    assert_eq!(episode_count, 0);
+
+    let replayed = repository
+        .replay_restore_fence_ledger(&ledger_bytes, &ledger.ledger_sha256)
+        .await
+        .map_err(|error| anyhow::anyhow!("restore replay idempotency failed: {error}"))?;
+    assert_eq!(replayed, report);
+
+    let mut runtime_transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(tenant_id.to_string())
+        .execute(&mut *runtime_transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(subject_id.to_string())
+        .execute(&mut *runtime_transaction)
+        .await?;
+    let runtime_episode_count: i64 = sqlx::query_scalar("SELECT count(*) FROM memory.episodes")
+        .fetch_one(&mut *runtime_transaction)
+        .await?;
+    assert_eq!(runtime_episode_count, 0);
+    runtime_transaction.rollback().await?;
+    Ok(())
 }
 
 async fn deletion_target_lease_recovers_after_worker_expiry(

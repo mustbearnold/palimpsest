@@ -38,20 +38,24 @@ not by itself claim that backups, later tombstones, purge reruns, derived-index
 rebuilds, or negative conformance have completed.
 
 Restore automation must keep a recovered database out of the serving role until
-it has verified this ledger, applied later fences, rerun canonical and derived
-purges, and passed the negative conformance suite. The current service has no
-backup/restore adapter or restore runner, so ordinary startup remains a
-development path and backup disposition remains `not_configured`.
+it has verified this ledger, applied the ledger's fences, rerun canonical and
+derived purges, and passed the negative conformance suite. The server now has a
+privileged replay runner for this bounded step: with
+`PALIMPSEST_RESTORE_MODE=1`, it reads the independent ledger, verifies it in
+application code, connects through the separately supplied
+`PALIMPSEST_RESTORE_DATABASE_URL`, invokes the migration-owned replay function,
+checks the returned scope counts and ledger digest, and exits without binding
+HTTP.
+The replay matches opaque digests against the database's HMAC-backed scope
+function, purges canonical and derived/export rows, transitions matched
+subjects to `deleted`, checks for residual rows, and records an idempotent
+content-free receipt. It does not run normal serving migrations or use the
+serving database URL.
 
-The server has an opt-in startup guard for the first prerequisite: restore
-automation sets `PALIMPSEST_RESTORE_MODE=1`, points
-`PALIMPSEST_RESTORE_FENCE_LEDGER_PATH` at the independent ledger, and supplies
-`PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256`. Startup fails closed if any of those
-inputs are absent or verification fails. Passing this guard does not advance a
-database to serving readiness. The current server exits rather than serving
-even after the ledger verifies, because tombstone replay, purge reruns,
-derived-index rebuilds, and negative conformance must still happen in the
-future restore runner.
+The replay runner is not a backup/PITR adapter and does not prove backup
+disposition, a complete restore rehearsal, or the negative HTTP conformance
+gate. Those remain separate v1 readiness work; backup disposition remains
+`not_configured`.
 
 The deletion authority produces the opaque scope digests from its HMAC-backed
 scope key. This verifier checks their versioned shape and the ledger's

@@ -6,6 +6,7 @@ use palimpsest_domain::{
     OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,
 };
 use palimpsest_http::StaticAuthenticator;
+use palimpsest_postgres::PostgresMemoryRepository;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use tokio::net::TcpListener;
@@ -13,7 +14,9 @@ use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    verify_restore_mode()?;
+    if restore_mode_enabled()? {
+        return run_restore_mode().await;
+    }
     let database_url = required("PALIMPSEST_DATABASE_URL")?;
     let bearer_token = required("PALIMPSEST_BEARER_TOKEN")?;
     let principal_id = required("PALIMPSEST_PRINCIPAL_ID")?;
@@ -68,17 +71,24 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn verify_restore_mode() -> Result<()> {
-    let mode = env::var("PALIMPSEST_RESTORE_MODE").unwrap_or_default();
+fn restore_mode_enabled() -> Result<bool> {
+    restore_mode_enabled_with_value(&env::var("PALIMPSEST_RESTORE_MODE").unwrap_or_default())
+}
+
+fn restore_mode_enabled_with_value(mode: &str) -> Result<bool> {
     if mode.is_empty() || mode == "0" {
-        return Ok(());
+        return Ok(false);
     }
     if mode != "1" {
         bail!("PALIMPSEST_RESTORE_MODE must be 0 or 1");
     }
+    Ok(true)
+}
 
+async fn run_restore_mode() -> Result<()> {
     let ledger_path = required("PALIMPSEST_RESTORE_FENCE_LEDGER_PATH")?;
     let expected_sha256 = required("PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256")?;
+    let database_url = required("PALIMPSEST_RESTORE_DATABASE_URL")?;
     let bytes = fs::read(ledger_path).context("read restore fence ledger")?;
     verify_restore_mode_inputs(
         "1",
@@ -86,9 +96,19 @@ fn verify_restore_mode() -> Result<()> {
         Some(&expected_sha256),
         OffsetDateTime::now_utc(),
     )?;
-    bail!(
-        "restore serving is not configured; verified restore mode remains unavailable until the restore runner is implemented"
-    )
+    let pool = PgPool::connect(&database_url)
+        .await
+        .context("connect to PALIMPSEST_RESTORE_DATABASE_URL")?;
+    let repository = PostgresMemoryRepository::new(pool.clone());
+    let report = repository
+        .replay_restore_fence_ledger(&bytes, &expected_sha256)
+        .await
+        .map_err(|_| anyhow::anyhow!("restore fence replay failed"))?;
+    if report.residual_rows != 0 || report.ledger_sha256 != expected_sha256 {
+        bail!("restore fence replay returned an invalid report");
+    }
+    pool.close().await;
+    Ok(())
 }
 
 fn verify_restore_mode_inputs(
@@ -170,6 +190,10 @@ mod tests {
 
     #[test]
     fn restore_mode_is_disabled_by_default_and_fails_closed_when_enabled() {
+        assert!(!restore_mode_enabled_with_value("").expect("empty mode should parse"));
+        assert!(!restore_mode_enabled_with_value("0").expect("zero mode should parse"));
+        assert!(restore_mode_enabled_with_value("1").expect("one mode should parse"));
+        assert!(restore_mode_enabled_with_value("2").is_err());
         assert!(verify_restore_mode_inputs("0", None, None, at(3_000)).is_ok());
         assert!(verify_restore_mode_inputs("1", None, None, at(3_000)).is_err());
         assert!(verify_restore_mode_inputs("2", None, None, at(3_000)).is_err());

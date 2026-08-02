@@ -12,10 +12,10 @@ truth.
 
 The repository contains a checked development slice for the PostgreSQL-backed
 HTTP service, including temporal memory, hybrid retrieval, canonical-history
-exports, fenced subject deletion, and a fail-closed verifier for an independent
-deletion-fence ledger. It is not a production release: cache, artifact,
-backup/PITR adapters, external identity, SDK, restore rehearsal, and
-operational release gates remain deployment work.
+exports, fenced subject deletion, and an executable fail-closed restore replay
+for an independent deletion-fence ledger. It is not a production release:
+cache, artifact, backup/PITR adapters, external identity, SDK, complete restore
+rehearsal, and operational release gates remain deployment work.
 
 ## Product commitments
 
@@ -59,13 +59,16 @@ the comma-separated closed vocabulary `canonical_history_export` and/or
 export or deletion endpoints by themselves.
 
 Restore automation must set `PALIMPSEST_RESTORE_MODE=1`,
-`PALIMPSEST_RESTORE_FENCE_LEDGER_PATH`, and
-`PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256` before starting a recovered service.
-Startup then refuses to continue unless the independent deletion-fence ledger
-verifies, and currently refuses to serve even after verification because the
-restore runner is not implemented. This repository still does not provide a
-backup/PITR adapter, tombstone replay, purge rerun, or restore conformance
-runner.
+`PALIMPSEST_RESTORE_DATABASE_URL`, `PALIMPSEST_RESTORE_FENCE_LEDGER_PATH`,
+and `PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256`. The restore database URL must
+identify a separately privileged database authority with the current schema;
+normal serving credentials are not enough. The process verifies the
+content-free ledger, replays every matching scope's canonical and derived-data
+purge, records an idempotent content-free receipt, checks the returned counts
+and ledger digest internally, and exits without binding HTTP. Missing, stale, corrupt, or
+unmatched ledger evidence fails closed. This repository still does not provide
+a backup/PITR adapter, backup disposition check, or the complete black-box
+restore rehearsal and negative HTTP conformance gate.
 
 ```bash
 docker compose stop postgres
