@@ -22,8 +22,8 @@ use std::{
 };
 
 use palimpsest_application::{
-    CreateDeletionRequest, DeletionRepository, EmbeddingProvider, EmbeddingProviderError,
-    EmbeddingRequest, EmbeddingResponse, MemoryService,
+    CreateDeletionRequest, DELETION_MAX_ATTEMPTS, DeletionRepository, EmbeddingProvider,
+    EmbeddingProviderError, EmbeddingRequest, EmbeddingResponse, MemoryService,
 };
 use palimpsest_conformance::retrieval_evaluation::{
     LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
@@ -720,15 +720,35 @@ async fn deletion_target_lease_recovers_after_worker_expiry(
     ensure!(reclaimed_target.attempts == first_target.attempts + 1);
 
     tokio::time::sleep(Duration::from_millis(6_500)).await;
-    service
-        .run_deletion_worker_once()
-        .await
-        .context("finish recovered deletion")?;
-    let completed = service
-        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
-        .await
-        .context("poll completed deletion")?;
-    ensure!(completed.lifecycle_state == DeletionOperationState::Completed);
+    let completed = {
+        let mut completed = None;
+        for attempt in 0..=DELETION_MAX_ATTEMPTS {
+            service
+                .run_deletion_worker_once()
+                .await
+                .context("finish recovered deletion")?;
+            let view = service
+                .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+                .await
+                .context("poll recovered deletion")?;
+            match view.lifecycle_state {
+                DeletionOperationState::Completed => {
+                    completed = Some(view);
+                    break;
+                }
+                DeletionOperationState::RetryWait => {
+                    ensure!(view.retry_count > 0);
+                    ensure!(
+                        attempt < DELETION_MAX_ATTEMPTS,
+                        "recovered deletion remained in retry_wait after the retry budget"
+                    );
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                }
+                state => bail!("recovered deletion entered unexpected state {state:?}"),
+            }
+        }
+        completed.context("recovered deletion did not reach completed")?
+    };
     ensure!(
         completed
             .targets
