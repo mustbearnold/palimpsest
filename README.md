@@ -12,10 +12,11 @@ truth.
 
 The repository contains a checked development slice for the PostgreSQL-backed
 HTTP service, including temporal memory, hybrid retrieval, canonical-history
-exports, fenced subject deletion, and an executable fail-closed restore replay
-for an independent deletion-fence ledger. It is not a production release:
-cache, artifact, backup/PITR adapters, external identity, SDK, complete restore
-rehearsal, and operational release gates remain deployment work.
+exports, fenced subject deletion, an executable fail-closed restore replay for
+an independent deletion-fence ledger, and a dependency-free Python client for
+the governed lifecycle. It is not a production release: cache, artifact,
+backup/PITR adapters, external identity, complete restore rehearsal, and
+operational release gates remain deployment work.
 
 ## Product commitments
 
@@ -114,6 +115,20 @@ exposes delete or export operations. Verify registration with `codex mcp list`.
 
 Startup detects an incompatible legacy local volume and exits without deleting
 it. Preserve or back up needed local data before explicitly recreating a volume.
+
+### Use Palimpsest from Python
+
+Install the first-party client from this checkout:
+
+```bash
+python3 -m pip install ./clients/python
+```
+
+`PalimpsestClient` provides `remember`, `recall`, `correct`, and `forget`, plus
+the lower-level episode, fact, temporal as-of, retrieval-page, and deletion
+status methods. It uses the same authorized HTTP boundary as MCP and never
+connects directly to PostgreSQL. See the [Python client guide](clients/python/README.md)
+and [client boundary ADR](docs/adr/0013-python-client-boundary.md).
 
 ## Validation
 

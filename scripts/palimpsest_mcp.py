@@ -13,9 +13,16 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, TextIO
-from urllib import error, parse, request
+from urllib import parse
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "clients/python/src"))
+from palimpsest import (  # noqa: E402
+    PalimpsestClient as HttpClient,
+    PalimpsestError,
+)
 
 
 PROTOCOL_VERSION = "2025-11-25"
@@ -74,123 +81,32 @@ class AdapterConfig:
 
 
 class PalimpsestClient:
+    """MCP-shaped facade over the first-party Python HTTP client."""
+
     def __init__(self, config: AdapterConfig) -> None:
-        self.config = config
-
-    def _request(self, method: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.config.base_url}{path}"
-        encoded_body = json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        http_request = request.Request(
-            url,
-            data=encoded_body,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {self.config.bearer_token}",
-                "Content-Type": "application/json",
-                "Idempotency-Key": f"codex-mcp-{uuid.uuid4()}",
-            },
-            method=method,
-        )
         try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                response_body = response.read()
-        except error.HTTPError as exc:
-            raise AdapterError(f"Palimpsest returned HTTP {exc.code}") from None
-        except (error.URLError, TimeoutError) as exc:
-            raise AdapterError(f"Palimpsest is unavailable: {exc.reason if isinstance(exc, error.URLError) else exc}") from None
-
-        try:
-            decoded = json.loads(response_body)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise AdapterError("Palimpsest returned an invalid JSON response") from exc
-        if not isinstance(decoded, dict):
-            raise AdapterError("Palimpsest returned a non-object JSON response")
-        return decoded
+            self._client = HttpClient(
+                base_url=config.base_url,
+                bearer_token=config.bearer_token,
+                tenant_id=config.tenant_id,
+                subject_id=config.subject_id,
+                case_id=config.case_id,
+                timeout_seconds=config.timeout_seconds,
+            )
+        except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
 
     def retrieve(self, query: str, page_size: int) -> dict[str, Any]:
-        path = (
-            f"/v1/tenants/{parse.quote(self.config.tenant_id, safe='')}"
-            f"/subjects/{parse.quote(self.config.subject_id, safe='')}/retrievals"
-        )
-        return self._request(
-            "POST",
-            path,
-            {
-                "query": query,
-                "perspective": {"kind": "current"},
-                "page_size": page_size,
-                "filters": {},
-            },
-        )
-
-    def remember(
-        self,
-        *,
-        content: str,
-        kind: str,
-        source_type: str,
-        source_uri: str | None,
-        external_id: str | None,
-        sensitivity: str,
-        retention_policy_id: str,
-        namespace: str,
-        key: str,
-        confidence: float,
-        metadata: dict[str, Any],
-    ) -> dict[str, Any]:
-        observed_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
-        episode_payload = {"content": content, "metadata": metadata}
-        episode_path = (
-            f"/v1/tenants/{parse.quote(self.config.tenant_id, safe='')}"
-            f"/subjects/{parse.quote(self.config.subject_id, safe='')}/episodes"
-        )
-        episode = self._request(
-            "POST",
-            episode_path,
-            {
-                "case_id": self.config.case_id,
-                "kind": kind,
-                "observed_at": observed_at,
-                "provenance": {
-                    "source_type": source_type,
-                    "source_uri": source_uri,
-                    "external_id": external_id,
-                },
-                "sensitivity": sensitivity,
-                "retention_policy_id": retention_policy_id,
-                "payload": episode_payload,
-            },
-        )
-        episode_id = episode.get("episode_id")
-        if not isinstance(episode_id, str):
-            raise AdapterError("Palimpsest created an episode without returning its identifier")
-
-        fact_path = (
-            f"/v1/tenants/{parse.quote(self.config.tenant_id, safe='')}"
-            f"/subjects/{parse.quote(self.config.subject_id, safe='')}/facts"
-        )
         try:
-            fact = self._request(
-                "POST",
-                fact_path,
-                {
-                    "case_id": self.config.case_id,
-                    "namespace": namespace,
-                    "key": key,
-                    "value": episode_payload,
-                    "observed_at": observed_at,
-                    "valid_time": {"from": observed_at},
-                    "evidence_episode_ids": [episode_id],
-                    "write_policy": {"id": "direct-evidence", "version": "1"},
-                    "confidence": confidence,
-                    "sensitivity": sensitivity,
-                    "retention_policy_id": retention_policy_id,
-                },
-            )
-        except AdapterError as exc:
-            raise AdapterError(f"episode {episode_id} was saved, but fact promotion failed: {exc}") from None
+            return self._client.recall(query, page_size=page_size)
+        except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
 
-        return {"episode": episode, "fact": fact}
+    def remember(self, **kwargs: Any) -> dict[str, Any]:
+        try:
+            return self._client.remember(**kwargs)
+        except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
 
 
 def _string_argument(arguments: dict[str, Any], name: str, *, required: bool = False, default: str = "") -> str:

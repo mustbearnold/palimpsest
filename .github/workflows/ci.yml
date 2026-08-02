@@ -54,6 +54,9 @@ jobs:
       - name: Verify local Codex MCP adapter
         run: python3 scripts/test_palimpsest_mcp.py
 
+      - name: Verify Python client
+        run: python3 -m unittest discover -s clients/python/tests -p 'test_*.py'
+
       - name: Check formatting
         run: cargo fmt --all --check
 
