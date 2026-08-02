@@ -26,7 +26,8 @@ use palimpsest_application::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DELETION_MAX_ATTEMPTS,
     DeletionRepository, EmbeddingProvider, EmbeddingProviderError, EmbeddingRequest,
     EmbeddingResponse, ExportOperationState, ExportPackageMetadata, ExportRepository,
-    IdempotencyRequest, MemoryService, NewExport, RestoreFenceEntry, RestoreFenceLedger,
+    ExportWorkerAuthorizer, FileExportPackageStore, IdempotencyRequest, MemoryService, NewExport,
+    RestoreFenceEntry, RestoreFenceLedger, ServiceError,
 };
 use palimpsest_conformance::retrieval_evaluation::{
     LifecycleFixture, PreparedCorpus, enforce_issue_22_gates, evaluate_frozen_corpus,
@@ -65,7 +66,7 @@ use palimpsest_domain::{
     DeletionTargetVerification, EmbeddingOutput, EmbeddingTask, OperationGrant, PrincipalId,
     PrincipalScope, RecencyProfile, Sensitivity, SubjectId, TenantId, temporal_factor_q63,
 };
-use palimpsest_http::StaticAuthenticator;
+use palimpsest_http::{Authenticator, StaticAuthenticator};
 use palimpsest_postgres::{EmbeddingProjectionCoordinator, PostgresMemoryRepository};
 use sqlx::{
     AssertSqlSafe, ConnectOptions, PgPool, Row,
@@ -88,6 +89,29 @@ struct RestoreFixture {
     tenant_id: Uuid,
     subject_id: Uuid,
     episode_id: Uuid,
+}
+
+struct StaticExportWorkerAuthorizer {
+    authenticator: Arc<StaticAuthenticator>,
+}
+
+impl ExportWorkerAuthorizer for StaticExportWorkerAuthorizer {
+    fn authorize_export(
+        &self,
+        principal_id: &PrincipalId,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        authorization_scope_sha256: &str,
+    ) -> std::result::Result<PrincipalScope, ServiceError> {
+        self.authenticator
+            .authorize_export_worker(
+                principal_id,
+                tenant_id,
+                subject_id,
+                authorization_scope_sha256,
+            )
+            .ok_or(ServiceError::NotFound)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -497,6 +521,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         deletion_failed_operation_can_be_repaired_and_resumed(&pool, &migration_pool).await?;
         deletion_target_retry_exhaustion_remains_fenced(&pool, &migration_pool).await?;
         export_worker_lease_recovery_fences_stale_completion(&pool, &migration_pool).await?;
+        export_worker_fails_closed_on_store_failure(&pool, &migration_pool).await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let server_pool = pool.clone();
@@ -1379,6 +1404,84 @@ async fn export_worker_lease_recovery_fences_stale_completion(
         .context("read recovered export")?;
     ensure!(ready.state == ExportOperationState::Ready);
     ensure!(ready.worker_lease_id.is_none());
+    Ok(())
+}
+
+async fn export_worker_fails_closed_on_store_failure(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000062")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000063")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("export-store-failure-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
+        operation_grants: vec![OperationGrant::CanonicalHistoryExport],
+    };
+    sqlx::query(
+        "INSERT INTO memory.subject_lifecycles
+            (tenant_id, subject_id, lifecycle_state, state_version)
+         VALUES ($1, $2, 'active', 0)",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .execute(migration_pool)
+    .await
+    .context("seed active export store-failure lifecycle")?;
+
+    let authenticator = Arc::new(StaticAuthenticator::new([(
+        "export-store-failure-token".to_owned(),
+        principal.clone(),
+    )]));
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let fault_path =
+        env::temp_dir().join(format!("palimpsest-export-store-fault-{}", Uuid::now_v7()));
+    fs::write(&fault_path, b"the export root is intentionally a file")
+        .context("seed export store failure")?;
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    )
+    .with_export_components(
+        repository.clone(),
+        Arc::new(FileExportPackageStore::new(fault_path.clone())),
+    )
+    .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
+
+    let created = service
+        .create_export(
+            &principal,
+            tenant_id,
+            subject_id,
+            "export-store-failure".to_owned(),
+        )
+        .await
+        .context("create export with failing package store")?;
+    let worker_result = service.run_export_worker_once().await;
+    let operation = service
+        .get_export(
+            &principal,
+            tenant_id,
+            subject_id,
+            created.operation.export_id,
+        )
+        .await
+        .context("read failed export operation")?;
+    let _ = fs::remove_file(&fault_path);
+    ensure!(
+        matches!(worker_result, Err(ServiceError::Unavailable)),
+        "export store failure did not fail closed: {worker_result:?}"
+    );
+    ensure!(operation.state == ExportOperationState::Failed);
+    ensure!(operation.failure_code.as_deref() == Some("package_store_failed"));
+    ensure!(operation.content_sha256.is_none());
+    ensure!(operation.size_bytes.is_none());
+    ensure!(operation.record_count.is_none());
     Ok(())
 }
 
