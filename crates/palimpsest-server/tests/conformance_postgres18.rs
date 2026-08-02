@@ -62,7 +62,7 @@ use palimpsest_conformance::{
     temporal_receipt_survives_service_restart, temporal_retrieval_survives_projection_rebuild,
 };
 use palimpsest_domain::{
-    DeletionOperationState, DeletionTargetCapability, DeletionTargetState,
+    DeletionOperationState, DeletionTargetCapability, DeletionTargetName, DeletionTargetState,
     DeletionTargetVerification, EmbeddingOutput, EmbeddingTask, OperationGrant, PrincipalId,
     PrincipalScope, RecencyProfile, Sensitivity, SubjectId, TenantId, temporal_factor_q63,
 };
@@ -522,6 +522,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         deletion_target_retry_exhaustion_remains_fenced(&pool, &migration_pool).await?;
         export_worker_lease_recovery_fences_stale_completion(&pool, &migration_pool).await?;
         export_worker_fails_closed_on_store_failure(&pool, &migration_pool).await?;
+        deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
+            .await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let server_pool = pool.clone();
@@ -1482,6 +1484,98 @@ async fn export_worker_fails_closed_on_store_failure(
     ensure!(operation.content_sha256.is_none());
     ensure!(operation.size_bytes.is_none());
     ensure!(operation.record_count.is_none());
+    Ok(())
+}
+
+async fn deletion_worker_fails_closed_when_export_store_is_unavailable(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000064")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000065")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("deletion-export-store-failure-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
+        operation_grants: vec![
+            OperationGrant::CanonicalHistoryExport,
+            OperationGrant::SubjectDelete,
+        ],
+    };
+    sqlx::query(
+        "INSERT INTO memory.subject_lifecycles
+            (tenant_id, subject_id, lifecycle_state, state_version)
+         VALUES ($1, $2, 'active', 0)",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .execute(migration_pool)
+    .await
+    .context("seed active deletion export-store-failure lifecycle")?;
+
+    let authenticator = Arc::new(StaticAuthenticator::new([(
+        "deletion-export-store-failure-token".to_owned(),
+        principal.clone(),
+    )]));
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let fault_path = env::temp_dir().join(format!(
+        "palimpsest-deletion-export-store-fault-{}",
+        Uuid::now_v7()
+    ));
+    fs::write(&fault_path, b"the export root is intentionally a file")
+        .context("seed deletion export store failure")?;
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    )
+    .with_export_components(
+        repository.clone(),
+        Arc::new(FileExportPackageStore::new(fault_path.clone())),
+    )
+    .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
+
+    service
+        .create_export(
+            &principal,
+            tenant_id,
+            subject_id,
+            "deletion-export-store-failure-export".to_owned(),
+        )
+        .await
+        .context("create export before deletion store failure")?;
+    let deletion = service
+        .create_subject_deletion(
+            &principal,
+            tenant_id,
+            subject_id,
+            "deletion-export-store-failure".to_owned(),
+        )
+        .await
+        .context("create deletion before export store failure")?;
+    let worker_result = service.run_deletion_worker_once().await;
+    let operation = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, deletion.operation_id)
+        .await
+        .context("read deletion after export store failure")?;
+    let _ = fs::remove_file(&fault_path);
+    ensure!(
+        matches!(worker_result, Err(ServiceError::Unavailable)),
+        "deletion export-target failure did not fail closed: {worker_result:?}"
+    );
+    ensure!(operation.lifecycle_state == DeletionOperationState::Purging);
+    ensure!(operation.failure_reason.is_none());
+    let exports_target = operation
+        .targets
+        .iter()
+        .find(|target| target.target_name == DeletionTargetName::Exports)
+        .context("deletion omitted configured export target")?;
+    ensure!(exports_target.state == DeletionTargetState::Pending);
+    ensure!(exports_target.verification == DeletionTargetVerification::Pending);
+    ensure!(exports_target.sanitized_error.as_deref() == Some("target_effect_failed"));
     Ok(())
 }
 

@@ -37,6 +37,11 @@ The same corpus forces the configured filesystem store to reject staging. The
 worker returns an unavailable result, records the sanitized
 `package_store_failed` terminal state, and leaves package metadata absent.
 
+The deletion worker is also run with a queued export and the same unavailable
+store after the subject fence is committed. It records `target_effect_failed`,
+keeps the export target pending and the operation in `purging`, and reports no
+verification or completion claim.
+
 The complete local suite, PostgreSQL conformance, repository contract, denied
 warnings lint, and OpenAPI lint are the required gates for this evidence.
 
