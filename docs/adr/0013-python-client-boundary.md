@@ -21,7 +21,9 @@ operations plus four adoption-facing helpers:
 - `remember` appends an immutable episode and then promotes a governed fact;
 - `recall` creates an authorized current or explicit as-of retrieval receipt;
 - `correct` appends a fact revision with the caller's strong ETag and evidence;
-- `forget` starts the server-owned subject deletion state machine.
+- `forget` starts the server-owned subject deletion state machine, and
+  `wait_for_deletion` follows it with ETag-aware conditional polling until a
+  terminal result.
 
 The client generates idempotency keys when omitted, but callers must provide a
 stable key for a retry. `remember` derives distinct episode and fact keys. If

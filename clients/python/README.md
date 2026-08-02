@@ -45,7 +45,9 @@ client.correct(
     if_match=fact.etag,
     idempotency_key="case-123-address-2",
 )
-client.forget(idempotency_key="case-123-forget-1")
+deletion = client.forget(idempotency_key="case-123-forget-1")
+# Wait for the server-owned deletion worker when the caller needs completion:
+client.wait_for_deletion(deletion["operation_id"], timeout_seconds=60)
 ```
 
 `remember` intentionally performs two durable requests: the immutable episode

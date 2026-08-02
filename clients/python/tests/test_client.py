@@ -31,6 +31,7 @@ REVISION = "019be000-0000-7000-8000-000000000060"
 class FakeApi(BaseHTTPRequestHandler):
     requests: list[dict[str, object]] = []
     fail_fact: bool = False
+    deletion_calls: int = 0
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -77,10 +78,31 @@ class FakeApi(BaseHTTPRequestHandler):
         self.requests.append(
             {"method": "GET", "path": self.path, "headers": dict(self.headers.items()), "body": None}
         )
+        if "/deletions/" in self.path:
+            FakeApi.deletion_calls += 1
+            if FakeApi.deletion_calls == 2:
+                self.send_response(304)
+                self.send_header("ETag", '"pending-1"')
+                self.end_headers()
+                return
+            if FakeApi.deletion_calls >= 3:
+                self._json_with_etag(200, {"lifecycle_state": "completed"}, '"completed-2"')
+                return
+            self._json_with_etag(200, {"lifecycle_state": "pending"}, '"pending-1"')
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("ETag", '"revision-1"')
         encoded = json.dumps({"fact_id": FACT, "revision": {"revision_id": REVISION}}).encode("utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _json_with_etag(self, status: int, value: object, etag: str) -> None:
+        encoded = json.dumps(value).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("ETag", etag)
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -98,6 +120,7 @@ class ClientTests(unittest.TestCase):
     def setUp(self) -> None:
         FakeApi.requests = []
         FakeApi.fail_fact = False
+        FakeApi.deletion_calls = 0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -178,6 +201,16 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(raised.exception.episode["episode_id"], EPISODE)
         self.assertIsInstance(raised.exception.cause, PalimpsestHttpError)
         self.assertEqual(raised.exception.cause.status_code, 422)
+
+    def test_wait_for_deletion_uses_conditional_polling_until_terminal(self) -> None:
+        result = self.client.wait_for_deletion(
+            "019be000-0000-7000-8000-000000000070", timeout_seconds=1, poll_interval_seconds=0.001
+        )
+
+        self.assertEqual(result["lifecycle_state"], "completed")
+        deletion_requests = [item for item in FakeApi.requests if "/deletions/" in item["path"]]
+        self.assertEqual(len(deletion_requests), 3)
+        self.assertEqual(deletion_requests[1]["headers"]["If-None-Match"], '"pending-1"')
 
     def test_configuration_and_http_errors_are_typed(self) -> None:
         with self.assertRaises(PalimpsestConfigurationError):

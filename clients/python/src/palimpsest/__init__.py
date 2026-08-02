@@ -7,6 +7,7 @@ from .client import (
     PalimpsestHttpError,
     PalimpsestResponse,
     PalimpsestProtocolError,
+    PalimpsestTimeoutError,
     PalimpsestTransportError,
     PartialRememberError,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "PalimpsestHttpError",
     "PalimpsestResponse",
     "PalimpsestProtocolError",
+    "PalimpsestTimeoutError",
     "PalimpsestTransportError",
     "PartialRememberError",
 ]

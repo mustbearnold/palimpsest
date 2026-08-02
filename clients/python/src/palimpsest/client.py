@@ -8,6 +8,7 @@ policies, and deletion state.
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -32,6 +33,10 @@ class PalimpsestTransportError(PalimpsestError):
 
 class PalimpsestProtocolError(PalimpsestError):
     """The service returned a response outside the JSON contract."""
+
+
+class PalimpsestTimeoutError(PalimpsestError):
+    """A bounded client-side wait expired before an operation was terminal."""
 
 
 class PalimpsestHttpError(PalimpsestError):
@@ -296,11 +301,42 @@ class PalimpsestClient:
     def get_deletion_response(
         self, operation_id: str, *, if_none_match: str | None = None
     ) -> PalimpsestResponse:
-        return self._json_response(
+        response = self._request(
             "GET",
             f"{self._scope_path()}/deletions/{_uuid_string(operation_id, 'operation_id')}",
             if_none_match=if_none_match,
         )
+        if response.status_code == 304:
+            return PalimpsestResponse({}, response.status_code, response.headers)
+        return self._decode_json_response(response)
+
+    def wait_for_deletion(
+        self,
+        operation_id: str,
+        *,
+        timeout_seconds: float = 30.0,
+        poll_interval_seconds: float = 0.5,
+    ) -> JsonObject:
+        """Poll a deletion with conditional requests until it reaches a terminal state."""
+
+        timeout_seconds = _positive_number(timeout_seconds, "timeout_seconds")
+        poll_interval_seconds = _positive_number(poll_interval_seconds, "poll_interval_seconds")
+        deadline = time.monotonic() + timeout_seconds
+        etag: str | None = None
+        latest: JsonObject | None = None
+        while True:
+            response = self.get_deletion_response(operation_id, if_none_match=etag)
+            if response.status_code != 304:
+                latest = response.data
+                etag = response.etag
+            if latest is not None and latest.get("lifecycle_state") in {"completed", "failed", "expired"}:
+                return latest
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PalimpsestTimeoutError(
+                    f"deletion {operation_id} did not reach a terminal state within {timeout_seconds:g} seconds"
+                )
+            time.sleep(min(poll_interval_seconds, remaining))
 
     def remember(
         self,
@@ -413,6 +449,10 @@ class PalimpsestClient:
             if_match=if_match,
             if_none_match=if_none_match,
         )
+        return self._decode_json_response(response)
+
+    @staticmethod
+    def _decode_json_response(response: _HttpResponse) -> PalimpsestResponse:
         try:
             decoded = json.loads(response.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -453,11 +493,15 @@ class PalimpsestClient:
                 return _HttpResponse(response.status, dict(response.headers.items()), response.read())
         except error.HTTPError as exc:
             response_body = exc.read()
+            headers = dict(exc.headers.items())
+            exc.close()
+            if exc.code == 304:
+                return _HttpResponse(exc.code, headers, response_body)
             try:
                 problem = json.loads(response_body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 problem = None
-            raise PalimpsestHttpError(exc.code, method, path, problem, dict(exc.headers.items())) from None
+            raise PalimpsestHttpError(exc.code, method, path, problem, headers) from None
         except (error.URLError, TimeoutError) as exc:
             reason = getattr(exc, "reason", str(exc))
             raise PalimpsestTransportError(f"Palimpsest is unavailable: {reason}") from None
@@ -498,6 +542,12 @@ def _non_null(value: Any, name: str) -> Any:
 def _confidence(value: float) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
         raise PalimpsestConfigurationError("confidence must be a number from 0 to 1")
+    return float(value)
+
+
+def _positive_number(value: float, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise PalimpsestConfigurationError(f"{name} must be greater than zero")
     return float(value)
 
 
