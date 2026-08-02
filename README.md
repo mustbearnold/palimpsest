@@ -58,6 +58,15 @@ the comma-separated closed vocabulary `canonical_history_export` and/or
 `subject_delete`; unknown grants fail startup. The grants do not add public
 export or deletion endpoints by themselves.
 
+Restore automation must set `PALIMPSEST_RESTORE_MODE=1`,
+`PALIMPSEST_RESTORE_FENCE_LEDGER_PATH`, and
+`PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256` before starting a recovered service.
+Startup then refuses to continue unless the independent deletion-fence ledger
+verifies, and currently refuses to serve even after verification because the
+restore runner is not implemented. This repository still does not provide a
+backup/PITR adapter, tombstone replay, purge rerun, or restore conformance
+runner.
+
 ```bash
 docker compose stop postgres
 ```

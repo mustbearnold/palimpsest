@@ -1,16 +1,19 @@
-use std::{env, sync::Arc};
+use std::{env, fs, sync::Arc};
 
 use anyhow::{Context, Result, bail};
+use palimpsest_application::verify_restore_fence_ledger;
 use palimpsest_domain::{
     OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,
 };
 use palimpsest_http::StaticAuthenticator;
 use sqlx::PgPool;
+use time::OffsetDateTime;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    verify_restore_mode()?;
     let database_url = required("PALIMPSEST_DATABASE_URL")?;
     let bearer_token = required("PALIMPSEST_BEARER_TOKEN")?;
     let principal_id = required("PALIMPSEST_PRINCIPAL_ID")?;
@@ -65,6 +68,49 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn verify_restore_mode() -> Result<()> {
+    let mode = env::var("PALIMPSEST_RESTORE_MODE").unwrap_or_default();
+    if mode.is_empty() || mode == "0" {
+        return Ok(());
+    }
+    if mode != "1" {
+        bail!("PALIMPSEST_RESTORE_MODE must be 0 or 1");
+    }
+
+    let ledger_path = required("PALIMPSEST_RESTORE_FENCE_LEDGER_PATH")?;
+    let expected_sha256 = required("PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256")?;
+    let bytes = fs::read(ledger_path).context("read restore fence ledger")?;
+    verify_restore_mode_inputs(
+        "1",
+        Some(&bytes),
+        Some(&expected_sha256),
+        OffsetDateTime::now_utc(),
+    )?;
+    bail!(
+        "restore serving is not configured; verified restore mode remains unavailable until the restore runner is implemented"
+    )
+}
+
+fn verify_restore_mode_inputs(
+    mode: &str,
+    bytes: Option<&[u8]>,
+    expected_sha256: Option<&str>,
+    now: OffsetDateTime,
+) -> Result<()> {
+    if mode.is_empty() || mode == "0" {
+        return Ok(());
+    }
+    if mode != "1" {
+        bail!("PALIMPSEST_RESTORE_MODE must be 0 or 1");
+    }
+    let expected_sha256 = expected_sha256
+        .filter(|value| !value.is_empty())
+        .context("restore fence ledger digest is required")?;
+    verify_restore_fence_ledger(bytes, expected_sha256, now)
+        .map(|_| ())
+        .map_err(|_| anyhow::anyhow!("restore fence ledger verification failed"))
+}
+
 fn parse_operation_grants(value: &str) -> Result<Vec<OperationGrant>> {
     let mut canonical_history_export = false;
     let mut subject_delete = false;
@@ -102,6 +148,11 @@ fn parse_uuid(name: &str) -> Result<Uuid> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use palimpsest_application::{RestoreFenceEntry, RestoreFenceLedger};
+
+    fn at(seconds: i64) -> OffsetDateTime {
+        OffsetDateTime::from_unix_timestamp(seconds).expect("test timestamp should be valid")
+    }
 
     #[test]
     fn operation_grants_accept_only_the_closed_trusted_vocabulary() {
@@ -115,5 +166,34 @@ mod tests {
         );
         assert!(parse_operation_grants("").is_ok_and(|grants| grants.is_empty()));
         assert!(parse_operation_grants("controller_override").is_err());
+    }
+
+    #[test]
+    fn restore_mode_is_disabled_by_default_and_fails_closed_when_enabled() {
+        assert!(verify_restore_mode_inputs("0", None, None, at(3_000)).is_ok());
+        assert!(verify_restore_mode_inputs("1", None, None, at(3_000)).is_err());
+        assert!(verify_restore_mode_inputs("2", None, None, at(3_000)).is_err());
+    }
+
+    #[test]
+    fn restore_mode_accepts_only_a_verified_current_ledger() {
+        let ledger = RestoreFenceLedger::build(
+            at(2_000),
+            vec![
+                RestoreFenceEntry::new(format!("v1:{:064x}", 1), 1, at(1_000), at(10_000))
+                    .expect("test entry should be valid"),
+            ],
+        )
+        .expect("test ledger should be valid");
+        let bytes = ledger.to_bytes().expect("test ledger should encode");
+
+        assert!(
+            verify_restore_mode_inputs("1", Some(&bytes), Some(&ledger.ledger_sha256), at(3_000),)
+                .is_ok()
+        );
+        assert!(
+            verify_restore_mode_inputs("1", Some(&bytes), Some(&"0".repeat(64)), at(3_000),)
+                .is_err()
+        );
     }
 }

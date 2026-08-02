@@ -43,6 +43,16 @@ purges, and passed the negative conformance suite. The current service has no
 backup/restore adapter or restore runner, so ordinary startup remains a
 development path and backup disposition remains `not_configured`.
 
+The server has an opt-in startup guard for the first prerequisite: restore
+automation sets `PALIMPSEST_RESTORE_MODE=1`, points
+`PALIMPSEST_RESTORE_FENCE_LEDGER_PATH` at the independent ledger, and supplies
+`PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256`. Startup fails closed if any of those
+inputs are absent or verification fails. Passing this guard does not advance a
+database to serving readiness. The current server exits rather than serving
+even after the ledger verifies, because tombstone replay, purge reruns,
+derived-index rebuilds, and negative conformance must still happen in the
+future restore runner.
+
 The deletion authority produces the opaque scope digests from its HMAC-backed
 scope key. This verifier checks their versioned shape and the ledger's
 independently supplied document digest; it cannot prove HMAC origin without
