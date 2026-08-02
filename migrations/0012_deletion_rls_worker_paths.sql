@@ -38,6 +38,189 @@ WITH CHECK (
         = 'palimpsest-worker-v1'
 );
 
+CREATE POLICY deletion_idempotency_keys_worker_select
+ON memory.deletion_idempotency_keys
+FOR SELECT
+USING (
+    current_user = pg_get_userbyid((
+        SELECT relowner
+        FROM pg_catalog.pg_class
+        WHERE oid = 'memory.deletion_idempotency_keys'::pg_catalog.regclass
+    ))
+    AND current_setting('palimpsest.worker_claim', true)
+        = 'palimpsest-worker-v1'
+    AND tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+);
+
+CREATE POLICY deletion_idempotency_keys_worker_cleanup
+ON memory.deletion_idempotency_keys
+FOR DELETE
+USING (
+    current_user = pg_get_userbyid((
+        SELECT relowner
+        FROM pg_catalog.pg_class
+        WHERE oid = 'memory.deletion_idempotency_keys'::pg_catalog.regclass
+    ))
+    AND current_setting('palimpsest.worker_claim', true)
+        = 'palimpsest-worker-v1'
+    AND tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+);
+
+CREATE POLICY idempotency_receipts_deletion_worker_scope
+ON memory.idempotency_receipts
+FOR SELECT
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY idempotency_receipts_deletion_worker_cleanup
+ON memory.idempotency_receipts
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY fact_revision_evidence_deletion_worker_cleanup
+ON memory.fact_revision_evidence
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY fact_revision_governance_deletion_worker_cleanup
+ON memory.fact_revision_governance
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY retrieval_receipts_deletion_worker_scope
+ON memory.retrieval_receipts
+FOR SELECT
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY retrieval_receipts_deletion_worker_cleanup
+ON memory.retrieval_receipts
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY retrieval_idempotency_reservations_deletion_worker_scope
+ON memory.retrieval_idempotency_reservations
+FOR SELECT
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY retrieval_idempotency_reservations_deletion_worker_cleanup
+ON memory.retrieval_idempotency_reservations
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY retrieval_manifest_items_deletion_worker_scope
+ON memory.retrieval_manifest_items
+FOR SELECT
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY retrieval_manifest_items_deletion_worker_cleanup
+ON memory.retrieval_manifest_items
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY write_audit_receipts_deletion_worker_cleanup
+ON memory.write_audit_receipts
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY checkpoint_effect_intents_deletion_worker_cleanup
+ON memory.checkpoint_effect_intents
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY checkpoint_effect_receipts_deletion_worker_cleanup
+ON memory.checkpoint_effect_receipts
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY checkpoint_revisions_deletion_worker_cleanup
+ON memory.checkpoint_revisions
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY checkpoints_deletion_worker_cleanup
+ON memory.checkpoints
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY fact_revisions_deletion_worker_cleanup
+ON memory.fact_revisions
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+CREATE POLICY facts_deletion_worker_cleanup
+ON memory.facts
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
 CREATE POLICY export_operations_worker_claim
 ON memory.export_operations
 FOR ALL
@@ -144,6 +327,18 @@ USING (
 WITH CHECK (
     memory.subject_lifecycle_allows_content(tenant_id, subject_id)
     OR memory.deletion_workflow_allows(tenant_id, subject_id)
+);
+
+-- The active-subject policy is restrictive and therefore cannot grant DELETE
+-- by itself.  Keep the command policy narrow so only the live deletion
+-- workflow can remove its subject-scoped outbox intent.
+CREATE POLICY outbox_intents_deletion_worker_cleanup
+ON memory.outbox_intents
+FOR DELETE
+USING (
+    tenant_id = NULLIF(current_setting('palimpsest.tenant_id', true), '')::uuid
+    AND subject_id = NULLIF(current_setting('palimpsest.subject_id', true), '')::uuid
+    AND memory.deletion_workflow_allows(tenant_id, subject_id)
 );
 
 ALTER POLICY checkpoints_active_subject ON memory.checkpoints

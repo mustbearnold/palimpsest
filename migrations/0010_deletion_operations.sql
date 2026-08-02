@@ -1476,6 +1476,8 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
+    PERFORM set_config('palimpsest.worker_claim', 'palimpsest-worker-v1', true);
+
     IF candidate_target_name = 'projections' THEN
         DELETE FROM memory.retrieval_manifest_items
         WHERE tenant_id = candidate_tenant_id
@@ -1702,6 +1704,8 @@ BEGIN
         RAISE EXCEPTION 'deletion operation scope is not authorized'
             USING ERRCODE = '42501';
     END IF;
+
+    PERFORM set_config('palimpsest.worker_claim', 'palimpsest-worker-v1', true);
 
     PERFORM pg_advisory_xact_lock(
         hashtextextended(

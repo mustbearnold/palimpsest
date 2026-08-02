@@ -1273,6 +1273,7 @@ async fn exercise_export_and_deletion_http(
     ensure!(deletion_replay_body["operation_id"] == deletion_id);
 
     let mut completed_etag = None;
+    let mut last_deletion_body = Value::Null;
     for _ in 0..200 {
         let response = client
             .get(&deletion_status_url)
@@ -1287,6 +1288,7 @@ async fn exercise_export_and_deletion_http(
             .to_str()?
             .to_owned();
         let body: Value = response.json().await?;
+        last_deletion_body = body.clone();
         if body["lifecycle_state"] == "completed" {
             let outcome = body["outcome"]
                 .as_object()
@@ -1318,7 +1320,8 @@ async fn exercise_export_and_deletion_http(
         );
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    let completed_etag = completed_etag.context("deletion did not complete")?;
+    let completed_etag = completed_etag
+        .with_context(|| format!("deletion did not complete: {last_deletion_body}"))?;
     let deletion_not_modified = client
         .get(&deletion_status_url)
         .bearer_auth(bearer_token)
