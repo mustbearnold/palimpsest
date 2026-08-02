@@ -3,16 +3,17 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 use palimpsest_domain::{
     AgentId, AppendEpisode, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
-    CompleteEffectTransition, CreateFact, CreateRetrieval, DeletionOperationId,
-    DeletionOperationState, DeletionTargetCapability, DeletionTargetName, DeletionTargetState,
-    EffectId, EffectTransition, EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask,
-    Episode, EpisodeId, ExportId, FactId, FactView, NewCheckpointRevision, NewEffectTransition,
-    NewEpisode, NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval, OperationGrant,
-    PrincipalId, PrincipalScope, RetrievalFilters, RetrievalId, RetrievalPolicyId, RetrievalQuery,
+    CompleteEffectTransition, CreateFact, CreateRetrieval, DeletionBackupDisposition,
+    DeletionLiveDisposition, DeletionOperationId, DeletionOperationState, DeletionTargetCapability,
+    DeletionTargetName, DeletionTargetState, DeletionTargetVerification, EffectId,
+    EffectTransition, EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode,
+    EpisodeId, ExportId, FactId, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode,
+    NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval, OperationGrant, PrincipalId,
+    PrincipalScope, RetrievalFilters, RetrievalId, RetrievalPolicyId, RetrievalQuery,
     RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
     SubjectLifecycle, SupersedeFact, TenantId, ThreadId,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -207,11 +208,37 @@ pub struct DeletionTargetView {
     pub target_key_digest: String,
     pub capability: DeletionTargetCapability,
     pub state: DeletionTargetState,
+    pub verification: DeletionTargetVerification,
     pub attempts: u32,
     pub lease_id: Option<Uuid>,
     pub lease_expires_at: Option<time::OffsetDateTime>,
     pub effect_receipt_sha256: Option<String>,
     pub sanitized_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DeletionOutcomeView {
+    pub live_disposition: DeletionLiveDisposition,
+    pub backup_disposition: DeletionBackupDisposition,
+    pub backup_policy_id: Option<String>,
+    pub deletion_watermark: Option<String>,
+    pub earliest_backup_expiry: Option<time::OffsetDateTime>,
+    pub restore_gate_version: Option<String>,
+    pub verification_digest: Option<String>,
+}
+
+impl DeletionOutcomeView {
+    pub fn fenced_not_verified() -> Self {
+        Self {
+            live_disposition: DeletionLiveDisposition::FencedNotVerified,
+            backup_disposition: DeletionBackupDisposition::NotConfigured,
+            backup_policy_id: None,
+            deletion_watermark: None,
+            earliest_backup_expiry: None,
+            restore_gate_version: None,
+            verification_digest: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -222,6 +249,7 @@ pub struct DeletionOperationView {
     pub retry_count: u32,
     pub failure_reason: Option<String>,
     pub targets: Vec<DeletionTargetView>,
+    pub outcome: Option<DeletionOutcomeView>,
     pub updated_at: time::OffsetDateTime,
     pub expired: bool,
 }

@@ -58,9 +58,9 @@ use palimpsest_conformance::{
     temporal_receipt_survives_service_restart, temporal_retrieval_survives_projection_rebuild,
 };
 use palimpsest_domain::{
-    DeletionOperationState, DeletionTargetState, EmbeddingOutput, EmbeddingTask, OperationGrant,
-    PrincipalId, PrincipalScope, RecencyProfile, Sensitivity, SubjectId, TenantId,
-    temporal_factor_q63,
+    DeletionOperationState, DeletionTargetCapability, DeletionTargetState,
+    DeletionTargetVerification, EmbeddingOutput, EmbeddingTask, OperationGrant, PrincipalId,
+    PrincipalScope, RecencyProfile, Sensitivity, SubjectId, TenantId, temporal_factor_q63,
 };
 use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::{EmbeddingProjectionCoordinator, PostgresMemoryRepository};
@@ -584,6 +584,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             &export_target,
             &target,
             "principal-a-export-delete-test-token",
+            &migration_pool,
         )
         .await;
         export_server.abort();
@@ -681,6 +682,7 @@ async fn deletion_target_lease_recovers_after_worker_expiry(
         .find(|target| target.target_name == first_target.target_name)
         .context("claimed target was not visible in the public deletion view")?;
     ensure!(leased_target.state == DeletionTargetState::Leased);
+    ensure!(leased_target.verification == DeletionTargetVerification::Pending);
     ensure!(leased_target.target_key_digest == first_target.target_key_digest);
     ensure!(leased_target.lease_id == Some(first_target.target_lease_id));
 
@@ -733,7 +735,11 @@ async fn deletion_target_lease_recovers_after_worker_expiry(
             .iter()
             .filter(|target| target.capability
                 == palimpsest_domain::DeletionTargetCapability::Configured)
-            .all(|target| target.state == DeletionTargetState::Done)
+            .all(|target| {
+                target.state == DeletionTargetState::Done
+                    && target.verification
+                        == palimpsest_domain::DeletionTargetVerification::Verified
+            })
     );
     ensure!(
         completed
@@ -955,10 +961,38 @@ async fn deletion_target_retry_exhaustion_remains_fenced(
         .await
         .context("fail retry-exhaustion deletion")?;
     ensure!(failed.lifecycle_state == DeletionOperationState::Failed);
+    sqlx::query(
+        "UPDATE memory.deletion_operations
+         SET expires_at = clock_timestamp() - interval '1 second'
+         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(created.operation_id.0)
+    .execute(migration_pool)
+    .await?;
     let view = service
         .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
         .await?;
     ensure!(view.lifecycle_state == DeletionOperationState::Failed);
+    ensure!(!view.expired);
+    ensure!(
+        view.targets
+            .iter()
+            .filter(|target| target.capability == DeletionTargetCapability::Configured)
+            .all(|target| target.verification == DeletionTargetVerification::NotVerified)
+    );
+    let outcome = view
+        .outcome
+        .as_ref()
+        .context("failed deletion omitted terminal outcome")?;
+    ensure!(
+        outcome.live_disposition == palimpsest_domain::DeletionLiveDisposition::FencedNotVerified
+    );
+    ensure!(
+        outcome.backup_disposition == palimpsest_domain::DeletionBackupDisposition::NotConfigured
+    );
+    ensure!(outcome.verification_digest.is_none());
     let lifecycle_state: String = sqlx::query_scalar(
         "SELECT lifecycle_state FROM memory.subject_lifecycles
          WHERE tenant_id = $1 AND subject_id = $2",
@@ -975,6 +1009,7 @@ async fn exercise_export_and_deletion_http(
     target: &Target,
     scope: &Target,
     bearer_token: &str,
+    migration_pool: &PgPool,
 ) -> Result<()> {
     let client = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -1222,6 +1257,27 @@ async fn exercise_export_and_deletion_http(
             .to_owned();
         let body: Value = response.json().await?;
         if body["lifecycle_state"] == "completed" {
+            let outcome = body["outcome"]
+                .as_object()
+                .context("completed deletion omitted terminal outcome")?;
+            ensure!(outcome["live_disposition"] == "purged_and_verified");
+            ensure!(outcome["backup_disposition"] == "not_configured");
+            ensure!(outcome["backup_policy_id"].is_null());
+            ensure!(outcome["deletion_watermark"].is_null());
+            ensure!(outcome["restore_gate_version"].is_null());
+            ensure!(
+                body["targets"]
+                    .as_array()
+                    .context("completed deletion omitted target ledger")?
+                    .iter()
+                    .filter(|target| target["capability"] == "configured")
+                    .all(|target| target["verification"] == "verified")
+            );
+            ensure!(
+                outcome["verification_digest"]
+                    .as_str()
+                    .is_some_and(|digest| digest.len() == 64)
+            );
             completed_etag = Some(etag);
             break;
         }
@@ -1245,6 +1301,25 @@ async fn exercise_export_and_deletion_http(
             .get(header::CACHE_CONTROL)
             .is_some()
     );
+
+    sqlx::query(
+        "UPDATE memory.deletion_tombstones
+         SET expires_at = clock_timestamp() - interval '1 second'
+         WHERE tenant_id = $1 AND operation_id = $2",
+    )
+    .bind(target.tenant_id)
+    .bind(Uuid::parse_str(&deletion_id)?)
+    .execute(migration_pool)
+    .await?;
+    let expired_status = client
+        .get(&deletion_status_url)
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+    ensure!(expired_status.status() == StatusCode::OK);
+    let expired_body: Value = expired_status.json().await?;
+    ensure!(expired_body["lifecycle_state"] == "expired");
+    ensure!(expired_body["outcome"]["live_disposition"] == "purged_and_verified");
 
     let deleted_episode = client
         .get(&episode_location)
@@ -3851,6 +3926,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                 &runtime_target,
                 &nonbypass_export_target,
                 "principal-a-export-delete-test-token",
+                migration_pool,
             )
             .await?;
             let residual: i64 = sqlx::query_scalar(

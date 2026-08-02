@@ -1022,6 +1022,8 @@ async fn get_deletion(
             "failure_reason": view.failure_reason,
             "targets": serde_json::to_value(&view.targets)
                 .map_err(|error| Problem::internal(error.to_string()))?,
+            "outcome": serde_json::to_value(&view.outcome)
+                .map_err(|error| Problem::internal(error.to_string()))?,
             "updated_at": serde_json::to_value(view.updated_at)
                 .map_err(|error| Problem::internal(error.to_string()))?,
         })),

@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use palimpsest_application::{
     AdvanceDeletionOutcome, AppendOutcome, CheckpointMutationOutcome, CheckpointRepository,
     ClaimedDeletionOperation, ClaimedDeletionTarget, CreateDeletionOutcome, CreateDeletionRequest,
-    DeletionOperationView, DeletionRepository, DeletionTargetView, EmbeddingProvider,
-    EmbeddingRequest, EpisodeRepository, ExportCreateOutcome, ExportMaterialization,
-    ExportOperationState, ExportOperationView, ExportPackageMetadata, ExportRecord,
-    ExportRecordKind, ExportRepository, FactMutationOutcome, FactRepository, IdempotencyRequest,
-    NewExport, RepositoryError, RetrievalMutationOutcome, RetrievalPreparation,
+    DeletionOperationView, DeletionOutcomeView, DeletionRepository, DeletionTargetView,
+    EmbeddingProvider, EmbeddingRequest, EpisodeRepository, ExportCreateOutcome,
+    ExportMaterialization, ExportOperationState, ExportOperationView, ExportPackageMetadata,
+    ExportRecord, ExportRecordKind, ExportRepository, FactMutationOutcome, FactRepository,
+    IdempotencyRequest, NewExport, RepositoryError, RetrievalMutationOutcome, RetrievalPreparation,
     RetrievalQueryEmbedding, RetrievalRepository, SubjectContentLeaseRepository,
     SubjectLifecycleControllerRepository, validate_embedding_response,
 };
@@ -14,8 +14,8 @@ use palimpsest_domain::{
     AgentId, CaseId, CheckpointEffect, CheckpointId, CheckpointPrecondition, CheckpointRevisionId,
     CheckpointSnapshot, CheckpointView, ContentLeaseId, DeletionOperationId,
     DeletionOperationState, DeletionTargetCapability, DeletionTargetName, DeletionTargetState,
-    EffectId, EffectKey, EffectKind, EffectReceipt, EffectRecoveryMode, EffectStatus,
-    EmbeddingInput, EmbeddingProfile, EmbeddingTask, Episode, EpisodeId, EpisodeKind,
+    DeletionTargetVerification, EffectId, EffectKey, EffectKind, EffectReceipt, EffectRecoveryMode,
+    EffectStatus, EmbeddingInput, EmbeddingProfile, EmbeddingTask, Episode, EpisodeId, EpisodeKind,
     ExactIdentityTier, ExportId, FactId, FactKey, FactNamespace, FactRevision, FactView,
     NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewRetrieval, PrincipalId,
     PrincipalScope, Provenance, Q63_EXP2_CONSTANTS_SHA256, RecencyProfile, RetentionPolicyId,
@@ -3243,7 +3243,7 @@ impl DeletionRepository for PostgresMemoryRepository {
         let row = sqlx::query(
             r#"
             SELECT lifecycle_state, state_version, retry_count, failure_reason,
-                   targets, updated_at, expired
+                   targets, outcome, updated_at, expired
             FROM memory.poll_deletion_operation($1, $2, $3)
             "#,
         )
@@ -3255,20 +3255,37 @@ impl DeletionRepository for PostgresMemoryRepository {
         .map_err(map_deletion_sqlx)?;
         transaction.commit().await.map_err(unexpected)?;
         let state: String = row.try_get("lifecycle_state").map_err(unexpected)?;
+        let expired: bool = row.try_get("expired").map_err(unexpected)?;
+        let lifecycle_state = if expired {
+            DeletionOperationState::Expired
+        } else {
+            parse_deletion_state(&state)?
+        };
+        let failure_reason: Option<String> = row.try_get("failure_reason").map_err(unexpected)?;
         let targets: serde_json::Value = row.try_get("targets").map_err(unexpected)?;
+        let mut outcome = row
+            .try_get::<Option<serde_json::Value>, _>("outcome")
+            .map_err(unexpected)?
+            .map(serde_json::from_value::<DeletionOutcomeView>)
+            .transpose()
+            .map_err(unexpected)?;
+        if expired && outcome.is_none() {
+            outcome = Some(DeletionOutcomeView::fenced_not_verified());
+        }
         Ok(DeletionOperationView {
             operation_id,
-            lifecycle_state: parse_deletion_state(&state)?,
+            lifecycle_state,
             state_version: u64::try_from(
                 row.try_get::<i64, _>("state_version").map_err(unexpected)?,
             )
             .map_err(unexpected)?,
             retry_count: u32::try_from(row.try_get::<i32, _>("retry_count").map_err(unexpected)?)
                 .map_err(unexpected)?,
-            failure_reason: row.try_get("failure_reason").map_err(unexpected)?,
-            targets: parse_deletion_targets(targets)?,
+            failure_reason: if expired { None } else { failure_reason },
+            targets: parse_deletion_targets(targets, lifecycle_state)?,
+            outcome,
             updated_at: row.try_get("updated_at").map_err(unexpected)?,
-            expired: row.try_get("expired").map_err(unexpected)?,
+            expired,
         })
     }
 
@@ -4735,16 +4752,17 @@ impl PostgresMemoryRepository {
         .map_err(map_deletion_sqlx)?;
         transaction.commit().await.map_err(unexpected)?;
         let state: String = row.try_get("lifecycle_state").map_err(unexpected)?;
+        let lifecycle_state = parse_deletion_state(&state)?;
         let targets: serde_json::Value = row.try_get("targets").map_err(unexpected)?;
         Ok(CreateDeletionOutcome {
             operation_id: DeletionOperationId(row.try_get("operation_id").map_err(unexpected)?),
-            lifecycle_state: parse_deletion_state(&state)?,
+            lifecycle_state,
             state_version: u64::try_from(
                 row.try_get::<i64, _>("state_version").map_err(unexpected)?,
             )
             .map_err(unexpected)?,
             replayed: row.try_get("replayed").map_err(unexpected)?,
-            targets: parse_deletion_targets(targets)?,
+            targets: parse_deletion_targets(targets, lifecycle_state)?,
         })
     }
 }
@@ -6435,6 +6453,7 @@ fn parse_deletion_state(value: &str) -> Result<DeletionOperationState, Repositor
 
 fn parse_deletion_targets(
     value: serde_json::Value,
+    lifecycle_state: DeletionOperationState,
 ) -> Result<Vec<DeletionTargetView>, RepositoryError> {
     let Some(array) = value.as_array() else {
         return Err(unexpected(
@@ -6481,6 +6500,18 @@ fn parse_deletion_targets(
                 ));
             }
         };
+        let verification = match (capability, lifecycle_state, state) {
+            (DeletionTargetCapability::NotConfigured, _, _) => {
+                DeletionTargetVerification::NotConfigured
+            }
+            (
+                _,
+                DeletionOperationState::Completed | DeletionOperationState::Expired,
+                DeletionTargetState::Done,
+            ) => DeletionTargetVerification::Verified,
+            (_, _, DeletionTargetState::Failed) => DeletionTargetVerification::NotVerified,
+            _ => DeletionTargetVerification::Pending,
+        };
         let target_key_digest = object
             .get("target_key_digest")
             .and_then(serde_json::Value::as_str)
@@ -6505,6 +6536,7 @@ fn parse_deletion_targets(
             target_key_digest,
             capability,
             state,
+            verification,
             attempts: u32::try_from(
                 object
                     .get("attempts")

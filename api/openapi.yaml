@@ -649,12 +649,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/SubjectId'
-        - name: export_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/ExportId'
         - name: If-None-Match
           in: header
           required: false
@@ -703,6 +698,10 @@ paths:
       tags: [Exports]
       operationId: downloadExport
       summary: Download an authorized ready export package
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SubjectId'
+        - $ref: '#/components/parameters/ExportId'
       responses:
         '200':
           description: Deterministic canonical-history ZIP package
@@ -897,6 +896,14 @@ components:
       in: path
       required: true
       description: Service-created UUIDv7 durable retrieval-receipt identifier
+      schema:
+        type: string
+        format: uuid
+    ExportId:
+      name: export_id
+      in: path
+      required: true
+      description: Service-created UUIDv7 canonical-history export identifier
       schema:
         type: string
         format: uuid
@@ -2139,6 +2146,7 @@ components:
         - target_key_digest
         - capability
         - state
+        - verification
         - attempts
       properties:
         target_name:
@@ -2153,6 +2161,9 @@ components:
         state:
           type: string
           enum: [pending, leased, done, failed, not_configured]
+        verification:
+          type: string
+          enum: [pending, verified, not_verified, not_configured]
         attempts:
           type: integer
           minimum: 0
@@ -2224,9 +2235,77 @@ components:
           failed: '#/components/schemas/DeletionFailedOperation'
           expired: '#/components/schemas/DeletionExpiredOperation'
 
+    DeletionOutcome:
+      oneOf:
+        - $ref: '#/components/schemas/DeletionOutcomeNotConfigured'
+        - $ref: '#/components/schemas/DeletionOutcomeIsolatedUntilExpiry'
+
+    DeletionOutcomeNotConfigured:
+      type: object
+      additionalProperties: false
+      required:
+        - live_disposition
+        - backup_disposition
+        - backup_policy_id
+        - deletion_watermark
+        - earliest_backup_expiry
+        - restore_gate_version
+        - verification_digest
+      properties:
+        live_disposition:
+          type: string
+          enum: [purged_and_verified, fenced_not_verified]
+        backup_disposition:
+          const: not_configured
+        backup_policy_id:
+          const: null
+        deletion_watermark:
+          const: null
+        earliest_backup_expiry:
+          const: null
+        restore_gate_version:
+          const: null
+        verification_digest:
+          type:
+            - string
+            - 'null'
+          pattern: '^[0-9a-f]{64}$'
+
+    DeletionOutcomeIsolatedUntilExpiry:
+      type: object
+      additionalProperties: false
+      required:
+        - live_disposition
+        - backup_disposition
+        - backup_policy_id
+        - deletion_watermark
+        - earliest_backup_expiry
+        - restore_gate_version
+        - verification_digest
+      properties:
+        live_disposition:
+          const: purged_and_verified
+        backup_disposition:
+          const: isolated_until_expiry
+        backup_policy_id:
+          type: string
+          minLength: 1
+        deletion_watermark:
+          type: string
+          minLength: 1
+        earliest_backup_expiry:
+          type: string
+          format: date-time
+        restore_gate_version:
+          type: string
+          minLength: 1
+        verification_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
     DeletionOperationStatusCommon:
       type: object
-      required: [operation_id, state_version, retry_count, targets, updated_at]
+      required: [operation_id, state_version, retry_count, targets, outcome, updated_at]
       properties:
         operation_id:
           type: string
@@ -2241,6 +2320,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DeletionTarget'
+        outcome:
+          oneOf:
+            - $ref: '#/components/schemas/DeletionOutcome'
+            - type: 'null'
         updated_at:
           $ref: '#/components/schemas/UtcDateTime'
 
@@ -2248,82 +2331,93 @@ components:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: draining }
             failure_reason: { const: null }
+            outcome: { const: null }
       unevaluatedProperties: false
 
     DeletionFencedOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: fenced }
             failure_reason: { const: null }
+            outcome: { const: null }
       unevaluatedProperties: false
 
     DeletionPurgingOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: purging }
             failure_reason: { const: null }
+            outcome: { const: null }
       unevaluatedProperties: false
 
     DeletionRetryWaitOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: retry_wait }
             failure_reason: { const: null }
+            outcome: { const: null }
       unevaluatedProperties: false
 
     DeletionVerifyingOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: verifying }
             failure_reason: { const: null }
+            outcome: { const: null }
       unevaluatedProperties: false
 
     DeletionCompletedOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: completed }
             failure_reason: { const: null }
+            outcome:
+              $ref: '#/components/schemas/DeletionOutcome'
       unevaluatedProperties: false
 
     DeletionFailedOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: failed }
             failure_reason:
               type: string
               minLength: 1
+            outcome:
+              $ref: '#/components/schemas/DeletionOutcome'
       unevaluatedProperties: false
 
     DeletionExpiredOperation:
       allOf:
         - $ref: '#/components/schemas/DeletionOperationStatusCommon'
         - type: object
-          required: [lifecycle_state, failure_reason]
+          required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: expired }
             failure_reason: { const: null }
+            outcome:
+              $ref: '#/components/schemas/DeletionOutcome'
       unevaluatedProperties: false
 
     ExportOperationCommon:

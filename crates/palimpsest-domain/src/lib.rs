@@ -301,6 +301,29 @@ pub enum DeletionTargetState {
     NotConfigured,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionTargetVerification {
+    Pending,
+    Verified,
+    NotVerified,
+    NotConfigured,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionLiveDisposition {
+    PurgedAndVerified,
+    FencedNotVerified,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionBackupDisposition {
+    IsolatedUntilExpiry,
+    NotConfigured,
+}
+
 #[cfg(test)]
 mod deletion_model_tests {
     use super::*;
@@ -320,6 +343,21 @@ mod deletion_model_tests {
         assert!(serde_json::from_str::<DeletionTargetState>("\"done\"").is_ok());
         assert!(serde_json::from_str::<DeletionTargetState>("\"purging\"").is_err());
         assert!(serde_json::from_str::<DeletionTargetState>("\"verified\"").is_err());
+        assert_eq!(
+            serde_json::from_str::<DeletionTargetVerification>("\"verified\"")
+                .expect("target verification vocabulary"),
+            DeletionTargetVerification::Verified
+        );
+        assert_eq!(
+            serde_json::from_str::<DeletionLiveDisposition>("\"purged_and_verified\"")
+                .expect("live deletion disposition vocabulary"),
+            DeletionLiveDisposition::PurgedAndVerified
+        );
+        assert_eq!(
+            serde_json::from_str::<DeletionBackupDisposition>("\"not_configured\"")
+                .expect("backup deletion disposition vocabulary"),
+            DeletionBackupDisposition::NotConfigured
+        );
         assert!(serde_json::from_str::<DeletionOperationState>("\"unknown\"").is_err());
         assert!(DeletionTargetName::try_from_str("unknown").is_none());
     }
