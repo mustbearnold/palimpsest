@@ -47,10 +47,11 @@ bash scripts/dev-up.sh
 
 The service listens on `http://127.0.0.1:8080` and PostgreSQL listens only on
 `127.0.0.1:5432`. `GET /healthz` is a content-free liveness probe and
-`GET /readyz` checks database connectivity plus the required current schema.
-Both probes require no authentication and disclose no memory data. The HTTP
-service uses a synthetic, non-superuser PostgreSQL role so forced row-level
-security remains active. Override the `PALIMPSEST_*`
+`GET /readyz` checks database connectivity plus the exact successful SQLx
+migration set shipped by this binary. Both probes require no authentication
+and disclose no memory data. The HTTP service uses a synthetic, non-superuser
+PostgreSQL role so forced row-level security remains active. Override the
+`PALIMPSEST_*`
 environment variables when needed. Set `PALIMPSEST_EXPORT_ROOT` to a durable
 private filesystem path when enabling canonical-history exports; the development
 default is `var/palimpsest/exports`. Stop the service with `Ctrl+C`, then stop

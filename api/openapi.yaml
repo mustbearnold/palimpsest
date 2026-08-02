@@ -57,7 +57,7 @@ paths:
       tags: [Operations]
       operationId: readyz
       summary: Check database and schema readiness
-      description: Returns success only when the service can query the required current schema. It requires no authentication and contains no memory data.
+      description: Returns success only when the service can query the exact successful SQLx migration set shipped by this binary. It requires no authentication and contains no memory data.
       security: []
       responses:
         '200':

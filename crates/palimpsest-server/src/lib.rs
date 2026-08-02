@@ -65,11 +65,38 @@ async fn health_status() -> impl IntoResponse {
 }
 
 async fn readiness_status(pool: PgPool) -> impl IntoResponse {
+    let current_schema_version = palimpsest_postgres::latest_migration_version();
     let schema_ready = sqlx::query_scalar::<_, bool>(
         "SELECT to_regclass('memory.subject_lifecycles') IS NOT NULL
             AND to_regclass('memory.deletion_operations') IS NOT NULL
-            AND to_regclass('memory.export_operations') IS NOT NULL",
+            AND to_regclass('memory.export_operations') IS NOT NULL
+            AND EXISTS (
+                SELECT 1
+                FROM _sqlx_migrations
+                WHERE version = $1 AND success
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM _sqlx_migrations
+                WHERE NOT success
+            )
+            AND (
+                SELECT min(version)
+                FROM _sqlx_migrations
+                WHERE success
+            ) = 1
+            AND (
+                SELECT max(version)
+                FROM _sqlx_migrations
+                WHERE success
+            ) = $1
+            AND (
+                SELECT count(*)
+                FROM _sqlx_migrations
+                WHERE success
+            ) = $1",
     )
+    .bind(current_schema_version)
     .fetch_one(&pool)
     .await
     .unwrap_or(false);

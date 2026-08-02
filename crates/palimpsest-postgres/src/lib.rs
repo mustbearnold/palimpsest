@@ -3262,6 +3262,14 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     sqlx::migrate!("../../migrations").run(pool).await
 }
 
+pub fn latest_migration_version() -> i64 {
+    sqlx::migrate!("../../migrations")
+        .iter()
+        .map(|migration| migration.version)
+        .max()
+        .unwrap_or(0)
+}
+
 #[async_trait]
 impl SubjectContentLeaseRepository for PostgresMemoryRepository {
     async fn acquire_content_lease(
@@ -6787,5 +6795,10 @@ mod tests {
         assert!(
             matches!(result, Err(RepositoryError::Unexpected(message)) if message == "projection content lease expired")
         );
+    }
+
+    #[test]
+    fn latest_migration_version_matches_the_checked_in_schema() {
+        assert_eq!(latest_migration_version(), 16);
     }
 }
