@@ -11,7 +11,7 @@ use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashSet},
-    env,
+    env, fs,
     process::Stdio,
     str::FromStr,
     sync::{
@@ -511,7 +511,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             ..target.clone()
         };
         populate_restore_corpus_over_http(&scenario_target, &restore_fixture).await?;
-        exercise_restore_fence_replay(&pool, &migration_pool, &restore_fixture).await?;
+        exercise_restore_fence_replay(&pool, &migration_pool, &restore_fixture, &test_database_url)
+            .await?;
         verify_restore_replay_is_hidden_over_http(&scenario_target, &restore_fixture).await?;
         let scenario = async {
             records_and_reads_an_immutable_episode(&scenario_target).await?;
@@ -706,6 +707,7 @@ async fn exercise_restore_fence_replay(
     pool: &PgPool,
     migration_pool: &PgPool,
     fixture: &RestoreFixture,
+    database_url: &str,
 ) -> Result<()> {
     let tenant_id = fixture.tenant_id;
     let subject_id = fixture.subject_id;
@@ -814,6 +816,30 @@ async fn exercise_restore_fence_replay(
     assert_eq!(
         durable_restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?,
         populated_durable_counts
+    );
+
+    let wrong_startup_status =
+        run_restore_mode_process(database_url, &ledger_bytes, &"0".repeat(64)).await?;
+    ensure!(
+        !wrong_startup_status.success(),
+        "restore mode accepted a mismatched independent digest"
+    );
+    assert_eq!(
+        durable_restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?,
+        populated_durable_counts
+    );
+
+    let startup_status =
+        run_restore_mode_process(database_url, &ledger_bytes, &ledger.ledger_sha256).await?;
+    ensure!(
+        startup_status.success(),
+        "restore mode failed to replay a verified ledger"
+    );
+    let idempotent_startup_status =
+        run_restore_mode_process(database_url, &ledger_bytes, &ledger.ledger_sha256).await?;
+    ensure!(
+        idempotent_startup_status.success(),
+        "restore mode failed to replay an already recorded ledger"
     );
 
     let report = repository
@@ -988,6 +1014,34 @@ async fn durable_restore_scope_row_counts(
     let mut counts = restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?;
     counts.remove("subject_content_leases");
     Ok(counts)
+}
+
+async fn run_restore_mode_process(
+    database_url: &str,
+    ledger_bytes: &[u8],
+    expected_ledger_sha256: &str,
+) -> Result<std::process::ExitStatus> {
+    let ledger_path = format!("/tmp/palimpsest-restore-fence-{}.json", Uuid::now_v7());
+    fs::write(&ledger_path, ledger_bytes).context("write restore fence ledger fixture")?;
+    let result = async {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_palimpsest-server"))
+            .env("PALIMPSEST_RESTORE_MODE", "1")
+            .env("PALIMPSEST_RESTORE_DATABASE_URL", database_url)
+            .env("PALIMPSEST_RESTORE_FENCE_LEDGER_PATH", &ledger_path)
+            .env(
+                "PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256",
+                expected_ledger_sha256,
+            )
+            .kill_on_drop(true)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .context("spawn restore mode process")?;
+        child.wait().await.context("wait for restore mode process")
+    }
+    .await;
+    let _ = fs::remove_file(&ledger_path);
+    result
 }
 
 async fn verify_restore_replay_is_hidden_over_http(

@@ -35,6 +35,10 @@ returns the recorded result without re-running the purge.
   and checkpoint rows to exist before replay, compares every durable scoped row
   count after each rejected ledger, and requires every replay-purge residual
   count to be zero.
+- The conformance test also launches the real `palimpsest-server` restore-mode
+  binary. A wrong expected digest exits before database mutation; a verified
+  ledger exits successfully, and a second process invocation proves the
+  content-free replay receipt is idempotent.
 - Application tests cover missing, malformed, unsupported, stale, future,
   unordered, duplicate, noncanonical, and digest-mismatched ledgers without
   echoing ledger content in errors.
