@@ -2,7 +2,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
+use axum::{
+    Router,
+    http::{StatusCode, header},
+    response::IntoResponse,
+    routing::get,
+};
 use palimpsest_application::{
     EmbeddingProvider, ExportWorkerAuthorizer, FileExportPackageStore, MemoryService, ServiceError,
     UnavailableEmbeddingProvider,
@@ -31,6 +36,7 @@ pub fn app_with_embedding_provider(
     authenticator: Arc<dyn Authenticator>,
     embedding_provider: Arc<dyn EmbeddingProvider>,
 ) -> Router {
+    let readiness_pool = runtime_pool.clone();
     let export_authorizer = Arc::new(HttpExportWorkerAuthorizer {
         authenticator: authenticator.clone(),
     });
@@ -42,7 +48,37 @@ pub fn app_with_embedding_provider(
     .with_export_worker_authorizer(export_authorizer);
     spawn_deletion_worker(service.clone());
     spawn_export_worker(service.clone());
-    palimpsest_http::router(service, authenticator)
+    Router::new()
+        .route("/healthz", get(health_status))
+        .route(
+            "/readyz",
+            get(move || {
+                let pool = readiness_pool.clone();
+                async move { readiness_status(pool).await }
+            }),
+        )
+        .merge(palimpsest_http::router(service, authenticator))
+}
+
+async fn health_status() -> impl IntoResponse {
+    (StatusCode::OK, [(header::CACHE_CONTROL, "no-store")])
+}
+
+async fn readiness_status(pool: PgPool) -> impl IntoResponse {
+    let schema_ready = sqlx::query_scalar::<_, bool>(
+        "SELECT to_regclass('memory.subject_lifecycles') IS NOT NULL
+            AND to_regclass('memory.deletion_operations') IS NOT NULL
+            AND to_regclass('memory.export_operations') IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+    let status = if schema_ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, [(header::CACHE_CONTROL, "no-store")])
 }
 
 struct HttpExportWorkerAuthorizer {

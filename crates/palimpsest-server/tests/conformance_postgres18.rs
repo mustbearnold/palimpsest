@@ -554,6 +554,27 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             base_url: format!("http://{address}"),
             ..target.clone()
         };
+        let client = Client::new();
+        let health = client
+            .get(format!("{}/healthz", scenario_target.base_url))
+            .send()
+            .await?;
+        ensure!(health.status() == StatusCode::OK);
+        ensure!(
+            health.headers().get(header::CACHE_CONTROL)
+                == Some(&header::HeaderValue::from_static("no-store"))
+        );
+        ensure!(health.content_length().is_none_or(|length| length == 0));
+        let readiness = client
+            .get(format!("{}/readyz", scenario_target.base_url))
+            .send()
+            .await?;
+        ensure!(readiness.status() == StatusCode::OK);
+        ensure!(
+            readiness.headers().get(header::CACHE_CONTROL)
+                == Some(&header::HeaderValue::from_static("no-store"))
+        );
+        ensure!(readiness.content_length().is_none_or(|length| length == 0));
         populate_restore_corpus_over_http(&scenario_target, &restore_fixture).await?;
         exercise_restore_fence_replay(&pool, &migration_pool, &restore_fixture, &test_database_url)
             .await?;

@@ -21,6 +21,8 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Operations
+    description: Content-free process liveness and database readiness probes
   - name: Episodes
     description: Immutable attributable observations
   - name: Facts
@@ -34,6 +36,40 @@ tags:
   - name: Deletions
     description: Authorized asynchronous subject-fence and purge operations
 paths:
+  /healthz:
+    get:
+      tags: [Operations]
+      operationId: healthz
+      summary: Check process liveness
+      description: Returns success while the HTTP process is alive. It requires no authentication and contains no memory data.
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '404':
+          description: The requested probe path was not found
+
+  /readyz:
+    get:
+      tags: [Operations]
+      operationId: readyz
+      summary: Check database and schema readiness
+      description: Returns success only when the service can query the required current schema. It requires no authentication and contains no memory data.
+      security: []
+      responses:
+        '200':
+          description: Service is ready to serve the versioned API
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '404':
+          description: The requested probe path was not found
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v1/tenants/{tenant_id}/subjects/{subject_id}/episodes:
     post:
       tags: [Episodes]
@@ -1005,6 +1041,12 @@ components:
       schema:
         type: string
         const: private, no-store
+    NoStore:
+      required: true
+      description: Prevents caching of process health data
+      schema:
+        type: string
+        const: no-store
     IdempotencyReplayed:
       required: false
       description: True only when the original completed response is replayed
