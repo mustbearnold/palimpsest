@@ -3509,6 +3509,29 @@ impl DeletionRepository for PostgresMemoryRepository {
         Ok(())
     }
 
+    async fn release_deletion_operation_lease(
+        &self,
+        claimed: &ClaimedDeletionOperation,
+        worker_id: uuid::Uuid,
+    ) -> Result<(), RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        set_scope_context(&mut transaction, claimed.tenant_id, claimed.subject_id).await?;
+        sqlx::query(
+            r#"
+            SELECT memory.release_deletion_operation_lease($1, $2, $3, $4)
+            "#,
+        )
+        .bind(claimed.tenant_id.0)
+        .bind(claimed.subject_id.0)
+        .bind(claimed.operation_id.0)
+        .bind(worker_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_deletion_sqlx)?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(())
+    }
+
     async fn claim_next_deletion_target(
         &self,
         claimed: &ClaimedDeletionOperation,
@@ -3797,6 +3820,16 @@ impl DeletionRepository for PostgresSubjectLifecycleRepository {
     ) -> Result<(), RepositoryError> {
         self.controller
             .renew_deletion_operation_lease(claimed, worker_id, lease_seconds)
+            .await
+    }
+
+    async fn release_deletion_operation_lease(
+        &self,
+        claimed: &ClaimedDeletionOperation,
+        worker_id: uuid::Uuid,
+    ) -> Result<(), RepositoryError> {
+        self.controller
+            .release_deletion_operation_lease(claimed, worker_id)
             .await
     }
 

@@ -19,11 +19,16 @@ const PRE_VECTOR_MIGRATIONS: [&str; 6] = [
     include_str!("../../../migrations/0006_authorized_lexical_retrieval.sql"),
 ];
 const VECTOR_MIGRATION: &str = include_str!("../../../migrations/0007_exact_vector_retrieval.sql");
-const CURRENT_MIGRATION_FILES: [&str; 4] = [
+const CURRENT_MIGRATION_FILES: [&str; 9] = [
     "0008_deterministic_temporal_retrieval.sql",
     "0009_subject_lifecycle_fence.sql",
     "0010_deletion_operations.sql",
     "0011_canonical_history_exports.sql",
+    "0012_deletion_rls_worker_paths.sql",
+    "0013_deletion_terminal_outcomes.sql",
+    "0014_bounded_projection_leases.sql",
+    "0015_restore_fence_replay.sql",
+    "0016_release_deletion_operation_lease.sql",
 ];
 
 const TENANT_ID: &str = "019be100-0000-7000-8000-000000000010";

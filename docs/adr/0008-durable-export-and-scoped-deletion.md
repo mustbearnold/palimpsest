@@ -253,6 +253,13 @@ persisted; errors are classified as `retryable_dependency`,
 `retryable_serialization`, `permanent_configuration`, or
 `invariant_violation`.
 
+When an external target effect fails after its target failure is durably
+recorded, the worker releases its operation lease before returning the error.
+The subject remains fenced and the target remains retryable, so another worker
+can reclaim the same operation immediately rather than waiting for lease
+expiry. If lease release also fails, the worker reports both failures and the
+operation remains recoverable through the normal lease-expiry path.
+
 Every supported target capability reports `verified`; unavailable optional
 adapters report `not_configured`. `completed` is capability-scoped and cannot
 claim an unimplemented provider. A failed configured target prevents

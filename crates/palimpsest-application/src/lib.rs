@@ -348,6 +348,12 @@ pub trait DeletionRepository: Send + Sync {
         lease_seconds: u32,
     ) -> Result<(), RepositoryError>;
 
+    async fn release_deletion_operation_lease(
+        &self,
+        claimed: &ClaimedDeletionOperation,
+        worker_id: Uuid,
+    ) -> Result<(), RepositoryError>;
+
     async fn claim_next_deletion_target(
         &self,
         claimed: &ClaimedDeletionOperation,
@@ -546,6 +552,8 @@ pub enum ServiceError {
     CheckpointTooLarge,
     #[error("retrieval request exceeds the supported size")]
     RetrievalTooLarge,
+    #[error("deletion worker target failure and operation lease release both failed")]
+    DeletionWorkerRecoveryFailed,
     #[error("service unavailable")]
     Unavailable,
 }
@@ -904,7 +912,14 @@ impl MemoryService {
                         )
                         .await
                         .map_err(map_repository)?;
-                    return Err(error);
+                    let release_result = self
+                        .lifecycle
+                        .release_deletion_operation_lease(&claimed, worker_id)
+                        .await;
+                    return match release_result {
+                        Ok(()) => Err(error),
+                        Err(_release_error) => Err(ServiceError::DeletionWorkerRecoveryFailed),
+                    };
                 }
                 let effect_receipt_sha256 = hex::encode(Sha256::digest(format!(
                     "palimpsest.deletion-target/v1:{}:{}:{}",

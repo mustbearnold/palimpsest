@@ -1692,6 +1692,13 @@ impl Problem {
                 "retrieval_request_too_large",
                 "Reduce the query or retrieval filter set.",
             ),
+            ServiceError::DeletionWorkerRecoveryFailed => Self::new(
+                "deletion-worker-recovery-failed",
+                "Deletion worker recovery failed",
+                StatusCode::SERVICE_UNAVAILABLE,
+                "deletion_worker_recovery_failed",
+                "The deletion worker could not release its operation lease after a target failure.",
+            ),
             ServiceError::Invalid(detail) => {
                 Self::bad_request("invalid_request", "Request is invalid", detail)
             }

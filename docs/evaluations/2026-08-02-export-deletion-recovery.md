@@ -5,8 +5,9 @@ Product profile: Palimpsest development HTTP service over PostgreSQL 18 plus
 pgvector 0.8.5, with forced RLS and the configured private filesystem export
 store
 Schema profile: migrations `0010_deletion_operations`,
-`0011_canonical_history_exports`, `0012_deletion_rls_worker_paths`, and
-`0015_restore_fence_replay`
+`0011_canonical_history_exports`, `0012_deletion_rls_worker_paths`,
+`0013_deletion_terminal_outcomes`, `0014_bounded_projection_leases`,
+`0015_restore_fence_replay`, and `0016_release_deletion_operation_lease`
 Worker profile: `palimpsest-deletion-worker/v1`
 Configured deletion targets: canonical memory, PostgreSQL projections, and
 the private filesystem export target
@@ -40,7 +41,11 @@ worker returns an unavailable result, records the sanitized
 The deletion worker is also run with a queued export and the same unavailable
 store after the subject fence is committed. It records `target_effect_failed`,
 keeps the export target pending and the operation in `purging`, and reports no
-verification or completion claim.
+verification or completion claim. A new content lease is rejected by the
+fence, and a mismatched-scope lease release is denied by forced RLS. Replacing
+the faulting file with a directory lets the same operation resume; it reaches
+`completed`, marks the export target `done` and `verified`, and clears the
+transient error.
 
 The complete local suite, PostgreSQL conformance, repository contract, denied
 warnings lint, and OpenAPI lint are the required gates for this evidence.

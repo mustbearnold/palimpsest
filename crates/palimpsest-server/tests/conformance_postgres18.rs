@@ -1538,7 +1538,7 @@ async fn deletion_worker_fails_closed_when_export_store_is_unavailable(
     )
     .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
 
-    service
+    let _export = service
         .create_export(
             &principal,
             tenant_id,
@@ -1556,6 +1556,40 @@ async fn deletion_worker_fails_closed_when_export_store_is_unavailable(
         )
         .await
         .context("create deletion before export store failure")?;
+    let fenced_lease = service
+        .acquire_subject_content_lease(&principal, tenant_id, subject_id)
+        .await;
+    ensure!(
+        matches!(fenced_lease, Err(ServiceError::NotFound)),
+        "deletion fence allowed a new subject content lease: {fenced_lease:?}"
+    );
+    let wrong_subject_id = Uuid::now_v7();
+    let mut authorization_transaction = pool.begin().await?;
+    sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+        .bind(tenant_id.0.to_string())
+        .execute(&mut *authorization_transaction)
+        .await?;
+    sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+        .bind(subject_id.0.to_string())
+        .execute(&mut *authorization_transaction)
+        .await?;
+    let unauthorized_release =
+        sqlx::query("SELECT memory.release_deletion_operation_lease($1, $2, $3, $4)")
+            .bind(tenant_id.0)
+            .bind(wrong_subject_id)
+            .bind(deletion.operation_id.0)
+            .bind(Uuid::now_v7())
+            .execute(&mut *authorization_transaction)
+            .await;
+    let denied_by_scope = match unauthorized_release {
+        Err(sqlx::Error::Database(error)) => error.code().as_deref() == Some("42501"),
+        Ok(_) | Err(_) => false,
+    };
+    authorization_transaction.rollback().await?;
+    ensure!(
+        denied_by_scope,
+        "deletion lease release did not reject a mismatched subject scope"
+    );
     let worker_result = service.run_deletion_worker_once().await;
     let operation = service
         .poll_subject_deletion(&principal, tenant_id, subject_id, deletion.operation_id)
@@ -1576,6 +1610,43 @@ async fn deletion_worker_fails_closed_when_export_store_is_unavailable(
     ensure!(exports_target.state == DeletionTargetState::Pending);
     ensure!(exports_target.verification == DeletionTargetVerification::Pending);
     ensure!(exports_target.sanitized_error.as_deref() == Some("target_effect_failed"));
+
+    fs::create_dir_all(&fault_path).context("repair export store after injected failure")?;
+    let mut recovered_operation = None;
+    let mut last_recovered_view = None;
+    for _ in 0..8 {
+        service
+            .run_deletion_worker_once()
+            .await
+            .context("resume deletion after export store repair")?;
+        let view = service
+            .poll_subject_deletion(&principal, tenant_id, subject_id, deletion.operation_id)
+            .await
+            .context("read deletion after export store repair")?;
+        last_recovered_view = Some(view.clone());
+        if view.lifecycle_state == DeletionOperationState::Completed {
+            recovered_operation = Some(view);
+            break;
+        }
+        ensure!(view.lifecycle_state == DeletionOperationState::Purging);
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let recovered_operation = match recovered_operation {
+        Some(operation) => operation,
+        None => bail!(
+            "repaired deletion did not reach completed within the worker budget: {last_recovered_view:?}"
+        ),
+    };
+    let _ = fs::remove_dir_all(&fault_path);
+    ensure!(recovered_operation.lifecycle_state == DeletionOperationState::Completed);
+    let recovered_exports_target = recovered_operation
+        .targets
+        .iter()
+        .find(|target| target.target_name == DeletionTargetName::Exports)
+        .context("recovered deletion omitted configured export target")?;
+    ensure!(recovered_exports_target.state == DeletionTargetState::Done);
+    ensure!(recovered_exports_target.verification == DeletionTargetVerification::Verified);
+    ensure!(recovered_exports_target.sanitized_error.is_none());
     Ok(())
 }
 
@@ -4851,6 +4922,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.poll_deletion_operation(uuid, uuid, uuid), \
                  memory.claim_next_deletion_operation(uuid, integer), \
                  memory.renew_deletion_operation_lease(uuid, uuid, uuid, uuid, integer), \
+                 memory.release_deletion_operation_lease(uuid, uuid, uuid, uuid), \
                  memory.claim_next_deletion_target(uuid, uuid, uuid, uuid, uuid, integer), \
                  memory.renew_deletion_target_lease(uuid, uuid, uuid, uuid, character, uuid, integer), \
                  memory.fail_deletion_target(uuid, uuid, uuid, uuid, text, character, uuid, text, integer), \
