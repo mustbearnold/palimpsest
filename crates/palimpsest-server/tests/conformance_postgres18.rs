@@ -1210,6 +1210,17 @@ async fn exercise_export_and_deletion_http(
             .get(header::CACHE_CONTROL)
             .is_some_and(|value| value == "private, no-store")
     );
+    let export_after_fence = client
+        .post(&export_url)
+        .bearer_auth(bearer_token)
+        .header("Idempotency-Key", "export-after-deletion-fence")
+        .send()
+        .await?;
+    ensure!(
+        export_after_fence.status() == StatusCode::NOT_FOUND,
+        "export creation after deletion fence disclosed a new operation: {}",
+        export_after_fence.status()
+    );
     let deletion_status_url = deletion_response
         .headers()
         .get(header::LOCATION)
