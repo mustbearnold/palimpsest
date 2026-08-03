@@ -1,0 +1,70 @@
+# Palimpsest v3 development status
+
+Date: 2026-08-03
+
+Status: active v3 development on the sole local and remote `main` branch. This
+is not an official release or a production-readiness claim.
+
+## Working
+
+- PostgreSQL 18 plus pgvector is the canonical temporal memory store. Episodes,
+  fact-revision chains, checkpoints, provenance, retention, sensitivity, and
+  authorization are durable and tested.
+- Current and as-of retrieval applies authorization and temporal filters before
+  lexical or exact-vector candidate generation. Durable receipts preserve the
+  policy and provenance needed to explain a result.
+- Checkpoints, export operations, scoped deletion, projection leases, and
+  restore-fence replay have HTTP/PostgreSQL conformance over the local
+  development profile.
+- The dependency-free Python and TypeScript clients use the governed HTTP
+  boundary, including checkpoint, export, deletion, and per-project recall
+  helpers.
+- Codex, Claude Code, and Hermes user/assistant text can be ingested with
+  resumable cursors, idempotent writes, common credential redaction, stable
+  project identities, and exact project namespaces.
+- `watch --discover` checks the conventional current-user stores, and the
+  optional Linux systemd user service can supervise that watcher continuously.
+- A guarded PostgreSQL custom-format logical backup rehearsal can restore into
+  an isolated empty database and compare content-free schema, extension,
+  migration, and selected row-count probes.
+
+## Somewhat working
+
+- Multiple-project understanding currently means clean evidence separation:
+  each project gets its own namespace and `recall_by_project` returns one
+  retrieval bundle per project. A caller or model can compare those bundles
+  without cross-project candidate mixing.
+- The ingestion adapters handle the observed local Codex, Claude Code, and
+  Hermes seams, but they are not provider APIs, native hooks, or a universal
+  transcript parser. Tool rows, private thinking, system prompts, and tool
+  results are deliberately excluded.
+- Export packages use a private local filesystem store. The deterministic
+  package contract and failure/recovery tests work, but S3-compatible object
+  storage is not yet a shipped adapter.
+- Restore work proves database-copy replay and logical dump/restore. It does
+  not prove base-backup/WAL/PITR recovery, backup expiry, or production RPO/RTO.
+- The default server embedding provider is unavailable; exact and lexical
+  retrieval remain the correctness path, while an external embedding provider
+  is an integration boundary rather than a hidden fallback.
+
+## Not working yet
+
+- Automatic semantic project diffs, conflict explanations, or model-driven
+  consolidation of raw session messages into higher-level facts.
+- Valkey/Redis cache and S3-compatible artifact/object adapters with their
+  deletion, revocation, outage, and recovery contracts.
+- Provider-managed backup/PITR orchestration, independent backup disposition,
+  and full restore suppression against a real backup provider.
+- Million-revision latency, throughput, cost, capacity, availability, and SLA
+  evidence.
+- External identity and credential rotation, public procedure/artifact APIs,
+  multi-region writes, hosted control plane, and official production release
+  gates.
+
+## Next v3 frontier
+
+The next high-value slices are production-shaped object/cache contracts with
+deterministic fault injection, measured scale evidence, and a governed
+semantic-comparison/consolidation boundary that keeps every durable write
+attributable. v3 is only honest when those remaining boundaries are either
+implemented with evidence or clearly retained as non-claims.

@@ -10,13 +10,15 @@ truth.
 
 ## Status
 
-Palimpsest is a defensible v2 development milestone for a self-hosted,
+Palimpsest is active v3 development on the sole local and remote `main` branch.
+It is a self-hosted,
 PostgreSQL-backed agent memory service. It includes temporal memory, hybrid
 retrieval, crash-safe checkpoints, canonical-history exports, fenced subject
 deletion, fail-closed restore replay, a local Codex MCP adapter, and a
 dependency-free Python client for the governed lifecycle. It is not an
-official or production release. See the [v2 status](docs/V2_STATUS.md) for the
-evidence and the deliberately unclaimed deployment boundaries.
+official or production release. See [V3_STATUS.md](docs/V3_STATUS.md) for the
+current evidence and deliberately unclaimed boundaries; [V2_STATUS.md](docs/V2_STATUS.md)
+remains the baseline milestone record.
 
 ## Product commitments
 
