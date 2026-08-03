@@ -113,6 +113,25 @@ unmatched ledger evidence fails closed. This repository still does not provide
 a backup/PITR adapter, backup disposition check, or the broad export/deletion
 negative HTTP conformance gate for every configured external target.
 
+Operators can preflight the independent ledger without database access, then
+run the explicit replay command:
+
+```bash
+PALIMPSEST_RESTORE_FENCE_LEDGER_PATH=/secure/fences/current.json \
+PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256='...' \
+  cargo run --locked -- restore verify
+
+PALIMPSEST_RESTORE_DATABASE_URL='postgresql://restore-authority:password@db/palimpsest' \
+PALIMPSEST_RESTORE_FENCE_LEDGER_PATH=/secure/fences/current.json \
+PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256='...' \
+  cargo run --locked -- restore apply
+```
+
+`restore verify` reports only the profile, schema, entry count, generation
+time, and ledger digest. `restore apply` is the mutating, privileged replay
+operation and never starts HTTP; the environment-driven restore mode remains
+available for automation that already uses it.
+
 With Docker, stop PostgreSQL without deleting its volume:
 
 ```bash

@@ -18,9 +18,10 @@ async fn main() -> Result<()> {
     match env::args().nth(1).as_deref() {
         Some("doctor") => return run_doctor().await,
         Some("migrate") => return run_migrate().await,
+        Some("restore") => return run_restore().await,
         Some("--help" | "-h") => {
             write_stdout(
-                "Usage: palimpsest-server [doctor|migrate]\n  doctor  check PostgreSQL, pgvector, schema, and runtime-role prerequisites\n  migrate status|plan|apply  inspect or apply checked-in SQLx migrations",
+                "Usage: palimpsest-server [doctor|migrate|restore]\n  doctor  check PostgreSQL, pgvector, schema, and runtime-role prerequisites\n  migrate status|plan|apply  inspect or apply checked-in SQLx migrations\n  restore verify|apply  verify a fence ledger or replay it against the restore database",
             )?;
             return Ok(());
         }
@@ -79,6 +80,77 @@ async fn main() -> Result<()> {
     .await
     .context("serve HTTP API")?;
     Ok(())
+}
+
+async fn run_restore() -> Result<()> {
+    let operation = env::args().nth(2);
+    if matches!(operation.as_deref(), Some("--help" | "-h") | None) {
+        write_stdout(
+            "Usage: palimpsest-server restore <verify|apply>\n  restore verify  validate the independent fence ledger without database access\n  restore apply   replay the verified fence ledger against PALIMPSEST_RESTORE_DATABASE_URL",
+        )?;
+        if operation.is_none() {
+            bail!("restore operation is required");
+        }
+        return Ok(());
+    }
+    match operation.as_deref() {
+        Some("verify") => run_restore_verify().await,
+        Some("apply") => run_restore_mode().await,
+        Some(operation) => bail!("unknown restore operation {operation}"),
+        None => unreachable!("restore operation was checked above"),
+    }
+}
+
+async fn run_restore_verify() -> Result<()> {
+    let ledger_path = match env::var("PALIMPSEST_RESTORE_FENCE_LEDGER_PATH") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            write_restore_failure("ledger-path-missing")?;
+            bail!("restore verification failed");
+        }
+    };
+    let expected_sha256 = match env::var("PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            write_restore_failure("ledger-digest-missing")?;
+            bail!("restore verification failed");
+        }
+    };
+    let bytes = match fs::read(&ledger_path) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            write_restore_failure("ledger-read-failed")?;
+            bail!("restore verification failed");
+        }
+    };
+    let ledger = match verify_restore_fence_ledger(
+        Some(&bytes),
+        &expected_sha256,
+        OffsetDateTime::now_utc(),
+    ) {
+        Ok(ledger) => ledger,
+        Err(_) => {
+            write_restore_failure("ledger-verification-failed")?;
+            bail!("restore verification failed");
+        }
+    };
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "verify",
+        "status": "verified",
+        "profile": ledger.profile,
+        "schema_version": ledger.schema_version,
+        "generated_at": ledger.generated_at,
+        "entry_count": ledger.entries.len(),
+        "ledger_sha256": ledger.ledger_sha256
+    }))?)
+}
+
+fn write_restore_failure(code: &str) -> Result<()> {
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "verify",
+        "status": "blocked",
+        "error": {"code": code}
+    }))?)
 }
 
 async fn run_migrate() -> Result<()> {
