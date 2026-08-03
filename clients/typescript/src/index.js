@@ -5,6 +5,7 @@ const TOKEN_PATTERN = /[a-z0-9]+/g;
 const LEXICAL_OVERLAP_THRESHOLD = 0.5;
 const LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS = 3;
 const LEXICAL_OVERLAP_MAXIMUM_CANDIDATES = 100;
+const LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET = 20;
 
 export class PalimpsestError extends Error {}
 
@@ -678,10 +679,12 @@ function buildLexicalReview(textItems) {
       const ordered = [left, right].sort((first, second) => (
         first.projectId.localeCompare(second.projectId) || first.itemIndex - second.itemIndex
       ));
+      const [first, second] = ordered;
       candidates.push({
         similarity: Math.round(similarity * 1_000_000) / 1_000_000,
         projects: ordered.map((item) => item.projectId),
         items: ordered.map((item) => lexicalItemRef(item)),
+        token_delta: tokenDelta(first, second),
       });
     }
   }
@@ -695,8 +698,25 @@ function buildLexicalReview(textItems) {
     profile: "token-jaccard-v1",
     threshold: LEXICAL_OVERLAP_THRESHOLD,
     minimum_shared_tokens: LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS,
+    maximum_tokens_per_bucket: LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
     truncated: candidates.length > LEXICAL_OVERLAP_MAXIMUM_CANDIDATES,
     candidates: candidates.slice(0, LEXICAL_OVERLAP_MAXIMUM_CANDIDATES),
+  };
+}
+
+function tokenDelta(first, second) {
+  const shared = [...first.tokens].filter((token) => second.tokens.has(token)).sort();
+  const firstOnly = [...first.tokens].filter((token) => !second.tokens.has(token)).sort();
+  const secondOnly = [...second.tokens].filter((token) => !first.tokens.has(token)).sort();
+  return {
+    shared: shared.slice(0, LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET),
+    only_in: {
+      [first.projectId]: firstOnly.slice(0, LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET),
+      [second.projectId]: secondOnly.slice(0, LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET),
+    },
+    truncated: [shared, firstOnly, secondOnly].some(
+      (tokens) => tokens.length > LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
+    ),
   };
 }
 

@@ -22,7 +22,9 @@ SHA-256 digests of JSON values. It reports exact matches, project-specific
 keys, and same-key/different-value review candidates together with references
 to the visible fact and revision IDs. It also reports at most 100 token-Jaccard
 overlap candidates across differently keyed content items, using a 0.5
-similarity threshold and at least three shared tokens.
+similarity threshold and at least three shared tokens. Each candidate includes
+at most 20 shared tokens and 20 tokens that occur only in each project, with a
+truncation flag.
 
 The comparison returns the original project-keyed bundles, performs no model
 inference, writes no memory, and labels both same-key/different-value and
@@ -35,6 +37,7 @@ future boundary.
 Agents get a stable, privacy-conscious shortlist for cross-project review while
 authorization and temporal correctness remain owned by the HTTP service. The
 summary is deterministic and reproducible, but it cannot explain intent or
-establish that two differently worded memories mean the same thing. Transcript
-event keys remain unique by source/event, so lexical candidates are hints for
-an agent to inspect, not automatic alignments.
+establish that two differently worded memories mean the same thing. The token
+delta is a wording hint, not a semantic explanation. Transcript event keys
+remain unique by source/event, so lexical candidates are hints for an agent to
+inspect, not automatic alignments.

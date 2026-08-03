@@ -257,5 +257,11 @@ test("compareProjectBundles returns bounded lexical review candidates", () => {
   assert.equal(comparison.lexical_review.profile, "token-jaccard-v1");
   assert.equal(comparison.summary.lexical_review_candidate_count, 1);
   assert.ok(comparison.lexical_review.candidates[0].similarity >= 0.5);
+  assert.deepEqual(comparison.lexical_review.candidates[0].token_delta.only_in, {
+    "project-a": ["stable"],
+    "project-b": ["beta"],
+  });
+  assert.ok(comparison.lexical_review.candidates[0].token_delta.shared.includes("release"));
+  assert.equal(comparison.lexical_review.candidates[0].token_delta.truncated, false);
   assert.equal(comparison.semantic_inference.performed, false);
 });

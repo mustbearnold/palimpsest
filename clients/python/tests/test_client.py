@@ -342,6 +342,11 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(comparison["lexical_review"]["profile"], "token-jaccard-v1")
         self.assertEqual(comparison["summary"]["lexical_review_candidate_count"], 1)
         self.assertGreaterEqual(comparison["lexical_review"]["candidates"][0]["similarity"], 0.5)
+        candidate = comparison["lexical_review"]["candidates"][0]
+        self.assertEqual(candidate["token_delta"]["only_in"]["project-a"], ["stable"])
+        self.assertEqual(candidate["token_delta"]["only_in"]["project-b"], ["beta"])
+        self.assertIn("release", candidate["token_delta"]["shared"])
+        self.assertFalse(candidate["token_delta"]["truncated"])
         self.assertFalse(comparison["semantic_inference"]["performed"])
 
     def test_correct_uses_strong_etag_and_forget_starts_deletion(self) -> None:

@@ -205,7 +205,8 @@ codex mcp add palimpsest \
 Codex will then have `palimpsest_retrieve` for authorized current-memory
 searches, `palimpsest_recall_by_project` for isolated side-by-side project
 evidence, `palimpsest_compare_by_project` for deterministic key/value-digest
-review candidates, and `palimpsest_remember` for explicitly requested saves.
+review candidates plus bounded token-difference hints, and
+`palimpsest_remember` for explicitly requested saves.
 The comparison tool does not infer semantic conflicts or consolidate memories.
 The adapter uses the HTTP API, keeps the configured tenant and subject scope,
 and never exposes delete or export operations. Verify registration with

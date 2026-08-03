@@ -14,6 +14,7 @@ _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _LEXICAL_OVERLAP_THRESHOLD = 0.5
 _LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS = 3
 _LEXICAL_OVERLAP_MAXIMUM_CANDIDATES = 100
+_LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET = 20
 
 
 def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
@@ -170,14 +171,22 @@ def _lexical_review(text_items: list[dict[str, Any]]) -> dict[str, Any]:
                 ),
                 key=lambda value: (value[0], value[1]),
             )
+            first_project, _, first_item = ordered[0]
+            second_project, _, second_item = ordered[1]
             candidates.append(
                 {
                     "similarity": round(score, 6),
-                    "projects": [ordered[0][0], ordered[1][0]],
+                    "projects": [first_project, second_project],
                     "items": [
                         _lexical_item_ref(ordered[0][2]),
                         _lexical_item_ref(ordered[1][2]),
                     ],
+                    "token_delta": _token_delta(
+                        first_project,
+                        first_item["tokens"],
+                        second_project,
+                        second_item["tokens"],
+                    ),
                 }
             )
     candidates.sort(
@@ -192,8 +201,36 @@ def _lexical_review(text_items: list[dict[str, Any]]) -> dict[str, Any]:
         "profile": "token-jaccard-v1",
         "threshold": _LEXICAL_OVERLAP_THRESHOLD,
         "minimum_shared_tokens": _LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS,
+        "maximum_tokens_per_bucket": _LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
         "truncated": truncated,
         "candidates": candidates[:_LEXICAL_OVERLAP_MAXIMUM_CANDIDATES],
+    }
+
+
+def _token_delta(
+    first_project: str,
+    first_tokens: frozenset[str],
+    second_project: str,
+    second_tokens: frozenset[str],
+) -> dict[str, Any]:
+    buckets = {
+        "shared": sorted(first_tokens & second_tokens),
+        "only_in": {
+            first_project: sorted(first_tokens - second_tokens),
+            second_project: sorted(second_tokens - first_tokens),
+        },
+    }
+    truncated = any(
+        len(tokens) > _LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET
+        for tokens in [buckets["shared"], *buckets["only_in"].values()]
+    )
+    return {
+        "shared": buckets["shared"][:_LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET],
+        "only_in": {
+            project_id: tokens[:_LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET]
+            for project_id, tokens in buckets["only_in"].items()
+        },
+        "truncated": truncated,
     }
 
 

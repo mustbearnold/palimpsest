@@ -41,7 +41,8 @@ is not an official release or a production-readiness claim.
   return one retrieval bundle per project, and comparison groups exact keys by
   canonical value digest. Same-key/different-value groups are review
   candidates, not semantic conflict conclusions; bounded token-overlap hints
-  also connect differently keyed session messages for agent review.
+  also connect differently keyed session messages for agent review and include
+  a bounded shared/only-in token delta.
 - The ingestion adapters handle the observed local Codex, Claude Code, and
   Hermes seams, but they are not provider APIs, native hooks, or a universal
   transcript parser. Tool rows, private thinking, system prompts, and tool
