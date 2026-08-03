@@ -13,7 +13,7 @@ use palimpsest_application::{
     UnavailableEmbeddingProvider,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
-use palimpsest_http::Authenticator;
+use palimpsest_http::{Authenticator, ContentLeaseCleanupCounters};
 use palimpsest_postgres::{PostgresMemoryRepository, PostgresSubjectLifecycleRepository};
 use sqlx::PgPool;
 
@@ -98,17 +98,63 @@ fn app_with_embedding_provider_and_workers(
 }
 
 pub fn probe_router(runtime_pool: PgPool) -> Router {
-    Router::new().route("/healthz", get(health_status)).route(
-        "/readyz",
-        get(move || {
-            let pool = runtime_pool.clone();
-            async move { readiness_status(pool).await }
-        }),
-    )
+    Router::new()
+        .route("/healthz", get(health_status))
+        .route("/metrics", get(metrics_status))
+        .route(
+            "/readyz",
+            get(move || {
+                let pool = runtime_pool.clone();
+                async move { readiness_status(pool).await }
+            }),
+        )
 }
 
 async fn health_status() -> impl IntoResponse {
     (StatusCode::OK, [(header::CACHE_CONTROL, "no-store")])
+}
+
+async fn metrics_status() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (
+                header::CONTENT_TYPE,
+                "text/plain; version=0.0.4; charset=utf-8",
+            ),
+        ],
+        metrics_body(palimpsest_http::content_lease_cleanup_counters()),
+    )
+}
+
+fn metrics_body(counters: ContentLeaseCleanupCounters) -> String {
+    format!(
+        "# HELP palimpsest_build_info Palimpsest build identity.\n\
+# TYPE palimpsest_build_info gauge\n\
+palimpsest_build_info{{version=\"{}\"}} 1\n\
+# HELP palimpsest_schema_version Latest schema migration version in this binary.\n\
+# TYPE palimpsest_schema_version gauge\n\
+palimpsest_schema_version {}\n\
+# HELP palimpsest_content_lease_release_retries_total Content lease release retries.\n\
+# TYPE palimpsest_content_lease_release_retries_total counter\n\
+palimpsest_content_lease_release_retries_total {}\n\
+# HELP palimpsest_content_lease_release_runtime_unavailable_total Content lease releases deferred because runtime cleanup was unavailable.\n\
+# TYPE palimpsest_content_lease_release_runtime_unavailable_total counter\n\
+palimpsest_content_lease_release_runtime_unavailable_total {}\n\
+# HELP palimpsest_content_lease_release_outstanding Content lease releases queued for cleanup.\n\
+# TYPE palimpsest_content_lease_release_outstanding gauge\n\
+palimpsest_content_lease_release_outstanding {}\n\
+# HELP palimpsest_content_lease_release_deferred_to_expiry_total Content lease releases deferred to lease expiry.\n\
+# TYPE palimpsest_content_lease_release_deferred_to_expiry_total counter\n\
+palimpsest_content_lease_release_deferred_to_expiry_total {}\n",
+        env!("CARGO_PKG_VERSION"),
+        palimpsest_postgres::latest_migration_version(),
+        counters.release_retries,
+        counters.runtime_unavailable,
+        counters.outstanding,
+        counters.deferred_to_expiry,
+    )
 }
 
 async fn readiness_status(pool: PgPool) -> impl IntoResponse {
@@ -241,4 +287,41 @@ fn spawn_export_worker(service: MemoryService) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metrics_surface_is_fixed_and_content_free() {
+        let body = metrics_body(palimpsest_http::ContentLeaseCleanupCounters {
+            release_retries: 2,
+            runtime_unavailable: 3,
+            outstanding: 4,
+            deferred_to_expiry: 5,
+        });
+
+        assert!(body.contains("# TYPE palimpsest_build_info gauge\n"));
+        assert!(body.contains("palimpsest_schema_version 16\n"));
+        assert!(body.contains("palimpsest_content_lease_release_retries_total 2\n"));
+        assert!(body.contains("palimpsest_content_lease_release_runtime_unavailable_total 3\n"));
+        assert!(body.contains("palimpsest_content_lease_release_outstanding 4\n"));
+        assert!(body.contains("palimpsest_content_lease_release_deferred_to_expiry_total 5\n"));
+        assert!(!body.contains("tenant"));
+        assert!(!body.contains("subject"));
+        assert!(!body.contains("memory"));
+        assert!(!body.contains("password"));
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_is_cache_free_and_does_not_need_database_access() {
+        let response = metrics_status().await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/plain; version=0.0.4; charset=utf-8"
+        );
+    }
 }

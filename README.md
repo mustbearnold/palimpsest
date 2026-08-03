@@ -84,7 +84,10 @@ The service listens on `http://127.0.0.1:8080`. Docker PostgreSQL listens only
 on `127.0.0.1:5432`; the local fallback uses `127.0.0.1:55432`. `GET /healthz` is a content-free liveness probe and
 `GET /readyz` checks database connectivity plus the exact successful SQLx
 migration set shipped by this binary. Both probes require no authentication
-and disclose no memory data. The HTTP service uses a synthetic, non-superuser
+and disclose no memory data. `GET /metrics` is also unauthenticated and emits
+fixed Prometheus text with only build/schema identity and content-lease cleanup
+counters; it does not perform a database query or include scope labels. The
+HTTP service uses a synthetic, non-superuser
 PostgreSQL role so forced row-level security remains active. The local launcher
 allows the `internal` sensitivity by default so retrieval has a useful but
 explicitly narrow development scope. Override the `PALIMPSEST_*`
