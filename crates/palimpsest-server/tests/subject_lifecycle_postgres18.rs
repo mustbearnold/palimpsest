@@ -807,6 +807,7 @@ async fn pending_subject_is_hidden_from_existing_http_reads_and_writes() -> Resu
               + (SELECT count(*) FROM memory.facts)
               + (SELECT count(*) FROM memory.fact_revisions)
               + (SELECT count(*) FROM memory.fact_revision_evidence)
+              + (SELECT count(*) FROM memory.fact_revision_current)
               + (SELECT count(*) FROM memory.write_audit_receipts)
               + (SELECT count(*) FROM memory.outbox_intents)
               + (SELECT count(*) FROM memory.checkpoints)

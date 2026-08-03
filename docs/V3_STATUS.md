@@ -37,6 +37,12 @@ is not an official release or a production-readiness claim.
 - An optional S3-compatible export package store is wired behind the same
   contract as the private filesystem store, with SigV4 signing, conditional
   publication, retry comparison, and delete-already-absent semantics.
+- Current lexical and hybrid retrieval use a scope-protected derived current
+  fact-revision projection, with canonical-history fallback for as-of and
+  missing-pointer cases. An owner-only rebuild function repairs an active
+  scope from canonical history, and restore/deletion residual accounting
+  includes the projection. Migration replay and bitemporal conformance cover
+  the new path.
 
 ## Somewhat working
 
@@ -58,10 +64,12 @@ is not an official release or a production-readiness claim.
   behavior is not yet evidenced.
 - A rollback-only scale probe is repeatable and content-free. Its first
   100,000-revision local profile measured p95 3.857 seconds and p99 3.923
-  seconds, so it is a useful baseline but currently misses the proposed
-  release latency target. Each run now emits a bounded EXPLAIN node profile,
-  which identifies the current-revision and authorization work to measure in
-  the next optimization experiment.
+  seconds. The checked-in completeness-preserving current-row path measured
+  p95 4.264 seconds and p99 4.312 seconds, so it is not claimed as a latency
+  improvement. A per-request canonical stale guard was also measured and
+  rejected at p95 4.609 seconds. Each run emits a bounded EXPLAIN node profile,
+  so these rejections are measurable without exposing synthetic values or raw
+  SQL.
 - Restore work proves database-copy replay and logical dump/restore. It does
   not prove base-backup/WAL/PITR recovery, backup expiry, or production RPO/RTO.
 - The default server embedding provider is unavailable; exact and lexical
@@ -74,6 +82,13 @@ is not an official release or a production-readiness claim.
   consolidation of raw session messages into higher-level facts. The new
   validator can check an external interpretation, but Palimpsest still does
   not call a model or promote that interpretation automatically.
+- Automatic per-request detection of arbitrary out-of-band corruption in the
+  derived current-revision projection. The owner-only rebuild path exists, but
+  a canonical latest-row comparison on every request was measured and
+  rejected.
+- Concurrent, cold-cache, million-revision, and SLA-scale retrieval evidence;
+  the current projection is a measured operability path, not a performance
+  claim against the proposed gate.
 - Valkey/Redis cache plus provider-specific artifact/object deletion,
   revocation, outage, and recovery evidence.
 - Provider-managed backup/PITR orchestration, independent backup disposition,
@@ -87,9 +102,10 @@ is not an official release or a production-readiness claim.
 
 ## Next v3 frontier
 
-The next high-value slices are deterministic object/cache fault injection,
-query-plan/index remediation followed by concurrent million-revision evidence,
-and an explicit governed consolidation workflow over validated review claims.
+The next high-value slices are a cheaper completeness/fallback boundary,
+deterministic object/cache fault injection, concurrent million-revision
+evidence, and an explicit governed consolidation workflow over validated review
+claims.
 v3 is only honest when those remaining
 boundaries are either implemented with evidence or clearly retained as
 non-claims.

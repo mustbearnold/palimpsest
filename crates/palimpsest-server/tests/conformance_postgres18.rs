@@ -667,6 +667,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         let scenario = async {
             records_and_reads_an_immutable_episode(&scenario_target).await?;
             creates_an_attributable_fact_revision(&scenario_target).await?;
+            rebuilds_the_current_fact_revision_projection(&migration_pool, &scenario_target)
+                .await?;
             creates_and_replays_a_lexical_retrieval_receipt(&scenario_target).await?;
             supersedes_the_fact_head(&scenario_target).await?;
             reconstructs_both_temporal_axes(&scenario_target).await?;
@@ -990,6 +992,7 @@ async fn exercise_restore_fence_replay(
         "fact_revision_evidence",
         "fact_revision_governance",
         "fact_revision_search_documents",
+        "fact_revision_current",
         "fact_revisions",
         "checkpoints",
         "checkpoint_revisions",
@@ -1209,6 +1212,9 @@ async fn restore_scope_row_counts(
             UNION ALL
             SELECT 'fact_revisions', count(*)::bigint
             FROM memory.fact_revisions WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revision_current', count(*)::bigint
+            FROM memory.fact_revision_current WHERE tenant_id = $1 AND subject_id = $2
             UNION ALL
             SELECT 'fact_revision_evidence', count(*)::bigint
             FROM memory.fact_revision_evidence WHERE tenant_id = $1 AND subject_id = $2
@@ -5018,6 +5024,162 @@ async fn set_retrieval_test_scope(
     Ok(())
 }
 
+async fn rebuilds_the_current_fact_revision_projection(
+    migration_pool: &PgPool,
+    target: &Target,
+) -> Result<()> {
+    let fact_id: Uuid = sqlx::query_scalar(
+        "SELECT fact_id FROM memory.facts
+         WHERE tenant_id = $1 AND subject_id = $2
+           AND namespace = 'case.profile' AND fact_key = 'shipping_address'",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    let expected_revision_id: Uuid = sqlx::query_scalar(
+        "SELECT revision_id FROM memory.fact_revision_current
+         WHERE tenant_id = $1 AND subject_id = $2 AND fact_id = $3",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fact_id)
+    .fetch_one(migration_pool)
+    .await?;
+
+    let quoted_session_role: String = sqlx::query_scalar("SELECT quote_ident(session_user::text)")
+        .fetch_one(migration_pool)
+        .await?;
+    let denied_role = format!(
+        "palimpsest_current_repair_denied_{}",
+        Uuid::now_v7().simple()
+    );
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE ROLE \"{denied_role}\" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE \
+         NOINHERIT NOREPLICATION NOBYPASSRLS"
+    )))
+    .execute(migration_pool)
+    .await?;
+    sqlx::query(AssertSqlSafe(format!(
+        "GRANT \"{denied_role}\" TO {quoted_session_role}"
+    )))
+    .execute(migration_pool)
+    .await?;
+    sqlx::raw_sql(AssertSqlSafe(format!(
+        "GRANT USAGE ON SCHEMA memory TO \"{denied_role}\"; \
+         GRANT SELECT ON memory.subject_lifecycles TO \"{denied_role}\"; \
+         GRANT SELECT, DELETE ON memory.fact_revision_current TO \"{denied_role}\"; \
+         GRANT EXECUTE ON FUNCTION \
+         memory.subject_lifecycle_allows_content(uuid, uuid), \
+         memory.deletion_workflow_allows(uuid, uuid) \
+         TO \"{denied_role}\""
+    )))
+    .execute(migration_pool)
+    .await?;
+    let denied_result = async {
+        let mut transaction = migration_pool.begin().await?;
+        sqlx::query(AssertSqlSafe(format!("SET LOCAL ROLE \"{denied_role}\"")))
+            .execute(&mut *transaction)
+            .await?;
+        let result =
+            sqlx::query_scalar::<_, i64>("SELECT memory.rebuild_fact_revision_current($1, $2)")
+                .bind(target.tenant_id)
+                .bind(target.subject_id)
+                .fetch_one(&mut *transaction)
+                .await;
+        ensure!(result.is_err(), "restricted role executed current repair");
+        transaction.rollback().await?;
+        Ok::<(), anyhow::Error>(())
+    }
+    .await;
+    let cross_scope_result = async {
+        let mut transaction = migration_pool.begin().await?;
+        sqlx::query(AssertSqlSafe(format!("SET LOCAL ROLE \"{denied_role}\"")))
+            .execute(&mut *transaction)
+            .await?;
+        set_retrieval_test_scope(&mut transaction, target).await?;
+        sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+            .bind(target.principal_a_secondary_subject_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "SELECT set_config(
+                'palimpsest.fact_revision_current_repair',
+                'palimpsest-fact-current-repair-v1',
+                true
+            )",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        let result = sqlx::query(
+            "DELETE FROM memory.fact_revision_current
+             WHERE tenant_id = $1 AND subject_id = $2 AND fact_id = $3",
+        )
+        .bind(target.tenant_id)
+        .bind(target.subject_id)
+        .bind(fact_id)
+        .execute(&mut *transaction)
+        .await?;
+        ensure!(
+            result.rows_affected() == 0,
+            "restricted repair role crossed the configured subject scope"
+        );
+        transaction.rollback().await?;
+        Ok::<(), anyhow::Error>(())
+    }
+    .await;
+    let cleanup_role = sqlx::raw_sql(AssertSqlSafe(format!(
+        "DROP OWNED BY \"{denied_role}\"; \
+         REVOKE \"{denied_role}\" FROM {quoted_session_role}; \
+         DROP ROLE \"{denied_role}\""
+    )))
+    .execute(migration_pool)
+    .await;
+    denied_result?;
+    cross_scope_result?;
+    cleanup_role?;
+
+    let mut transaction = migration_pool.begin().await?;
+    set_retrieval_test_scope(&mut transaction, target).await?;
+    sqlx::query(
+        "SELECT set_config(
+            'palimpsest.fact_revision_current_repair',
+            'palimpsest-fact-current-repair-v1',
+            true
+        )",
+    )
+    .execute(&mut *transaction)
+    .await?;
+    let deleted = sqlx::query(
+        "DELETE FROM memory.fact_revision_current
+         WHERE tenant_id = $1 AND subject_id = $2 AND fact_id = $3",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fact_id)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(deleted.rows_affected() == 1);
+    let rebuilt: i64 = sqlx::query_scalar("SELECT memory.rebuild_fact_revision_current($1, $2)")
+        .bind(target.tenant_id)
+        .bind(target.subject_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+    ensure!(rebuilt >= 1);
+    let repaired_revision_id: Uuid = sqlx::query_scalar(
+        "SELECT revision_id FROM memory.fact_revision_current
+         WHERE tenant_id = $1 AND subject_id = $2 AND fact_id = $3",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(fact_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(repaired_revision_id == expected_revision_id);
+    transaction.commit().await?;
+    Ok(())
+}
+
 async fn verify_retrieval_manifest_is_authorized(
     pool: &PgPool,
     target: &Target,
@@ -5179,6 +5341,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.facts, \
                  memory.fact_revisions, \
                  memory.fact_revision_evidence, \
+                 memory.fact_revision_current, \
                  memory.checkpoints, \
                  memory.checkpoint_revisions, \
                  memory.fact_revision_governance, \
@@ -5327,6 +5490,8 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                   + (SELECT count(*) FROM memory.facts
                      WHERE tenant_id = $1 AND subject_id = $2)
                   + (SELECT count(*) FROM memory.fact_revisions
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.fact_revision_current
                      WHERE tenant_id = $1 AND subject_id = $2)
                   + (SELECT count(*) FROM memory.checkpoints
                      WHERE tenant_id = $1 AND subject_id = $2)

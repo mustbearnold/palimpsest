@@ -19,7 +19,7 @@ const PRE_VECTOR_MIGRATIONS: [&str; 6] = [
     include_str!("../../../migrations/0006_authorized_lexical_retrieval.sql"),
 ];
 const VECTOR_MIGRATION: &str = include_str!("../../../migrations/0007_exact_vector_retrieval.sql");
-const CURRENT_MIGRATION_FILES: [&str; 9] = [
+const CURRENT_MIGRATION_FILES: [&str; 12] = [
     "0008_deterministic_temporal_retrieval.sql",
     "0009_subject_lifecycle_fence.sql",
     "0010_deletion_operations.sql",
@@ -29,6 +29,9 @@ const CURRENT_MIGRATION_FILES: [&str; 9] = [
     "0014_bounded_projection_leases.sql",
     "0015_restore_fence_replay.sql",
     "0016_release_deletion_operation_lease.sql",
+    "0017_current_fact_revision_projection.sql",
+    "0018_current_fact_revision_lifecycle_policies.sql",
+    "0019_current_fact_revision_repair_and_restore.sql",
 ];
 
 const TENANT_ID: &str = "019be100-0000-7000-8000-000000000010";
@@ -107,6 +110,7 @@ async fn pre_vector_lexical_receipt_survives_and_replays_after_migration() -> Re
             load_receipt_evidence(&migration_pool, Uuid::parse_str(HYBRID_RETRIEVAL_ID)?).await?;
 
         apply_current_migrations(&migration_pool).await?;
+        verify_current_projection_backfill(&migration_pool).await?;
         grant_runtime_content_lease_functions(&migration_pool, &runtime_pool).await?;
         verify_preserved_database_contract(&migration_pool, &legacy).await?;
         verify_preserved_hybrid_contract(&migration_pool, &legacy_hybrid).await?;
@@ -160,6 +164,20 @@ async fn apply_current_migrations(pool: &PgPool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+    Ok(())
+}
+
+async fn verify_current_projection_backfill(pool: &PgPool) -> Result<()> {
+    let revision_id: Uuid = sqlx::query_scalar(
+        "SELECT revision_id FROM memory.fact_revision_current
+         WHERE tenant_id = $1 AND subject_id = $2 AND fact_id = $3",
+    )
+    .bind(Uuid::parse_str(TENANT_ID)?)
+    .bind(Uuid::parse_str(SUBJECT_ID)?)
+    .bind(Uuid::parse_str(FACT_ID)?)
+    .fetch_one(pool)
+    .await?;
+    ensure!(revision_id == Uuid::parse_str(REVISION_ID)?);
     Ok(())
 }
 

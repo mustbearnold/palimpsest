@@ -66,6 +66,7 @@ SELECT set_config('palimpsest.subject_id', :'subject_id', true) AS ignored \gset
 SELECT set_config('palimpsest.principal_id', 'palimpsest-scale-probe', true) AS ignored \gset
 SELECT set_config('palimpsest.allowed_sensitivities', '["internal"]', true) AS ignored \gset
 SELECT set_config('palimpsest.scale_queries', :'scale_queries', true) AS ignored \gset
+SELECT set_config('palimpsest.retrieval_perspective', 'current', true) AS ignored \gset
 
 DO $guard$
 BEGIN
@@ -168,6 +169,7 @@ FROM generate_series(1, :scale_revisions::bigint) AS generated(series);
 
 ANALYZE memory.facts;
 ANALYZE memory.fact_revisions;
+ANALYZE memory.fact_revision_current;
 ANALYZE memory.fact_revision_governance;
 ANALYZE memory.fact_revision_search_documents;
 
@@ -180,28 +182,72 @@ DECLARE
 BEGIN
     FOR iteration IN 1..current_setting('palimpsest.scale_queries')::integer LOOP
         started_at := clock_timestamp();
-        WITH effective AS MATERIALIZED (
-            SELECT DISTINCT ON (revision.fact_id)
-                revision.tenant_id,
+        WITH current_projection AS MATERIALIZED (
+            SELECT projection.tenant_id,
+                projection.subject_id,
+                projection.case_id,
+                projection.fact_id,
+                projection.revision_id,
+                projection.namespace,
+                projection.fact_key,
+                projection.sensitivity,
+                projection.content_sha256
+            FROM memory.fact_revision_current AS projection
+            WHERE projection.tenant_id = current_setting('palimpsest.tenant_id')::uuid
+              AND projection.subject_id = current_setting('palimpsest.subject_id')::uuid
+              AND projection.recorded_at <= clock_timestamp()
+              AND projection.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
+        ), missing_facts AS MATERIALIZED (
+            SELECT fact.tenant_id,
+                fact.subject_id,
+                fact.case_id,
+                fact.fact_id,
+                fact.namespace,
+                fact.fact_key
+            FROM memory.facts AS fact
+            WHERE fact.tenant_id = current_setting('palimpsest.tenant_id')::uuid
+              AND fact.subject_id = current_setting('palimpsest.subject_id')::uuid
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM current_projection AS current_row
+                  WHERE current_row.tenant_id = fact.tenant_id
+                    AND current_row.subject_id = fact.subject_id
+                    AND current_row.case_id = fact.case_id
+                    AND current_row.fact_id = fact.fact_id
+              )
+        ), fallback AS MATERIALIZED (
+            SELECT revision.tenant_id,
                 revision.subject_id,
                 revision.case_id,
                 revision.fact_id,
                 revision.revision_id,
-                fact.namespace,
-                fact.fact_key,
+                missing.namespace,
+                missing.fact_key,
                 revision.sensitivity,
                 revision.content_sha256
-            FROM memory.fact_revisions AS revision
-            JOIN memory.facts AS fact
-              ON fact.tenant_id = revision.tenant_id
-             AND fact.subject_id = revision.subject_id
-             AND fact.case_id = revision.case_id
-             AND fact.fact_id = revision.fact_id
-            WHERE revision.tenant_id = current_setting('palimpsest.tenant_id')::uuid
-              AND revision.subject_id = current_setting('palimpsest.subject_id')::uuid
-              AND revision.recorded_at <= clock_timestamp()
-              AND revision.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
-            ORDER BY revision.fact_id, revision.revision_no DESC, revision.revision_id
+            FROM missing_facts AS missing
+            CROSS JOIN LATERAL (
+                SELECT revision.tenant_id,
+                    revision.subject_id,
+                    revision.case_id,
+                    revision.fact_id,
+                    revision.revision_id,
+                    revision.sensitivity,
+                    revision.content_sha256
+                FROM memory.fact_revisions AS revision
+                WHERE revision.tenant_id = missing.tenant_id
+                  AND revision.subject_id = missing.subject_id
+                  AND revision.case_id = missing.case_id
+                  AND revision.fact_id = missing.fact_id
+                  AND revision.recorded_at <= clock_timestamp()
+                  AND revision.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
+                ORDER BY revision.revision_no DESC, revision.revision_id
+                LIMIT 1
+            ) AS revision
+        ), effective AS MATERIALIZED (
+            SELECT * FROM current_projection
+            UNION ALL
+            SELECT * FROM fallback
         ), authorized AS MATERIALIZED (
             SELECT effective.*
             FROM effective
@@ -257,22 +303,72 @@ SELECT
 
 \o :plan_file
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-WITH effective AS MATERIALIZED (
-    SELECT DISTINCT ON (revision.fact_id)
-        revision.tenant_id, revision.subject_id, revision.case_id,
-        revision.fact_id, revision.revision_id, fact.namespace, fact.fact_key,
-        revision.sensitivity, revision.content_sha256
-    FROM memory.fact_revisions AS revision
-    JOIN memory.facts AS fact
-      ON fact.tenant_id = revision.tenant_id
-     AND fact.subject_id = revision.subject_id
-     AND fact.case_id = revision.case_id
-     AND fact.fact_id = revision.fact_id
-    WHERE revision.tenant_id = :'tenant_id'::uuid
-      AND revision.subject_id = :'subject_id'::uuid
-      AND revision.recorded_at <= clock_timestamp()
-      AND revision.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
-    ORDER BY revision.fact_id, revision.revision_no DESC, revision.revision_id
+WITH current_projection AS MATERIALIZED (
+    SELECT projection.tenant_id,
+        projection.subject_id,
+        projection.case_id,
+        projection.fact_id,
+        projection.revision_id,
+        projection.namespace,
+        projection.fact_key,
+        projection.sensitivity,
+        projection.content_sha256
+    FROM memory.fact_revision_current AS projection
+    WHERE projection.tenant_id = :'tenant_id'::uuid
+      AND projection.subject_id = :'subject_id'::uuid
+      AND projection.recorded_at <= clock_timestamp()
+      AND projection.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
+), missing_facts AS MATERIALIZED (
+    SELECT fact.tenant_id,
+        fact.subject_id,
+        fact.case_id,
+        fact.fact_id,
+        fact.namespace,
+        fact.fact_key
+    FROM memory.facts AS fact
+    WHERE fact.tenant_id = :'tenant_id'::uuid
+      AND fact.subject_id = :'subject_id'::uuid
+      AND NOT EXISTS (
+          SELECT 1
+          FROM current_projection AS current_row
+          WHERE current_row.tenant_id = fact.tenant_id
+            AND current_row.subject_id = fact.subject_id
+            AND current_row.case_id = fact.case_id
+            AND current_row.fact_id = fact.fact_id
+      )
+), fallback AS MATERIALIZED (
+    SELECT revision.tenant_id,
+        revision.subject_id,
+        revision.case_id,
+        revision.fact_id,
+        revision.revision_id,
+        missing.namespace,
+        missing.fact_key,
+        revision.sensitivity,
+        revision.content_sha256
+    FROM missing_facts AS missing
+    CROSS JOIN LATERAL (
+        SELECT revision.tenant_id,
+            revision.subject_id,
+            revision.case_id,
+            revision.fact_id,
+            revision.revision_id,
+            revision.sensitivity,
+            revision.content_sha256
+        FROM memory.fact_revisions AS revision
+        WHERE revision.tenant_id = missing.tenant_id
+          AND revision.subject_id = missing.subject_id
+          AND revision.case_id = missing.case_id
+          AND revision.fact_id = missing.fact_id
+          AND revision.recorded_at <= clock_timestamp()
+          AND revision.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
+        ORDER BY revision.revision_no DESC, revision.revision_id
+        LIMIT 1
+    ) AS revision
+), effective AS MATERIALIZED (
+    SELECT * FROM current_projection
+    UNION ALL
+    SELECT * FROM fallback
 ), authorized AS MATERIALIZED (
     SELECT effective.*
     FROM effective

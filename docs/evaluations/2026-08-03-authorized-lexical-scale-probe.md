@@ -8,7 +8,7 @@ target and makes no production-readiness claim.
 `scripts/palimpsest-scale-probe.sh` seeded a reserved synthetic tenant/subject
 scope inside one PostgreSQL transaction, generated one attributable episode and
 100,000 fact revisions plus their governed lexical projections, analyzed the
-four relevant relations, ran the authorization/temporal/current-revision
+five relevant relations, ran the authorization/temporal/current-revision
 lexical retrieval core 20 times serially, captured an `EXPLAIN (ANALYZE,
 BUFFERS, FORMAT JSON)` plan, and rolled the transaction back. A post-run scope
 check found zero retained revisions.
@@ -46,8 +46,43 @@ A same-transaction 10,000-revision experiment compared the existing
 that selected one latest revision per fact. The one-run `EXPLAIN (ANALYZE)`
 execution time was 340.843 ms for the existing shape and 359.744 ms for the
 lateral shape. The candidate introduced a more expensive hash/join path, so it
-was rejected and no migration or application query was changed. These are
-exploratory single-run timings, not a replacement release profile.
+was rejected as a hot-path replacement. The checked-in query uses a lateral
+lookup only inside the missing-pointer fallback branch; these are exploratory
+single-run timings, not a replacement release profile for that branch.
+
+## Implemented current-row projection
+
+Migration 0017 adds a derived current-revision row per fact and keeps the
+canonical revision history as the fallback for as-of retrieval and missing or
+not-yet-valid current pointers. A denormalized rollback-only experiment was
+implemented in the lexical and hybrid current paths. The checked-in query also
+preserves a canonical fallback for a missing, future-recorded, or not-yet-valid
+pointer. The scale probe exercises that complete path and still rolls back all
+synthetic data.
+
+A later 100,000-revision local run of the checked-in path measured p50 4,136.054
+ms, p95 4,263.767 ms, p99 4,311.692 ms, mean 4,134.520 ms, and max 4,323.673
+ms across 20 serial queries. Its plan digest is
+`9099b7ff19d2e1e993f95139a5f842ba919b0bf6e9f957e6d4c9418a19f14bbf`; the
+bounded plan shows the current projection scan and completeness-preserving
+facts anti-join alongside the authorized document join. This is slower than
+the earlier history-sort baseline, so the projection is retained as a
+correctness/repairability slice, not as a claimed latency improvement. The
+earlier 1.014-second projection-only result is not accepted as evidence for
+the current query shape.
+
+## Rejected per-request stale validation
+
+An exploratory 100,000-revision run added a per-request canonical `NOT EXISTS`
+check to ensure every current projection row still matched the latest
+immutable revision. It measured p50 4,356.463 ms, p95 4,608.795 ms, p99
+4,610.091 ms, mean 4,375.596 ms, and max 4,610.415 ms across 20 serial
+queries; its plan digest was
+`83ac70c15aa0879f674d403c9d0480a0ae0ed2642093fcab2047e7c4260e48a8`. The
+guard was rejected because it made the hot path materially worse. The current
+invariant is the monotonic insert trigger plus an owner-only scope rebuild;
+arbitrary out-of-band projection corruption is an operational repair case,
+not an automatic per-request detection claim.
 
 ## Bounded plan profile
 

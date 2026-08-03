@@ -1315,32 +1315,88 @@ impl PostgresMemoryRepository {
         let candidate_started = std::time::Instant::now();
         let rows = sqlx::query(
             r#"
-            WITH effective AS MATERIALIZED (
-                SELECT DISTINCT ON (revision.fact_id)
-                    revision.tenant_id,
+            WITH current_projection AS MATERIALIZED (
+                SELECT projection.tenant_id,
+                    projection.subject_id,
+                    projection.case_id,
+                    projection.fact_id,
+                    projection.revision_id,
+                    projection.value,
+                    projection.namespace,
+                    projection.fact_key,
+                    projection.sensitivity,
+                    projection.content_sha256
+                FROM memory.fact_revision_current AS projection
+                WHERE $17::text = 'current'
+                  AND projection.tenant_id = $1
+                  AND projection.subject_id = $2
+                  AND projection.recorded_at <= $3
+                  AND projection.valid_during @> $4::timestamptz
+                  AND ($5::uuid[] IS NULL OR projection.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR projection.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR projection.fact_key = ANY($7))
+            ),
+            missing_facts AS MATERIALIZED (
+                SELECT fact.tenant_id,
+                    fact.subject_id,
+                    fact.case_id,
+                    fact.fact_id,
+                    fact.namespace,
+                    fact.fact_key
+                FROM memory.facts AS fact
+                WHERE fact.tenant_id = $1
+                  AND fact.subject_id = $2
+                  AND ($5::uuid[] IS NULL OR fact.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR fact.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
+                  AND (
+                      $17::text <> 'current'
+                      OR NOT EXISTS (
+                          SELECT 1
+                          FROM current_projection AS current_row
+                          WHERE current_row.tenant_id = fact.tenant_id
+                            AND current_row.subject_id = fact.subject_id
+                            AND current_row.case_id = fact.case_id
+                            AND current_row.fact_id = fact.fact_id
+                      )
+                  )
+            ),
+            fallback AS MATERIALIZED (
+                SELECT revision.tenant_id,
                     revision.subject_id,
                     revision.case_id,
                     revision.fact_id,
                     revision.revision_id,
-                    fact.namespace,
-                    fact.fact_key,
                     revision.value,
+                    missing.namespace,
+                    missing.fact_key,
                     revision.sensitivity,
                     revision.content_sha256
-                FROM memory.fact_revisions AS revision
-                JOIN memory.facts AS fact
-                  ON fact.tenant_id = revision.tenant_id
-                 AND fact.subject_id = revision.subject_id
-                 AND fact.case_id = revision.case_id
-                 AND fact.fact_id = revision.fact_id
-                WHERE revision.tenant_id = $1
-                  AND revision.subject_id = $2
-                  AND revision.recorded_at <= $3
-                  AND revision.valid_during @> $4::timestamptz
-                  AND ($5::uuid[] IS NULL OR revision.case_id = ANY($5))
-                  AND ($6::text[] IS NULL OR fact.namespace = ANY($6))
-                  AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
-                ORDER BY revision.fact_id, revision.revision_no DESC, revision.revision_id
+                FROM missing_facts AS missing
+                CROSS JOIN LATERAL (
+                    SELECT revision.tenant_id,
+                        revision.subject_id,
+                        revision.case_id,
+                        revision.fact_id,
+                        revision.revision_id,
+                        revision.value,
+                        revision.sensitivity,
+                        revision.content_sha256
+                    FROM memory.fact_revisions AS revision
+                    WHERE revision.tenant_id = missing.tenant_id
+                      AND revision.subject_id = missing.subject_id
+                      AND revision.case_id = missing.case_id
+                      AND revision.fact_id = missing.fact_id
+                      AND revision.recorded_at <= $3
+                      AND revision.valid_during @> $4::timestamptz
+                    ORDER BY revision.revision_no DESC, revision.revision_id
+                    LIMIT 1
+                ) AS revision
+            ),
+            effective AS MATERIALIZED (
+                SELECT * FROM current_projection
+                UNION ALL
+                SELECT * FROM fallback
             ),
             authorized AS MATERIALIZED (
                 SELECT effective.*
@@ -1470,10 +1526,10 @@ impl PostgresMemoryRepository {
         .bind(fts_rank_normalization)
         .bind(score_scale)
         .bind(candidate_limit)
+        .bind(perspective)
         .fetch_all(&mut *transaction)
         .await
         .map_err(unexpected)?;
-
         let coverage_missing = rows
             .first()
             .ok_or_else(|| {
@@ -1670,35 +1726,94 @@ impl PostgresMemoryRepository {
         let candidate_started = std::time::Instant::now();
         let rows = sqlx::query(
             r#"
-            WITH effective AS MATERIALIZED (
-                SELECT DISTINCT ON (revision.fact_id)
-                    revision.tenant_id,
+            WITH current_projection AS MATERIALIZED (
+                SELECT projection.tenant_id,
+                    projection.subject_id,
+                    projection.case_id,
+                    projection.fact_id,
+                    projection.revision_id,
+                    projection.namespace,
+                    projection.fact_key,
+                    projection.value,
+                    projection.observed_at,
+                    projection.confidence,
+                    projection.sensitivity,
+                    projection.content_sha256
+                FROM memory.fact_revision_current AS projection
+                WHERE $30::text = 'current'
+                  AND projection.tenant_id = $1
+                  AND projection.subject_id = $2
+                  AND projection.recorded_at <= $3
+                  AND projection.valid_during @> $4::timestamptz
+                  AND ($5::uuid[] IS NULL OR projection.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR projection.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR projection.fact_key = ANY($7))
+            ),
+            missing_facts AS MATERIALIZED (
+                SELECT fact.tenant_id,
+                    fact.subject_id,
+                    fact.case_id,
+                    fact.fact_id,
+                    fact.namespace,
+                    fact.fact_key
+                FROM memory.facts AS fact
+                WHERE fact.tenant_id = $1
+                  AND fact.subject_id = $2
+                  AND ($5::uuid[] IS NULL OR fact.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR fact.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
+                  AND (
+                      $30::text <> 'current'
+                      OR NOT EXISTS (
+                          SELECT 1
+                          FROM current_projection AS current_row
+                          WHERE current_row.tenant_id = fact.tenant_id
+                            AND current_row.subject_id = fact.subject_id
+                            AND current_row.case_id = fact.case_id
+                            AND current_row.fact_id = fact.fact_id
+                      )
+                  )
+            ),
+            fallback AS MATERIALIZED (
+                SELECT revision.tenant_id,
                     revision.subject_id,
                     revision.case_id,
                     revision.fact_id,
                     revision.revision_id,
-                    fact.namespace,
-                    fact.fact_key,
+                    missing.namespace,
+                    missing.fact_key,
                     revision.value,
                     revision.observed_at,
                     revision.confidence,
                     revision.sensitivity,
                     revision.content_sha256
-                FROM memory.fact_revisions AS revision
-                JOIN memory.facts AS fact
-                  ON fact.tenant_id = revision.tenant_id
-                 AND fact.subject_id = revision.subject_id
-                 AND fact.case_id = revision.case_id
-                 AND fact.fact_id = revision.fact_id
-                WHERE revision.tenant_id = $1
-                  AND revision.subject_id = $2
-                  AND revision.recorded_at <= $3
-                  AND revision.valid_during @> $4::timestamptz
-                  AND ($5::uuid[] IS NULL OR revision.case_id = ANY($5))
-                  AND ($6::text[] IS NULL OR fact.namespace = ANY($6))
-                  AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
-                ORDER BY revision.fact_id, revision.revision_no DESC,
-                    revision.revision_id
+                FROM missing_facts AS missing
+                CROSS JOIN LATERAL (
+                    SELECT revision.tenant_id,
+                        revision.subject_id,
+                        revision.case_id,
+                        revision.fact_id,
+                        revision.revision_id,
+                        revision.value,
+                        revision.observed_at,
+                        revision.confidence,
+                        revision.sensitivity,
+                        revision.content_sha256
+                    FROM memory.fact_revisions AS revision
+                    WHERE revision.tenant_id = missing.tenant_id
+                      AND revision.subject_id = missing.subject_id
+                      AND revision.case_id = missing.case_id
+                      AND revision.fact_id = missing.fact_id
+                      AND revision.recorded_at <= $3
+                      AND revision.valid_during @> $4::timestamptz
+                    ORDER BY revision.revision_no DESC, revision.revision_id
+                    LIMIT 1
+                ) AS revision
+            ),
+            effective AS MATERIALIZED (
+                SELECT * FROM current_projection
+                UNION ALL
+                SELECT * FROM fallback
             ),
             authorized AS MATERIALIZED (
                 SELECT effective.*,
@@ -2026,6 +2141,7 @@ impl PostgresMemoryRepository {
         .bind(plan.rrf_k)
         .bind(plan.manifest_limit)
         .bind(plan.temporal_scoring)
+        .bind(perspective)
         .fetch_all(&mut **transaction)
         .await
         .map_err(unexpected)?;
@@ -6930,6 +7046,6 @@ mod tests {
 
     #[test]
     fn latest_migration_version_matches_the_checked_in_schema() {
-        assert_eq!(latest_migration_version(), 16);
+        assert_eq!(latest_migration_version(), 19);
     }
 }
