@@ -51,6 +51,19 @@ Start the dependency and the Rust HTTP service with one command:
 bash scripts/dev-up.sh
 ```
 
+The same binary has a read-only operator diagnostic. It never starts HTTP or
+applies migrations; it prints content-free JSON and exits nonzero when a
+prerequisite is not ready:
+
+```bash
+PALIMPSEST_DATABASE_URL='postgresql://runtime-user:password@db/palimpsest' \
+  cargo run --locked -- doctor
+```
+
+`doctor` checks PostgreSQL 18+, pgvector 0.8.5, the complete migration set,
+required lifecycle tables, and that the connected role is a non-superuser that
+does not bypass row-level security. It never prints the database URL.
+
 The service listens on `http://127.0.0.1:8080`. Docker PostgreSQL listens only
 on `127.0.0.1:5432`; the local fallback uses `127.0.0.1:55432`. `GET /healthz` is a content-free liveness probe and
 `GET /readyz` checks database connectivity plus the exact successful SQLx

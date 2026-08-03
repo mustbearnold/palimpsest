@@ -14,6 +14,7 @@ palimpsest-domain = { path = "../palimpsest-domain" }
 palimpsest-http = { path = "../palimpsest-http" }
 palimpsest-postgres = { path = "../palimpsest-postgres" }
 sqlx.workspace = true
+serde_json.workspace = true
 time.workspace = true
 tokio.workspace = true
 uuid.workspace = true
