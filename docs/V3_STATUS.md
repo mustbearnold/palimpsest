@@ -48,6 +48,10 @@ is not an official release or a production-readiness claim.
   S3-compatible adapter is contract-tested against a local object-shaped
   fixture. A live provider's durability, deletion, outage, and recovery
   behavior is not yet evidenced.
+- A rollback-only scale probe is repeatable and content-free. Its first
+  100,000-revision local profile measured p95 3.857 seconds and p99 3.923
+  seconds, so it is a useful baseline but currently misses the proposed
+  release latency target.
 - Restore work proves database-copy replay and logical dump/restore. It does
   not prove base-backup/WAL/PITR recovery, backup expiry, or production RPO/RTO.
 - The default server embedding provider is unavailable; exact and lexical
@@ -63,15 +67,16 @@ is not an official release or a production-readiness claim.
 - Provider-managed backup/PITR orchestration, independent backup disposition,
   and full restore suppression against a real backup provider.
 - Million-revision latency, throughput, cost, capacity, availability, and SLA
-  evidence.
+  evidence; the measured 100,000-revision baseline currently misses the
+  proposed release latency target.
 - External identity and credential rotation, public procedure/artifact APIs,
   multi-region writes, hosted control plane, and official production release
   gates.
 
 ## Next v3 frontier
 
-The next high-value slices are production-shaped object/cache contracts with
-deterministic fault injection, measured scale evidence, and a governed
-semantic-comparison/consolidation boundary that keeps every durable write
-attributable. v3 is only honest when those remaining boundaries are either
-implemented with evidence or clearly retained as non-claims.
+The next high-value slices are deterministic object/cache fault injection,
+query-plan/index remediation followed by concurrent million-revision evidence,
+and a governed semantic-comparison/consolidation boundary that keeps every
+durable write attributable. v3 is only honest when those remaining boundaries
+are either implemented with evidence or clearly retained as non-claims.

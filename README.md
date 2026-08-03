@@ -159,6 +159,22 @@ schema and does not print either connection URL. This is logical dump/restore
 evidence, not a PostgreSQL base-backup, WAL-archive, PITR, expiry, or production
 RPO/RTO claim.
 
+The rollback-only scale probe measures the authorized lexical retrieval core on
+a synthetic scope without retaining any rows:
+
+```bash
+PALIMPSEST_SCALE_DATABASE_URL='postgresql://runtime-user:password@db/palimpsest' \
+PALIMPSEST_SCALE_REVISIONS=100000 \
+PALIMPSEST_SCALE_QUERIES=20 \
+  bash scripts/palimpsest-scale-probe.sh
+```
+
+It prints only counts, latency percentiles, and a plan digest. The first local
+100,000-revision profile is recorded in
+[the scale evaluation](docs/evaluations/2026-08-03-authorized-lexical-scale-probe.md);
+it misses the proposed release latency target, so no million-revision or SLA
+claim is made.
+
 With Docker, stop PostgreSQL without deleting its volume:
 
 ```bash
