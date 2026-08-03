@@ -190,6 +190,49 @@ export class PalimpsestClient {
     return this.retrieve(query, options);
   }
 
+  async recallByProject(query, projectIds, {
+    perspective = "current",
+    pageSize = 10,
+    policyId = null,
+    filters = {},
+    namespacePrefix = "agent_session",
+    idempotencyKeyPrefix = null,
+  } = {}) {
+    if (!Array.isArray(projectIds) || projectIds.length === 0) {
+      throw new PalimpsestConfigurationError("projectIds must be a non-empty array");
+    }
+    if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+      throw new PalimpsestConfigurationError("filters must be an object");
+    }
+    if (Object.hasOwn(filters, "namespaces")) {
+      throw new PalimpsestConfigurationError("recallByProject owns the namespaces filter");
+    }
+    const selected = [];
+    const namespaces = new Map();
+    for (const projectId of projectIds) {
+      const normalized = nonEmptyText(projectId, "projectId");
+      if (namespaces.has(normalized)) continue;
+      selected.push(normalized);
+      namespaces.set(normalized, projectNamespace(normalized, namespacePrefix));
+    }
+    const baseKey = idempotencyKeyPrefix === null ? null : idempotencyBase(idempotencyKeyPrefix);
+    const results = Object.create(null);
+    for (const projectId of selected) {
+      const idempotencyKey = baseKey === null ? null : `${baseKey}:${projectId}`;
+      if (idempotencyKey !== null && idempotencyKey.length > 255) {
+        throw new PalimpsestConfigurationError("idempotencyKeyPrefix leaves insufficient room for project IDs");
+      }
+      results[projectId] = await this.retrieve(query, {
+        perspective,
+        pageSize,
+        policyId,
+        filters: { ...filters, namespaces: [namespaces.get(projectId)] },
+        idempotencyKey,
+      });
+    }
+    return results;
+  }
+
   async getRetrieval(retrievalId, { cursor = null } = {}) {
     const path = `${this.#scopePath()}/retrievals/${uuidValue(retrievalId, "retrievalId")}`;
     const suffix = cursor === null ? "" : `?${new URLSearchParams({ cursor: nonEmptyText(cursor, "cursor") })}`;
@@ -533,4 +576,14 @@ function idempotencyBase(value) {
     throw new PalimpsestConfigurationError("idempotencyKey must leave room for the operation suffix");
   }
   return base;
+}
+
+export function projectNamespace(projectId, prefix = "agent_session") {
+  const normalizedProject = nonEmptyText(projectId, "projectId");
+  const normalizedPrefix = nonEmptyText(prefix, "namespacePrefix");
+  const namespace = `${normalizedPrefix}:${normalizedProject}`;
+  if (namespace.length > 255) {
+    throw new PalimpsestConfigurationError("project namespace must contain at most 255 characters");
+  }
+  return namespace;
 }

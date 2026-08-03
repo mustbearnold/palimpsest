@@ -1,6 +1,8 @@
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = Record<string, any>;
 
+export function projectNamespace(projectId: string, prefix?: string): string;
+
 export interface PalimpsestResponse<T extends JsonObject = JsonObject> {
   data: T;
   statusCode: number;
@@ -77,6 +79,18 @@ export class PalimpsestClient {
   supersedeFact(factId: string, options: JsonObject & { ifMatch: string }): Promise<JsonObject>;
   retrieve(query: string, options?: JsonObject): Promise<JsonObject>;
   recall(query: string, options?: JsonObject): Promise<JsonObject>;
+  recallByProject(
+    query: string,
+    projectIds: string[],
+    options?: {
+      perspective?: string | JsonObject;
+      pageSize?: number;
+      policyId?: string | null;
+      filters?: JsonObject;
+      namespacePrefix?: string;
+      idempotencyKeyPrefix?: string | null;
+    },
+  ): Promise<Record<string, JsonObject>>;
   getRetrieval(retrievalId: string, options?: { cursor?: string | null }): Promise<JsonObject>;
   saveCheckpointResponse(agentId: string, threadId: string, options: JsonObject): Promise<PalimpsestResponse>;
   saveCheckpoint(agentId: string, threadId: string, options: JsonObject): Promise<JsonObject>;

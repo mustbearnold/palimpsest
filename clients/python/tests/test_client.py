@@ -207,6 +207,33 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(request["body"]["perspective"]["kind"], "as_of")
         self.assertEqual(request["body"]["filters"], {"namespaces": ["customer"]})
 
+    def test_recall_by_project_keeps_each_project_candidate_set_separate(self) -> None:
+        results = self.client.recall_by_project(
+            "release decision",
+            ["project-aaaaaaaaaaaaaaaa", "project-bbbbbbbbbbbbbbbb"],
+            idempotency_key_prefix="compare-1",
+        )
+
+        self.assertEqual(set(results), {"project-aaaaaaaaaaaaaaaa", "project-bbbbbbbbbbbbbbbb"})
+        self.assertEqual(len(FakeApi.requests), 2)
+        self.assertEqual(
+            [request["body"]["filters"] for request in FakeApi.requests],
+            [
+                {"namespaces": ["agent_session:project-aaaaaaaaaaaaaaaa"]},
+                {"namespaces": ["agent_session:project-bbbbbbbbbbbbbbbb"]},
+            ],
+        )
+        self.assertEqual(
+            [request["headers"]["Idempotency-Key"] for request in FakeApi.requests],
+            ["compare-1:project-aaaaaaaaaaaaaaaa", "compare-1:project-bbbbbbbbbbbbbbbb"],
+        )
+        with self.assertRaisesRegex(PalimpsestConfigurationError, "owns the namespaces filter"):
+            self.client.recall_by_project(
+                "release decision",
+                ["project-aaaaaaaaaaaaaaaa"],
+                filters={"namespaces": ["mixed"]},
+            )
+
     def test_correct_uses_strong_etag_and_forget_starts_deletion(self) -> None:
         self.client.correct(
             FACT,

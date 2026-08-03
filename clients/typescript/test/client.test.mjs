@@ -133,3 +133,41 @@ test("export ready redirects remain visible and are not followed", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("recallByProject keeps each project candidate set separate", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ status: "results", items: [] }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const client = new PalimpsestClient({
+      baseUrl: "http://127.0.0.1:8080",
+      bearerToken: "test-token",
+      tenantId: TENANT,
+      subjectId: SUBJECT,
+    });
+    const result = await client.recallByProject(
+      "release decision",
+      ["project-aaaaaaaaaaaaaaaa", "project-bbbbbbbbbbbbbbbb"],
+      { idempotencyKeyPrefix: "compare-1" },
+    );
+
+    assert.deepEqual(Object.keys(result), ["project-aaaaaaaaaaaaaaaa", "project-bbbbbbbbbbbbbbbb"]);
+    assert.deepEqual(requests.map(({ body }) => body.filters), [
+      { namespaces: ["agent_session:project-aaaaaaaaaaaaaaaa"] },
+      { namespaces: ["agent_session:project-bbbbbbbbbbbbbbbb"] },
+    ]);
+    assert.deepEqual(requests.map(({ init }) => init.headers["Idempotency-Key"]), [
+      "compare-1:project-aaaaaaaaaaaaaaaa",
+      "compare-1:project-bbbbbbbbbbbbbbbb",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

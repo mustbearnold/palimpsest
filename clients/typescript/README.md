@@ -32,6 +32,11 @@ const saved = await client.remember("The customer moved to 20 New Street.", {
 const current = await client.recall("shipping address", {
   idempotencyKey: "case-123-recall-1",
 });
+const projectBundles = await client.recallByProject(
+  "release decision",
+  ["project-0123456789abcdef", "project-fedcba9876543210"],
+  { idempotencyKeyPrefix: "case-123-compare-1" },
+);
 const fact = await client.getFactResponse(saved.fact.fact_id);
 await client.correct(saved.fact.fact_id, {
   supersedesRevisionId: fact.data.revision.revision_id,
@@ -56,3 +61,7 @@ requests; if the episode succeeds and fact promotion fails, it throws
 Ready export status is represented as a `303` response with its download
 `Location`; redirects are not followed implicitly. `waitForDeletion` uses
 conditional requests and stops only at a server-reported terminal state.
+
+`recallByProject` returns separate retrieval responses with exact project
+namespaces. It supplies isolated evidence bundles for a comparison; it does
+not invent a semantic project diff.

@@ -99,7 +99,16 @@ project_facts = client.recall(
     "release decision",
     filters={"namespaces": [project_namespace("project-0123456789abcdef")]},
 )
+# Or ask for separate evidence bundles for several projects at once:
+project_bundles = client.recall_by_project(
+    "release decision",
+    ["project-0123456789abcdef", "project-fedcba9876543210"],
+)
 ```
+
+`recall_by_project` intentionally returns one retrieval response per project;
+it gives a caller or model clean evidence bundles to compare but does not
+claim to synthesize a semantic diff.
 
 The bridge ingests user and assistant text only. It excludes tool rows,
 thinking blocks, system prompts, and tool results; common credential-shaped

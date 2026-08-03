@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 from urllib import error, parse, request
 
+from .ingest import project_namespace
+
 
 JsonObject = dict[str, Any]
 
@@ -435,6 +437,63 @@ class PalimpsestClient:
         )
 
     recall = retrieve
+
+    def recall_by_project(
+        self,
+        query: str,
+        project_ids: Sequence[str],
+        *,
+        perspective: Mapping[str, Any] | str | None = None,
+        page_size: int = 10,
+        policy_id: str | None = None,
+        filters: Mapping[str, Any] | None = None,
+        namespace_prefix: str = "agent_session",
+        idempotency_key_prefix: str | None = None,
+    ) -> dict[str, JsonObject]:
+        """Recall one isolated evidence bundle per project.
+
+        The helper deliberately returns separate retrieval responses. It does
+        not invent a semantic diff or combine candidate sets before the caller
+        chooses how to compare them.
+        """
+
+        if isinstance(project_ids, (str, bytes)):
+            raise PalimpsestConfigurationError("project_ids must be a non-empty sequence")
+        ordered_ids: list[str] = []
+        namespaces: dict[str, str] = {}
+        for project_id in project_ids:
+            if not isinstance(project_id, str) or not project_id.strip():
+                raise PalimpsestConfigurationError("project_ids must contain non-empty strings")
+            project_id = project_id.strip()
+            if project_id in namespaces:
+                continue
+            try:
+                namespace = project_namespace(project_id, namespace_prefix)
+            except (TypeError, ValueError) as exc:
+                raise PalimpsestConfigurationError(str(exc)) from exc
+            ordered_ids.append(project_id)
+            namespaces[project_id] = namespace
+        if not ordered_ids:
+            raise PalimpsestConfigurationError("project_ids must be a non-empty sequence")
+        base_filters = dict(filters or {})
+        if "namespaces" in base_filters:
+            raise PalimpsestConfigurationError("recall_by_project owns the namespaces filter")
+        base_key = _idempotency_base(idempotency_key_prefix) if idempotency_key_prefix is not None else None
+        results: dict[str, JsonObject] = {}
+        for project_id in ordered_ids:
+            idempotency_key = None if base_key is None else f"{base_key}:{project_id}"
+            if idempotency_key is not None and len(idempotency_key) > 255:
+                raise PalimpsestConfigurationError("idempotency_key_prefix leaves insufficient room for project IDs")
+            project_filters = {**base_filters, "namespaces": [namespaces[project_id]]}
+            results[project_id] = self.retrieve(
+                query,
+                perspective=perspective,
+                page_size=page_size,
+                policy_id=policy_id,
+                filters=project_filters,
+                idempotency_key=idempotency_key,
+            )
+        return results
 
     def get_retrieval(self, retrieval_id: str, *, cursor: str | None = None) -> JsonObject:
         path = f"{self._scope_path()}/retrievals/{_uuid_string(retrieval_id, 'retrieval_id')}"

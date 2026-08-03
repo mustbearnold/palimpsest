@@ -203,6 +203,9 @@ paths, redacts common credential-shaped values, excludes tools and private
 thinking, and writes through the authorized HTTP API. Each repository gets a
 stable retrieval namespace so memories from multiple projects do not have to
 share one undifferentiated search pool. See [ADR-0019](docs/adr/0019-project-aware-agent-session-ingestion.md).
+The Python and TypeScript clients also expose per-project recall helpers that
+return isolated evidence bundles for deliberate comparison; they do not
+silently mix namespaces or pretend to generate a diff.
 
 ## Validation
 

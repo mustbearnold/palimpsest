@@ -58,6 +58,11 @@ canonical HTTP service continues to own authorization, temporal semantics,
 write policy, retention, and deletion. Retrieval can keep projects separate or
 deliberately search several project namespaces together.
 
+The Python and TypeScript clients provide per-project recall helpers that issue
+one exact-namespace retrieval per requested project and return the responses
+separately. They are evidence-bundling conveniences, not model-based project
+comparison engines.
+
 `watch` is an explicit local process, not an unconfigured background daemon.
 Native hooks, provider APIs, richer secret classification, consolidation of
 raw episodes into higher-level facts, and a server-managed ingestion worker
