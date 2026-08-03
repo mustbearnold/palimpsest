@@ -12,6 +12,19 @@ from .client import (
     PalimpsestTransportError,
     PartialRememberError,
 )
+from .ingest import (
+    IngestReport,
+    IngestionError,
+    IngestionRunner,
+    ProjectIdentity,
+    SessionEvent,
+    SourceSpec,
+    parse_claude_record,
+    parse_codex_record,
+    parse_hermes_row,
+    project_namespace,
+    redact_sensitive_text,
+)
 
 __all__ = [
     "PalimpsestBinaryResponse",
@@ -24,4 +37,15 @@ __all__ = [
     "PalimpsestTimeoutError",
     "PalimpsestTransportError",
     "PartialRememberError",
+    "IngestReport",
+    "IngestionError",
+    "IngestionRunner",
+    "ProjectIdentity",
+    "SessionEvent",
+    "SourceSpec",
+    "parse_claude_record",
+    "parse_codex_record",
+    "parse_hermes_row",
+    "project_namespace",
+    "redact_sensitive_text",
 ]

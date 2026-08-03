@@ -61,3 +61,48 @@ is committed first, then the governed fact cites it. If promotion fails,
 `PartialRememberError.episode` exposes the saved evidence and the original
 typed cause so callers can retry or investigate without pretending the write
 was atomic.
+
+## Ingest coding-agent sessions
+
+The checkout includes an opt-in polling bridge for Codex, Claude Code, and
+Hermes. It accepts source paths explicitly and writes through this client, so
+the source owner must grant access to each path; it never silently scans home
+directories or another user's Hermes data.
+
+Set the authorized Palimpsest connection in environment variables, then run a
+long-lived poller:
+
+```bash
+export PALIMPSEST_INGEST_BASE_URL=http://127.0.0.1:8080
+export PALIMPSEST_INGEST_BEARER_TOKEN=operator-issued-token
+export PALIMPSEST_INGEST_TENANT_ID=019be000-0000-7000-8000-000000000010
+export PALIMPSEST_INGEST_SUBJECT_ID=019be000-0000-7000-8000-000000000020
+export PALIMPSEST_INGEST_CASE_ID=019be000-0000-7000-8000-000000000030
+
+python3 scripts/palimpsest_ingest.py watch \
+  --source codex="$HOME/.codex/sessions" \
+  --source claude="$HOME/.claude/projects" \
+  --source hermes="$HOME/.hermes/state.db"
+```
+
+The first pass baselines existing history and ingests only later events. Add
+`--backfill` when importing existing history is deliberate. Use
+`--project-root /path/to/repository` to limit a poller to one project. Every
+event receives a stable `project-...` identity and an exact
+`agent_session:project-...` namespace, so retrieval can keep projects
+separate:
+
+```python
+from palimpsest import project_namespace
+
+project_facts = client.recall(
+    "release decision",
+    filters={"namespaces": [project_namespace("project-0123456789abcdef")]},
+)
+```
+
+The bridge ingests user and assistant text only. It excludes tool rows,
+thinking blocks, system prompts, and tool results; common credential-shaped
+values are redacted before upload. This is a supervised local process rather
+than a hidden background daemon, and the HTTP service remains the authority
+for tenant scope, policy, retention, and deletion.
