@@ -55,7 +55,9 @@ is not an official release or a production-readiness claim.
 - A rollback-only scale probe is repeatable and content-free. Its first
   100,000-revision local profile measured p95 3.857 seconds and p99 3.923
   seconds, so it is a useful baseline but currently misses the proposed
-  release latency target.
+  release latency target. Each run now emits a bounded EXPLAIN node profile,
+  which identifies the current-revision and authorization work to measure in
+  the next optimization experiment.
 - Restore work proves database-copy replay and logical dump/restore. It does
   not prove base-backup/WAL/PITR recovery, backup expiry, or production RPO/RTO.
 - The default server embedding provider is unavailable; exact and lexical

@@ -169,7 +169,9 @@ PALIMPSEST_SCALE_QUERIES=20 \
   bash scripts/palimpsest-scale-probe.sh
 ```
 
-It prints only counts, latency percentiles, and a plan digest. The first local
+It prints only counts, latency percentiles, a plan digest, and a bounded plan
+summary containing node timings, row counts, cache/temp block counts, and
+relation names. It does not print synthetic values or raw SQL. The first local
 100,000-revision profile is recorded in
 [the scale evaluation](docs/evaluations/2026-08-03-authorized-lexical-scale-probe.md);
 it misses the proposed release latency target, so no million-revision or SLA

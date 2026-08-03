@@ -39,6 +39,36 @@ the result is exploratory evidence, not a replacement release profile. The
 next remediation must use the captured plan and node timings rather than add
 another unmeasured index.
 
+## Rejected lateral current-revision experiment
+
+A same-transaction 10,000-revision experiment compared the existing
+`DISTINCT ON` current-revision selection with a `facts`-driven lateral lookup
+that selected one latest revision per fact. The one-run `EXPLAIN (ANALYZE)`
+execution time was 340.843 ms for the existing shape and 359.744 ms for the
+lateral shape. The candidate introduced a more expensive hash/join path, so it
+was rejected and no migration or application query was changed. These are
+exploratory single-run timings, not a replacement release profile.
+
+## Bounded plan profile
+
+The probe now emits a content-free `plan_summary` alongside the digest. It keeps
+planning and execution time plus the twelve slowest inclusive plan nodes, with
+node type, relation name, actual rows/loops, and shared/temp block counts. The
+summary is deliberately not a replacement for the full private `EXPLAIN` plan;
+it is enough to compare candidate query changes without exposing synthetic
+values or raw SQL in routine output.
+
+A 10,000-revision, five-query diagnostic run on the same local PostgreSQL
+profile produced p50 376.156 ms, p95 399.280 ms, p99 400.616 ms, and a plan
+execution time of 372.586 ms. The largest inclusive nodes were an aggregate
+(372.535 ms), a limit (372.525 ms), a sort (372.512 ms), the authorization
+nested loop (370.517 ms), and current-revision selection's unique/sort path
+(142.228/139.712 ms). The `fact_revisions` sequential scan read 10,000 rows in
+61.643 ms and accounted for 5,433 shared reads. Inclusive node times overlap;
+they must not be summed. This points the next experiment toward current-revision
+selection and authorization joins, while retaining the existing correctness
+checks.
+
 ## Profile and result
 
 | Field | Value |
@@ -67,4 +97,5 @@ profile remains unmeasured until query planning and indexing improve.
 The probe is a repeatable baseline for index/query-plan remediation and later
 warm/cold, concurrent, HTTP, vector, and million-revision measurements. Its
 synthetic values and reserved identifiers never leave the rolled-back
-transaction, and its output contains only counts, timings, and a plan digest.
+transaction, and its output contains only counts, timings, a plan digest, and a
+bounded plan summary.

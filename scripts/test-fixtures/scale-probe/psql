@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+plan_file=''
+for argument in "$@"; do
+    case "$argument" in
+        --set=plan_file=*)
+            plan_file="${argument#--set=plan_file=}"
+            ;;
+    esac
+done
+
+if [[ -z "$plan_file" ]]; then
+    echo 'fake psql did not receive plan_file' >&2
+    exit 1
+fi
+
+printf '1000|5|5|1.000|2.000|3.000|1.500|4.000|1000\n'
+printf '%s\n' '[{"Plan":{"Node Type":"Aggregate","Actual Total Time":12.5,"Actual Rows":1,"Actual Loops":1,"Shared Hit Blocks":4,"Shared Read Blocks":2,"Temp Read Blocks":0,"Temp Written Blocks":0,"Plans":[{"Node Type":"Sort","Relation Name":"memory.fact_revisions","Actual Total Time":9.25,"Actual Rows":1000,"Actual Loops":1,"Shared Hit Blocks":2,"Shared Read Blocks":2,"Temp Read Blocks":1,"Temp Written Blocks":3}]},"Planning Time":1.25,"Execution Time":13.75}]' >"$plan_file"

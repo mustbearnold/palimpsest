@@ -23,7 +23,7 @@ if (( scale_queries < 5 || scale_queries > 100 )); then
   exit 2
 fi
 
-for required_tool in psql sha256sum awk; do
+for required_tool in psql sha256sum awk jq; do
   if ! command -v "$required_tool" >/dev/null 2>&1; then
     echo "required tool is unavailable: $required_tool" >&2
     exit 2
@@ -314,6 +314,29 @@ fi
 
 psql_output="$(<"$metrics_file")"
 plan_sha256="$(sha256sum "$plan_file" | awk '{print $1}')"
+plan_summary="$(jq -c '
+    .[0] as $root
+    | {
+        planning_time_ms: ($root["Planning Time"] // 0),
+        execution_time_ms: ($root["Execution Time"] // 0),
+        top_nodes: (
+            [$root.Plan | .. | objects | select(has("Node Type"))]
+            | sort_by(-(."Actual Total Time" // 0))
+            | .[:12]
+            | map({
+                node_type: .["Node Type"],
+                relation: (.["Relation Name"] // null),
+                actual_total_time_ms: (.["Actual Total Time"] // 0),
+                actual_rows: (.["Actual Rows"] // 0),
+                actual_loops: (.["Actual Loops"] // 0),
+                shared_hit_blocks: (.["Shared Hit Blocks"] // 0),
+                shared_read_blocks: (.["Shared Read Blocks"] // 0),
+                temp_read_blocks: (.["Temp Read Blocks"] // 0),
+                temp_written_blocks: (.["Temp Written Blocks"] // 0)
+            })
+        )
+    }
+' "$plan_file")"
 IFS='|' read -r revision_count requested_queries measured_queries p50_ms p95_ms p99_ms mean_ms max_ms projection_count <<<"$psql_output"
 
 if [[ -z "${projection_count:-}" || "$measured_queries" != "$requested_queries" ]]; then
@@ -321,5 +344,5 @@ if [[ -z "${projection_count:-}" || "$measured_queries" != "$requested_queries" 
   exit 1
 fi
 
-printf '{"profile":"authorized-lexical-retrieval-scale-v1","revision_count":%s,"projection_count":%s,"query_count":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"mean_ms":%s,"max_ms":%s,"plan_sha256":"%s","transaction_rolled_back":true}\n' \
-  "$revision_count" "$projection_count" "$measured_queries" "$p50_ms" "$p95_ms" "$p99_ms" "$mean_ms" "$max_ms" "$plan_sha256"
+printf '{"profile":"authorized-lexical-retrieval-scale-v1","revision_count":%s,"projection_count":%s,"query_count":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"mean_ms":%s,"max_ms":%s,"plan_sha256":"%s","plan_summary":%s,"transaction_rolled_back":true}\n' \
+  "$revision_count" "$projection_count" "$measured_queries" "$p50_ms" "$p95_ms" "$p99_ms" "$mean_ms" "$max_ms" "$plan_sha256" "$plan_summary"
