@@ -91,6 +91,22 @@ For the conventional locations above, the equivalent discovery mode is:
 python3 scripts/palimpsest_ingest.py watch --discover
 ```
 
+On this Linux checkout, install that watcher as a user service when it should
+run continuously with the desktop session:
+
+```bash
+bash scripts/install-palimpsest-ingest-service.sh
+systemctl --user status palimpsest-ingest.service
+```
+
+The service reads the current user's exact conventional stores, keeps its
+owner-only cursor under `~/.local/state/palimpsest`, and uses the same local
+development HTTP defaults as the foreground command. Put remote credentials
+or non-default scope in the owner-only
+`~/.config/palimpsest/ingest.env`; do not put them in the unit file. Remove it
+with `systemctl --user disable --now palimpsest-ingest.service` when continuous
+ingestion is no longer wanted.
+
 Discovery is recalculated on every watch pass, so a provider store created
 after the watcher starts is picked up. Use `PALIMPSEST_INGEST_CODEX_SESSIONS`,
 `PALIMPSEST_INGEST_CLAUDE_PROJECTS`, or

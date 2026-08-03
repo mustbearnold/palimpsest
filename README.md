@@ -208,6 +208,9 @@ and [ADR-0021](docs/adr/0021-local-agent-source-discovery.md).
 The Python and TypeScript clients also expose per-project recall helpers that
 return isolated evidence bundles for deliberate comparison; they do not
 silently mix namespaces or pretend to generate a diff.
+On Linux, `bash scripts/install-palimpsest-ingest-service.sh` installs the
+discovery watcher as an owner-only systemd user service for continuous local
+ingestion; see [ADR-0022](docs/adr/0022-supervised-local-ingestion-service.md).
 
 ## Validation
 

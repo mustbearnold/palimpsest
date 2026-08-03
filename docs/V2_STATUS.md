@@ -44,8 +44,9 @@ reimplement the governance rules.
 - The opt-in ingestion bridge follows text-only Codex, Claude Code, and Hermes
   session data with resumable cursors, common credential redaction, stable
   project identities, and explicit `--discover` support for the conventional
-  current-user stores. It does not ingest tools, private thinking, or hidden
-  system prompts.
+  current-user stores. A separately installed Linux systemd user service can
+  supervise that watcher continuously. It does not ingest tools, private
+  thinking, or hidden system prompts.
 
 ## Evidence bar
 
