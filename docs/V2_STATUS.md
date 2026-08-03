@@ -47,6 +47,9 @@ reimplement the governance rules.
   current-user stores. A separately installed Linux systemd user service can
   supervise that watcher continuously. It does not ingest tools, private
   thinking, or hidden system prompts.
+- An operator can run a guarded PostgreSQL custom-format logical backup
+  rehearsal into a separate empty database; the rehearsal compares only
+  content-free schema, extension, migration, and row-count probes.
 
 ## Evidence bar
 
@@ -67,7 +70,8 @@ milestone:
 - Valkey/Redis cache and S3-compatible artifact adapters, including their
   deletion and recovery contracts;
 - a backup/PITR provider, backup-disposition verification, or a full
-  production-shaped restore rehearsal;
+  production-shaped PITR restore rehearsal. The checked-in logical dump
+  rehearsal is narrower and does not change that boundary;
 - million-revision performance, cost, capacity, availability, or SLA evidence;
   exact PostgreSQL retrieval remains the correctness oracle and is not an ANN
   scale claim;

@@ -132,6 +132,22 @@ time, and ledger digest. `restore apply` is the mutating, privileged replay
 operation and never starts HTTP; the environment-driven restore mode remains
 available for automation that already uses it.
 
+The repository also includes a guarded logical-backup rehearsal for an
+operator with an isolated empty restore database. It uses PostgreSQL's custom
+dump format, verifies the archive, restores it, and compares only content-free
+schema/extension/row-count probes:
+
+```bash
+export PALIMPSEST_BACKUP_SOURCE_URL='postgresql://.../palimpsest'
+export PALIMPSEST_BACKUP_RESTORE_URL='postgresql://.../palimpsest_restore'
+bash scripts/palimpsest-logical-backup-rehearsal.sh
+```
+
+The script refuses to restore over a database that already has the `memory`
+schema and does not print either connection URL. This is logical dump/restore
+evidence, not a PostgreSQL base-backup, WAL-archive, PITR, expiry, or production
+RPO/RTO claim.
+
 With Docker, stop PostgreSQL without deleting its volume:
 
 ```bash
