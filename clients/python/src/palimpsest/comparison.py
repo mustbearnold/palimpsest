@@ -42,6 +42,16 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
     grouped: dict[str, dict[str, Any]] = {}
     text_items: list[dict[str, Any]] = []
     item_counts = {project_id: 0 for project_id in project_ids}
+    project_context = {
+        project_id: {
+            "project_roots": set(),
+            "branches": set(),
+            "sources": set(),
+            "roles": set(),
+            "sessions": set(),
+        }
+        for project_id in project_ids
+    }
     for project_id in project_ids:
         bundle = normalized_bundles[project_id]
         if not isinstance(bundle, Mapping):
@@ -80,6 +90,7 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
                 }
             )
             group["value_hashes"].add(value_sha256)
+            _collect_project_context(project_context[project_id], item)
             content = _item_content(item)
             tokens = frozenset(_TOKEN_PATTERN.findall(content.casefold()))
             if tokens:
@@ -137,6 +148,7 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
             "same_key_different_value_is_review_candidate": True,
         },
         "durable_write": False,
+        "project_context": _serialize_project_context(project_context),
         "lexical_review": lexical_review,
         "summary": {
             "bundle_count": len(project_ids),
@@ -204,6 +216,38 @@ def _lexical_review(text_items: list[dict[str, Any]]) -> dict[str, Any]:
         "maximum_tokens_per_bucket": _LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
         "truncated": truncated,
         "candidates": candidates[:_LEXICAL_OVERLAP_MAXIMUM_CANDIDATES],
+    }
+
+
+def _collect_project_context(context: dict[str, Any], item: Mapping[str, Any]) -> None:
+    value = item.get("value")
+    metadata = value.get("metadata") if isinstance(value, Mapping) else None
+    if not isinstance(metadata, Mapping):
+        return
+    for metadata_key, context_key in (
+        ("project_root", "project_roots"),
+        ("branch", "branches"),
+        ("source", "sources"),
+        ("role", "roles"),
+    ):
+        text = _optional_text(metadata.get(metadata_key))
+        if text is not None:
+            context[context_key].add(text)
+    session_id = _optional_text(metadata.get("session_id"))
+    if session_id is not None:
+        context["sessions"].add(session_id)
+
+
+def _serialize_project_context(contexts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        project_id: {
+            "project_roots": sorted(context["project_roots"]),
+            "branches": sorted(context["branches"]),
+            "sources": sorted(context["sources"]),
+            "roles": sorted(context["roles"]),
+            "session_count": len(context["sessions"]),
+        }
+        for project_id, context in sorted(contexts.items())
     }
 
 

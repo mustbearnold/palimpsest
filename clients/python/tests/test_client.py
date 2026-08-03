@@ -349,6 +349,51 @@ class ClientTests(unittest.TestCase):
         self.assertFalse(candidate["token_delta"]["truncated"])
         self.assertFalse(comparison["semantic_inference"]["performed"])
 
+    def test_compare_project_bundles_exposes_observed_project_context(self) -> None:
+        comparison = compare_project_bundles(
+            {
+                "project-a": {
+                    "items": [
+                        {
+                            "key": "decision-a",
+                            "value": {
+                                "content": "release target",
+                                "metadata": {
+                                    "project_root": "/work/project-a",
+                                    "branch": "main",
+                                    "source": "codex",
+                                    "role": "user",
+                                    "session_id": "session-a",
+                                },
+                            },
+                        },
+                        {
+                            "key": "decision-b",
+                            "value": {
+                                "content": "release target",
+                                "metadata": {
+                                    "project_root": "/work/project-a",
+                                    "branch": "main",
+                                    "source": "claude",
+                                    "role": "assistant",
+                                    "session_id": "session-b",
+                                },
+                            },
+                        },
+                    ]
+                },
+                "project-b": {"items": [{"key": "decision-c", "value": {"content": "release target"}}]},
+            }
+        )
+
+        context = comparison["project_context"]["project-a"]
+        self.assertEqual(context["project_roots"], ["/work/project-a"])
+        self.assertEqual(context["branches"], ["main"])
+        self.assertEqual(context["sources"], ["claude", "codex"])
+        self.assertEqual(context["roles"], ["assistant", "user"])
+        self.assertEqual(context["session_count"], 2)
+        self.assertEqual(comparison["project_context"]["project-b"]["session_count"], 0)
+
     def test_correct_uses_strong_etag_and_forget_starts_deletion(self) -> None:
         self.client.correct(
             FACT,

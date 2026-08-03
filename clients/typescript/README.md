@@ -70,7 +70,9 @@ conditional requests and stops only at a server-reported terminal state.
 `recallByProject` returns separate retrieval responses with exact project
 namespaces. `compareByProject` returns those bundles plus deterministic
 exact-key/value-digest classifications and bounded token-overlap candidates
-for differently keyed session messages. Lexical candidates include a bounded
-shared/only-in token delta so wording changes are visible. Same-key/different-
-value and lexical-overlap groups are review candidates only: no model
-inference, semantic conflict claim, or durable write occurs.
+for differently keyed session messages. The result also reports project-root,
+branch, source, role, and unique-session context observed in returned ingestion
+metadata. Lexical candidates include a bounded shared/only-in token delta so
+wording changes are visible. Same-key/different-value and lexical-overlap
+groups are review candidates only: no model inference, semantic conflict claim,
+or durable write occurs.

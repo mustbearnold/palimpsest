@@ -42,7 +42,8 @@ is not an official release or a production-readiness claim.
   canonical value digest. Same-key/different-value groups are review
   candidates, not semantic conflict conclusions; bounded token-overlap hints
   also connect differently keyed session messages for agent review and include
-  a bounded shared/only-in token delta.
+  a bounded shared/only-in token delta. The result also carries observed
+  project-root, branch, source, role, and unique-session context labels.
 - The ingestion adapters handle the observed local Codex, Claude Code, and
   Hermes seams, but they are not provider APIs, native hooks, or a universal
   transcript parser. Tool rows, private thinking, system prompts, and tool

@@ -265,3 +265,48 @@ test("compareProjectBundles returns bounded lexical review candidates", () => {
   assert.equal(comparison.lexical_review.candidates[0].token_delta.truncated, false);
   assert.equal(comparison.semantic_inference.performed, false);
 });
+
+test("compareProjectBundles exposes observed project context", () => {
+  const comparison = compareProjectBundles({
+    "project-a": {
+      items: [
+        {
+          key: "decision-a",
+          value: {
+            content: "release target",
+            metadata: {
+              project_root: "/work/project-a",
+              branch: "main",
+              source: "codex",
+              role: "user",
+              session_id: "session-a",
+            },
+          },
+        },
+        {
+          key: "decision-b",
+          value: {
+            content: "release target",
+            metadata: {
+              project_root: "/work/project-a",
+              branch: "main",
+              source: "claude",
+              role: "assistant",
+              session_id: "session-b",
+            },
+          },
+        },
+      ],
+    },
+    "project-b": { items: [{ key: "decision-c", value: { content: "release target" } }] },
+  });
+
+  assert.deepEqual(comparison.project_context["project-a"], {
+    project_roots: ["/work/project-a"],
+    branches: ["main"],
+    sources: ["claude", "codex"],
+    roles: ["assistant", "user"],
+    session_count: 2,
+  });
+  assert.equal(comparison.project_context["project-b"].session_count, 0);
+});

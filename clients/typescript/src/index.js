@@ -54,6 +54,13 @@ export function compareProjectBundles(bundles) {
   const grouped = new Map();
   const textItems = [];
   const itemCounts = Object.fromEntries(projectIds.map((projectId) => [projectId, 0]));
+  const projectContexts = new Map(projectIds.map((projectId) => [projectId, {
+    projectRoots: new Set(),
+    branches: new Set(),
+    sources: new Set(),
+    roles: new Set(),
+    sessions: new Set(),
+  }]));
   for (const projectId of projectIds) {
     const bundle = bundles[projectId];
     if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
@@ -94,6 +101,7 @@ export function compareProjectBundles(bundles) {
         value_sha256: itemRef.value_sha256,
       });
       group.valueHashes.add(valueSha256);
+      collectProjectContext(projectContexts.get(projectId), item);
       const tokens = new Set(itemContent(item).toLowerCase().match(TOKEN_PATTERN) ?? []);
       if (tokens.size > 0) textItems.push({ projectId, itemIndex, tokens, ref: itemRef });
       itemCounts[projectId] += 1;
@@ -138,6 +146,16 @@ export function compareProjectBundles(bundles) {
       same_key_different_value_is_review_candidate: true,
     },
     durable_write: false,
+    project_context: Object.fromEntries(projectIds.map((projectId) => {
+      const context = projectContexts.get(projectId);
+      return [projectId, {
+        project_roots: [...context.projectRoots].sort(),
+        branches: [...context.branches].sort(),
+        sources: [...context.sources].sort(),
+        roles: [...context.roles].sort(),
+        session_count: context.sessions.size,
+      }];
+    })),
     lexical_review: lexicalReview,
     summary,
     groups,
@@ -663,6 +681,23 @@ function itemContent(item) {
     return value.content;
   }
   return typeof value === "string" ? value : "";
+}
+
+function collectProjectContext(context, item) {
+  if (!context || !item.value || typeof item.value !== "object" || Array.isArray(item.value)) return;
+  const metadata = item.value.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return;
+  for (const [metadataKey, target] of [
+    ["project_root", context.projectRoots],
+    ["branch", context.branches],
+    ["source", context.sources],
+    ["role", context.roles],
+  ]) {
+    const value = optionalText(metadata[metadataKey]);
+    if (value !== null) target.add(value);
+  }
+  const sessionId = optionalText(metadata.session_id);
+  if (sessionId !== null) context.sessions.add(sessionId);
 }
 
 function buildLexicalReview(textItems) {

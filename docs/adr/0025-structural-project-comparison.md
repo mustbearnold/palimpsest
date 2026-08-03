@@ -24,7 +24,9 @@ to the visible fact and revision IDs. It also reports at most 100 token-Jaccard
 overlap candidates across differently keyed content items, using a 0.5
 similarity threshold and at least three shared tokens. Each candidate includes
 at most 20 shared tokens and 20 tokens that occur only in each project, with a
-truncation flag.
+truncation flag. The response also carries project-root, branch, source, role,
+and unique-session labels observed in returned ingestion metadata; absent labels
+remain absent rather than being inferred.
 
 The comparison returns the original project-keyed bundles, performs no model
 inference, writes no memory, and labels both same-key/different-value and
