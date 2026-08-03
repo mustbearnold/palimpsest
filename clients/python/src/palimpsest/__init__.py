@@ -1,6 +1,7 @@
 """Small, dependency-free Python client for the Palimpsest HTTP API."""
 
 from .client import (
+    PalimpsestBinaryResponse,
     PalimpsestClient,
     PalimpsestConfigurationError,
     PalimpsestError,
@@ -13,6 +14,7 @@ from .client import (
 )
 
 __all__ = [
+    "PalimpsestBinaryResponse",
     "PalimpsestClient",
     "PalimpsestConfigurationError",
     "PalimpsestError",

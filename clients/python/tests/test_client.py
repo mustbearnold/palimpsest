@@ -29,12 +29,15 @@ REVISION = "019be000-0000-7000-8000-000000000060"
 AGENT = "019be000-0000-7000-8000-000000000090"
 THREAD = "019be000-0000-7000-8000-0000000000a0"
 CHECKPOINT_REVISION = "019be000-0000-7000-8000-0000000000b0"
+EXPORT = "019be000-0000-7000-8000-0000000000c0"
+EXPORT_PACKAGE = b"PK\x03\x04palimpsest"
 
 
 class FakeApi(BaseHTTPRequestHandler):
     requests: list[dict[str, object]] = []
     fail_fact: bool = False
     deletion_calls: int = 0
+    export_calls: int = 0
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -61,6 +64,8 @@ class FakeApi(BaseHTTPRequestHandler):
             self._json(201, {"status": "results", "items": [], "next_cursor": None})
         elif self.path.endswith("/deletions"):
             self._json(202, {"operation_id": "019be000-0000-7000-8000-000000000070", "lifecycle_state": "pending"})
+        elif self.path.endswith("/exports"):
+            self._json(202, {"export_id": EXPORT, "lifecycle_state": "queued"})
         else:
             self._json(404, {"type": "resource-not-found"})
 
@@ -100,6 +105,24 @@ class FakeApi(BaseHTTPRequestHandler):
                 return
             self._json_with_etag(200, {"lifecycle_state": "pending"}, '"pending-1"')
             return
+        if self.path.endswith("/content"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("ETag", '"export-content-1"')
+            self.send_header("Content-Length", str(len(EXPORT_PACKAGE)))
+            self.end_headers()
+            self.wfile.write(EXPORT_PACKAGE)
+            return
+        if "/exports/" in self.path:
+            FakeApi.export_calls += 1
+            if FakeApi.export_calls == 2:
+                self.send_response(303)
+                self.send_header("Location", f"/v1/tenants/{TENANT}/subjects/{SUBJECT}/exports/{EXPORT}/content")
+                self.send_header("ETag", '"export-2"')
+                self.end_headers()
+                return
+            self._json_with_etag(200, {"export_id": EXPORT, "lifecycle_state": "materializing"}, '"export-1"')
+            return
         if self.path.endswith("/checkpoint"):
             self._json_with_etag(
                 200,
@@ -138,6 +161,7 @@ class ClientTests(unittest.TestCase):
         FakeApi.requests = []
         FakeApi.fail_fact = False
         FakeApi.deletion_calls = 0
+        FakeApi.export_calls = 0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -260,6 +284,21 @@ class ClientTests(unittest.TestCase):
         deletion_requests = [item for item in FakeApi.requests if "/deletions/" in item["path"]]
         self.assertEqual(len(deletion_requests), 3)
         self.assertEqual(deletion_requests[1]["headers"]["If-None-Match"], '"pending-1"')
+
+    def test_export_lifecycle_preserves_ready_redirect_and_binary_content(self) -> None:
+        created = self.client.start_export_response(idempotency_key="export-1")
+        status = self.client.get_export_response(EXPORT)
+        ready = self.client.get_export_response(EXPORT, if_none_match=status.etag)
+        downloaded = self.client.download_export_response(EXPORT)
+
+        self.assertEqual(created.status_code, 202)
+        self.assertEqual(created.data["export_id"], EXPORT)
+        self.assertEqual(status.data["lifecycle_state"], "materializing")
+        self.assertEqual(ready.status_code, 303)
+        self.assertTrue(ready.location.endswith(f"/exports/{EXPORT}/content"))
+        self.assertEqual(ready.etag, '"export-2"')
+        self.assertEqual(downloaded.content, EXPORT_PACKAGE)
+        self.assertEqual(downloaded.etag, '"export-content-1"')
 
     def test_configuration_and_http_errors_are_typed(self) -> None:
         with self.assertRaises(PalimpsestConfigurationError):

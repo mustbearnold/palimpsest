@@ -19,6 +19,14 @@ from urllib import error, parse, request
 JsonObject = dict[str, Any]
 
 
+class _NoRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
+_HTTP_OPENER = request.build_opener(_NoRedirect)
+
+
 class PalimpsestError(RuntimeError):
     """Base class for client and server failures."""
 
@@ -82,6 +90,36 @@ class PalimpsestResponse:
     def etag(self) -> str | None:
         for name, value in self.headers.items():
             if name.lower() == "etag":
+                return value
+        return None
+
+    @property
+    def location(self) -> str | None:
+        for name, value in self.headers.items():
+            if name.lower() == "location":
+                return value
+        return None
+
+
+@dataclass(frozen=True)
+class PalimpsestBinaryResponse:
+    """Binary response plus HTTP metadata, used for export packages."""
+
+    content: bytes
+    status_code: int
+    headers: Mapping[str, str]
+
+    @property
+    def etag(self) -> str | None:
+        for name, value in self.headers.items():
+            if name.lower() == "etag":
+                return value
+        return None
+
+    @property
+    def location(self) -> str | None:
+        for name, value in self.headers.items():
+            if name.lower() == "location":
                 return value
         return None
 
@@ -289,6 +327,41 @@ class PalimpsestClient:
             if_match=if_match,
             if_none_match=if_none_match,
         )
+
+    def start_export(self, *, idempotency_key: str | None = None) -> JsonObject:
+        return self.start_export_response(idempotency_key=idempotency_key).data
+
+    def start_export_response(self, *, idempotency_key: str | None = None) -> PalimpsestResponse:
+        return self._json_response(
+            "POST",
+            f"{self._scope_path()}/exports",
+            idempotency_key=_idempotency_key(idempotency_key),
+        )
+
+    def get_export(self, export_id: str, *, if_none_match: str | None = None) -> JsonObject:
+        return self.get_export_response(export_id, if_none_match=if_none_match).data
+
+    def get_export_response(
+        self, export_id: str, *, if_none_match: str | None = None
+    ) -> PalimpsestResponse:
+        response = self._request(
+            "GET",
+            f"{self._scope_path()}/exports/{_uuid_string(export_id, 'export_id')}",
+            if_none_match=if_none_match,
+        )
+        if response.status_code in {303, 304}:
+            return PalimpsestResponse({}, response.status_code, response.headers)
+        return self._decode_json_response(response)
+
+    def download_export(self, export_id: str) -> bytes:
+        return self.download_export_response(export_id).content
+
+    def download_export_response(self, export_id: str) -> PalimpsestBinaryResponse:
+        response = self._request(
+            "GET",
+            f"{self._scope_path()}/exports/{_uuid_string(export_id, 'export_id')}/content",
+        )
+        return PalimpsestBinaryResponse(response.body, response.status_code, response.headers)
 
     def supersede_fact(
         self,
@@ -579,13 +652,13 @@ class PalimpsestClient:
             f"{self.base_url}{path}", data=encoded_body, headers=headers, method=method
         )
         try:
-            with request.urlopen(http_request, timeout=self.timeout_seconds) as response:
+            with _HTTP_OPENER.open(http_request, timeout=self.timeout_seconds) as response:
                 return _HttpResponse(response.status, dict(response.headers.items()), response.read())
         except error.HTTPError as exc:
             response_body = exc.read()
             headers = dict(exc.headers.items())
             exc.close()
-            if exc.code == 304:
+            if exc.code in {303, 304}:
                 return _HttpResponse(exc.code, headers, response_body)
             try:
                 problem = json.loads(response_body.decode("utf-8"))

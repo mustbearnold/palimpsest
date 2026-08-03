@@ -51,7 +51,10 @@ client.wait_for_deletion(deletion["operation_id"], timeout_seconds=60)
 ```
 
 The same client also exposes conditional checkpoint read/save methods for
-resumable agent threads.
+resumable agent threads, plus `start_export`, `get_export_response`, and
+`download_export` for authorized canonical-history packages. Ready export
+status is represented as a `303` response with its download `Location`; the
+client does not follow that redirect implicitly.
 
 `remember` intentionally performs two durable requests: the immutable episode
 is committed first, then the governed fact cites it. If promotion fails,
