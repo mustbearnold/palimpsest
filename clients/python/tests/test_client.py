@@ -327,6 +327,24 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(raised.exception.failed_write["claim_id"], "claim-release-target-copy")
         self.assertIsInstance(raised.exception.cause, PalimpsestHttpError)
 
+    def test_consolidation_preflight_errors_do_not_look_like_partial_writes(self) -> None:
+        client_without_case = PalimpsestClient(
+            base_url=f"http://127.0.0.1:{self.server.server_port}",
+            bearer_token="test-token",
+            tenant_id=TENANT,
+            subject_id=SUBJECT,
+        )
+
+        with self.assertRaises(PalimpsestConfigurationError):
+            client_without_case.consolidate_project_review(
+                project_comparison_result(),
+                project_review(),
+                [consolidation_write("release-target-difference")],
+                consolidation_id="review-run-preflight",
+            )
+
+        self.assertEqual(FakeApi.requests, [])
+
     def test_recall_sends_explicit_temporal_perspective_and_filters(self) -> None:
         self.client.recall(
             "shipping address",

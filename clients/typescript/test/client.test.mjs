@@ -204,6 +204,39 @@ test("consolidation failure reports completed claims for retry", async () => {
   }
 });
 
+test("consolidation preflight errors do not look like partial writes", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ fact_id: "019be000-0000-7000-8000-000000000050" }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const client = new PalimpsestClient({
+      baseUrl: "http://127.0.0.1:8080",
+      bearerToken: "test-token",
+      tenantId: TENANT,
+      subjectId: SUBJECT,
+    });
+    await assert.rejects(
+      client.consolidateProjectReview(
+        projectComparisonResult(),
+        projectReview(),
+        [consolidationWrite("release-target-difference")],
+        { consolidationId: "review-run-preflight" },
+      ),
+      (error) => error.constructor.name === "PalimpsestConfigurationError",
+    );
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("configuration rejects credentials in the base URL", () => {
   assert.throws(
     () => new PalimpsestClient({

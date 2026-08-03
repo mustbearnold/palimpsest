@@ -723,6 +723,11 @@ export class PalimpsestClient {
       throw new PalimpsestConfigurationError(error.message);
     }
 
+    this.#case(null);
+    plan.writes.forEach((plannedWrite) => {
+      plannedWrite.evidence_episode_ids.forEach((episodeId) => uuidValue(episodeId, "evidenceEpisodeId"));
+    });
+
     const completed = [];
     for (const plannedWrite of plan.writes) {
       let fact;
@@ -741,6 +746,7 @@ export class PalimpsestClient {
           idempotencyKey: plannedWrite.idempotency_key,
         });
       } catch (error) {
+        if (error instanceof PalimpsestConfigurationError) throw error;
         if (error instanceof PalimpsestError) {
           throw new PartialConsolidationError(plan.consolidation_id, completed, plannedWrite, error);
         }

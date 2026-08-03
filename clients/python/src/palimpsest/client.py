@@ -589,6 +589,11 @@ class PalimpsestClient:
         except ValueError as exc:
             raise PalimpsestConfigurationError(str(exc)) from exc
 
+        self._case(None)
+        for planned_write in plan["writes"]:
+            for episode_id in planned_write["evidence_episode_ids"]:
+                _uuid_string(episode_id, "evidence_episode_id")
+
         completed: list[JsonObject] = []
         for planned_write in plan["writes"]:
             try:
@@ -605,6 +610,8 @@ class PalimpsestClient:
                     retention_policy_id=planned_write["retention_policy_id"],
                     idempotency_key=planned_write["idempotency_key"],
                 )
+            except PalimpsestConfigurationError:
+                raise
             except PalimpsestError as exc:
                 raise PartialConsolidationError(
                     plan["consolidation_id"], completed, planned_write, exc
