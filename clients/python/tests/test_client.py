@@ -17,6 +17,7 @@ from palimpsest import (  # noqa: E402
     PalimpsestConfigurationError,
     PalimpsestHttpError,
     PartialRememberError,
+    compare_project_bundles,
 )
 
 
@@ -233,6 +234,88 @@ class ClientTests(unittest.TestCase):
                 ["project-aaaaaaaaaaaaaaaa"],
                 filters={"namespaces": ["mixed"]},
             )
+
+    def test_compare_project_bundles_marks_exact_and_different_values_without_semantic_claim(self) -> None:
+        comparison = compare_project_bundles(
+            {
+                "project-a": {
+                    "status": "results",
+                    "items": [
+                        {
+                            "fact_id": "fact-a-1",
+                            "revision_id": "revision-a-1",
+                            "namespace": "project-a",
+                            "key": "release-target",
+                            "value": {"content": "v1", "metadata": {"source": "a"}},
+                        },
+                        {
+                            "fact_id": "fact-a-2",
+                            "revision_id": "revision-a-2",
+                            "namespace": "project-a",
+                            "key": "only-a",
+                            "value": {"content": "local", "metadata": {}},
+                        },
+                    ],
+                },
+                "project-b": {
+                    "status": "results",
+                    "items": [
+                        {
+                            "fact_id": "fact-b-1",
+                            "revision_id": "revision-b-1",
+                            "namespace": "project-b",
+                            "key": "release-target",
+                            "value": {"content": "v2", "metadata": {"source": "b"}},
+                        },
+                        {
+                            "fact_id": "fact-b-2",
+                            "revision_id": "revision-b-2",
+                            "namespace": "project-b",
+                            "key": "only-b",
+                            "value": {"content": "local", "metadata": {}},
+                        },
+                    ],
+                },
+            }
+        )
+
+        self.assertEqual(comparison["profile"], "project-comparison-structural-v1")
+        self.assertFalse(comparison["semantic_inference"]["performed"])
+        self.assertFalse(comparison["durable_write"])
+        groups = {group["key"]: group for group in comparison["groups"]}
+        self.assertEqual(groups["release-target"]["classification"], "same_key_different_value")
+        self.assertEqual(groups["only-a"]["classification"], "project_specific")
+        self.assertEqual(groups["only-b"]["classification"], "project_specific")
+        self.assertEqual(comparison["summary"]["same_key_different_value_groups"], 1)
+        self.assertEqual(comparison["summary"]["exact_match_groups"], 0)
+        self.assertEqual(comparison["summary"]["project_specific_groups"], 2)
+
+    def test_compare_project_bundles_detects_exact_value_even_when_metadata_differs(self) -> None:
+        comparison = compare_project_bundles(
+            {
+                "project-a": {
+                    "items": [{"key": "same", "value": {"content": "v1", "metadata": {"source": "a"}}}]
+                },
+                "project-b": {
+                    "items": [{"key": "same", "value": {"metadata": {"source": "a"}, "content": "v1"}}]
+                },
+            }
+        )
+
+        self.assertEqual(comparison["groups"][0]["classification"], "exact_match")
+        self.assertEqual(comparison["summary"]["exact_match_groups"], 1)
+
+    def test_compare_by_project_retrieves_isolated_bundles_before_comparing(self) -> None:
+        result = self.client.compare_by_project(
+            "release decision",
+            ["project-aaaaaaaaaaaaaaaa", "project-bbbbbbbbbbbbbbbb"],
+            idempotency_key_prefix="compare-2",
+        )
+
+        self.assertEqual(result["profile"], "project-comparison-structural-v1")
+        self.assertEqual(result["comparison"]["summary"]["bundle_count"], 2)
+        self.assertEqual(len(FakeApi.requests), 2)
+        self.assertTrue(all(request["path"].endswith("/retrievals") for request in FakeApi.requests))
 
     def test_correct_uses_strong_etag_and_forget_starts_deletion(self) -> None:
         self.client.correct(

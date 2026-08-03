@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { PalimpsestClient } from "../src/index.js";
+import { PalimpsestClient, compareProjectBundles } from "../src/index.js";
 
 const TENANT = "019be000-0000-7000-8000-000000000010";
 const SUBJECT = "019be000-0000-7000-8000-000000000020";
@@ -166,6 +166,78 @@ test("recallByProject keeps each project candidate set separate", async () => {
     assert.deepEqual(requests.map(({ init }) => init.headers["Idempotency-Key"]), [
       "compare-1:project-aaaaaaaaaaaaaaaa",
       "compare-1:project-bbbbbbbbbbbbbbbb",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("compareProjectBundles marks key differences without semantic overclaim", () => {
+  const comparison = compareProjectBundles({
+    "project-a": {
+      items: [
+        { fact_id: "fact-a-1", revision_id: "revision-a-1", key: "release-target", value: { content: "v1" } },
+        { fact_id: "fact-a-2", revision_id: "revision-a-2", key: "only-a", value: { content: "local" } },
+      ],
+    },
+    "project-b": {
+      items: [
+        { fact_id: "fact-b-1", revision_id: "revision-b-1", key: "release-target", value: { content: "v2" } },
+        { fact_id: "fact-b-2", revision_id: "revision-b-2", key: "only-b", value: { content: "local" } },
+      ],
+    },
+  });
+
+  assert.equal(comparison.profile, "project-comparison-structural-v1");
+  assert.equal(comparison.semantic_inference.performed, false);
+  assert.equal(comparison.durable_write, false);
+  const groups = Object.fromEntries(comparison.groups.map((group) => [group.key, group]));
+  assert.equal(groups["release-target"].classification, "same_key_different_value");
+  assert.equal(groups["only-a"].classification, "project_specific");
+  assert.equal(groups["only-b"].classification, "project_specific");
+  assert.equal(comparison.summary.same_key_different_value_groups, 1);
+});
+
+test("compareProjectBundles recognizes exact canonical values", () => {
+  const comparison = compareProjectBundles({
+    "project-a": { items: [{ key: "same", value: { content: "v1", metadata: { source: "a" } } }] },
+    "project-b": { items: [{ key: "same", value: { metadata: { source: "a" }, content: "v1" } }] },
+  });
+
+  assert.equal(comparison.groups[0].classification, "exact_match");
+  assert.equal(comparison.summary.exact_match_groups, 1);
+});
+
+test("compareByProject retrieves isolated bundles and adds a structural summary", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ status: "results", items: [] }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const client = new PalimpsestClient({
+      baseUrl: "http://127.0.0.1:8080",
+      bearerToken: "test-token",
+      tenantId: TENANT,
+      subjectId: SUBJECT,
+    });
+    const result = await client.compareByProject(
+      "release decision",
+      ["project-aaaaaaaaaaaaaaaa", "project-bbbbbbbbbbbbbbbb"],
+      { idempotencyKeyPrefix: "compare-2" },
+    );
+
+    assert.equal(result.profile, "project-comparison-structural-v1");
+    assert.equal(result.comparison.summary.bundle_count, 2);
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests.map(({ body }) => body.filters), [
+      { namespaces: ["agent_session:project-aaaaaaaaaaaaaaaa"] },
+      { namespaces: ["agent_session:project-bbbbbbbbbbbbbbbb"] },
     ]);
   } finally {
     globalThis.fetch = originalFetch;

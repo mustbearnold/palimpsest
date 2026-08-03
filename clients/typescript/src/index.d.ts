@@ -2,6 +2,7 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 export type JsonObject = Record<string, any>;
 
 export function projectNamespace(projectId: string, prefix?: string): string;
+export function compareProjectBundles(bundles: Record<string, JsonObject>): JsonObject;
 
 export interface PalimpsestResponse<T extends JsonObject = JsonObject> {
   data: T;
@@ -91,6 +92,18 @@ export class PalimpsestClient {
       idempotencyKeyPrefix?: string | null;
     },
   ): Promise<Record<string, JsonObject>>;
+  compareByProject(
+    query: string,
+    projectIds: string[],
+    options?: {
+      perspective?: string | JsonObject;
+      pageSize?: number;
+      policyId?: string | null;
+      filters?: JsonObject;
+      namespacePrefix?: string;
+      idempotencyKeyPrefix?: string | null;
+    },
+  ): Promise<JsonObject>;
   getRetrieval(retrievalId: string, options?: { cursor?: string | null }): Promise<JsonObject>;
   saveCheckpointResponse(agentId: string, threadId: string, options: JsonObject): Promise<PalimpsestResponse>;
   saveCheckpoint(agentId: string, threadId: string, options: JsonObject): Promise<JsonObject>;

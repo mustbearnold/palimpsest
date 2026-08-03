@@ -132,16 +132,26 @@ project_bundles = client.recall_by_project(
     "release decision",
     ["project-0123456789abcdef", "project-fedcba9876543210"],
 )
+comparison = client.compare_by_project(
+    "release decision",
+    ["project-0123456789abcdef", "project-fedcba9876543210"],
+)
 ```
 
 `recall_by_project` intentionally returns one retrieval response per project;
-it gives a caller or model clean evidence bundles to compare but does not
-claim to synthesize a semantic diff.
+it gives a caller or model clean evidence bundles to compare. The
+`compare_by_project` helper returns those bundles plus a structural summary:
+exact key/value matches, project-specific keys, and same-key/different-value
+review candidates. It uses canonical value digests, performs no model
+inference, and writes no memory; callers must inspect the returned bundles
+before treating a review candidate as a real semantic conflict.
 
-The local MCP adapter exposes the same operation as
-`palimpsest_recall_by_project`. It requires at least two distinct project IDs,
-so an agent can ask one question and receive explicitly keyed bundles without
-cross-project candidate mixing.
+The local MCP adapter exposes the same operations as
+`palimpsest_recall_by_project` and `palimpsest_compare_by_project`. Both
+require at least two distinct project IDs, so an agent can ask one question and
+receive explicitly keyed bundles without cross-project candidate mixing; the
+comparison tool adds only the deterministic structural summary described
+above.
 
 The bridge ingests user and assistant text only. It excludes tool rows,
 thinking blocks, system prompts, and tool results; common credential-shaped

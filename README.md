@@ -204,11 +204,12 @@ codex mcp add palimpsest \
 
 Codex will then have `palimpsest_retrieve` for authorized current-memory
 searches, `palimpsest_recall_by_project` for isolated side-by-side project
-evidence, and `palimpsest_remember` for explicitly requested saves. The
-project tool keeps candidate sets separate; it does not invent a semantic diff
-or consolidate conflicting memories. The adapter uses the HTTP API, keeps the
-configured tenant and subject scope, and never exposes delete or export
-operations. Verify registration with `codex mcp list`.
+evidence, `palimpsest_compare_by_project` for deterministic key/value-digest
+review candidates, and `palimpsest_remember` for explicitly requested saves.
+The comparison tool does not infer semantic conflicts or consolidate memories.
+The adapter uses the HTTP API, keeps the configured tenant and subject scope,
+and never exposes delete or export operations. Verify registration with
+`codex mcp list`.
 
 Startup detects an incompatible legacy local volume and exits without deleting
 it. Preserve or back up needed local data before explicitly recreating a volume.
@@ -253,7 +254,9 @@ have to share one undifferentiated search pool. See [ADR-0019](docs/adr/0019-pro
 and [ADR-0021](docs/adr/0021-local-agent-source-discovery.md).
 The Python and TypeScript clients also expose per-project recall helpers that
 return isolated evidence bundles for deliberate comparison; they do not
-silently mix namespaces or pretend to generate a diff.
+silently mix namespaces. Their comparison helpers additionally identify exact
+key/value matches and same-key/different-value review candidates using
+deterministic digests, without making a semantic claim or durable write.
 On Linux, `bash scripts/install-palimpsest-ingest-service.sh` installs the
 discovery watcher as an owner-only systemd user service for continuous local
 ingestion; see [ADR-0022](docs/adr/0022-supervised-local-ingestion-service.md).

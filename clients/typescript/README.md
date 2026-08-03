@@ -37,6 +37,11 @@ const projectBundles = await client.recallByProject(
   ["project-0123456789abcdef", "project-fedcba9876543210"],
   { idempotencyKeyPrefix: "case-123-compare-1" },
 );
+const projectComparison = await client.compareByProject(
+  "release decision",
+  ["project-0123456789abcdef", "project-fedcba9876543210"],
+  { idempotencyKeyPrefix: "case-123-compare-2" },
+);
 const fact = await client.getFactResponse(saved.fact.fact_id);
 await client.correct(saved.fact.fact_id, {
   supersedesRevisionId: fact.data.revision.revision_id,
@@ -63,5 +68,7 @@ Ready export status is represented as a `303` response with its download
 conditional requests and stops only at a server-reported terminal state.
 
 `recallByProject` returns separate retrieval responses with exact project
-namespaces. It supplies isolated evidence bundles for a comparison; it does
-not invent a semantic project diff.
+namespaces. `compareByProject` returns those bundles plus deterministic
+exact-key/value-digest classifications. Same-key/different-value groups are
+review candidates only: no model inference, semantic conflict claim, or
+durable write occurs.

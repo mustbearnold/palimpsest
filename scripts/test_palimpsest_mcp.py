@@ -17,6 +17,7 @@ class FakeClient:
     def __init__(self) -> None:
         self.retrievals: list[tuple[str, int]] = []
         self.project_retrievals: list[tuple[str, list[str], int]] = []
+        self.project_comparisons: list[tuple[str, list[str], int]] = []
         self.memories: list[dict[str, object]] = []
 
     def retrieve(self, query: str, page_size: int) -> dict[str, object]:
@@ -26,6 +27,10 @@ class FakeClient:
     def recall_by_project(self, query: str, project_ids: list[str], page_size: int) -> dict[str, object]:
         self.project_retrievals.append((query, project_ids, page_size))
         return {project_id: {"status": "results", "project_id": project_id} for project_id in project_ids}
+
+    def compare_by_project(self, query: str, project_ids: list[str], page_size: int) -> dict[str, object]:
+        self.project_comparisons.append((query, project_ids, page_size))
+        return {"profile": "project-comparison-structural-v1", "projects": project_ids}
 
     def remember(self, **kwargs: object) -> dict[str, object]:
         self.memories.append(kwargs)
@@ -46,7 +51,12 @@ class McpAdapterTests(unittest.TestCase):
         )
         self.assertEqual(
             [tool["name"] for tool in listing["result"]["tools"]],
-            ["palimpsest_retrieve", "palimpsest_recall_by_project", "palimpsest_remember"],
+            [
+                "palimpsest_retrieve",
+                "palimpsest_recall_by_project",
+                "palimpsest_compare_by_project",
+                "palimpsest_remember",
+            ],
         )
 
     def test_retrieve_is_scoped_to_the_tool_arguments(self) -> None:
@@ -117,6 +127,31 @@ class McpAdapterTests(unittest.TestCase):
         )
         self.assertTrue(response["result"]["isError"])
         self.assertIn("two distinct projects", response["result"]["content"][0]["text"])
+
+    def test_compare_by_project_returns_structured_comparison(self) -> None:
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_compare_by_project",
+                    "arguments": {
+                        "query": "  release decision ",
+                        "project_ids": [" project-a ", "project-b"],
+                        "page_size": 6,
+                    },
+                },
+            },
+            self.client,
+        )
+        self.assertNotIn("isError", response["result"])
+        self.assertEqual(
+            self.client.project_comparisons,
+            [("release decision", ["project-a", "project-b"], 6)],
+        )
+        rendered = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(rendered["profile"], "project-comparison-structural-v1")
 
     def test_notifications_do_not_produce_output(self) -> None:
         incoming = io.StringIO(

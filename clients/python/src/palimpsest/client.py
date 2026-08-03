@@ -16,6 +16,7 @@ from typing import Any, Mapping, Sequence
 from urllib import error, parse, request
 
 from .ingest import project_namespace
+from .comparison import compare_project_bundles
 
 
 JsonObject = dict[str, Any]
@@ -494,6 +495,46 @@ class PalimpsestClient:
                 idempotency_key=idempotency_key,
             )
         return results
+
+    def compare_by_project(
+        self,
+        query: str,
+        project_ids: Sequence[str],
+        *,
+        perspective: Mapping[str, Any] | str | None = None,
+        page_size: int = 10,
+        policy_id: str | None = None,
+        filters: Mapping[str, Any] | None = None,
+        namespace_prefix: str = "agent_session",
+        idempotency_key_prefix: str | None = None,
+    ) -> JsonObject:
+        """Return isolated bundles plus a structural comparison summary.
+
+        Same-key/different-value groups are review candidates only. No model
+        inference, conflict fact, or other durable write occurs here.
+        """
+
+        query = _non_empty_text(query, "query")
+        bundles = self.recall_by_project(
+            query,
+            project_ids,
+            perspective=perspective,
+            page_size=page_size,
+            policy_id=policy_id,
+            filters=filters,
+            namespace_prefix=namespace_prefix,
+            idempotency_key_prefix=idempotency_key_prefix,
+        )
+        try:
+            comparison = compare_project_bundles(bundles)
+        except ValueError as exc:
+            raise PalimpsestProtocolError("retrieval bundles cannot be compared") from exc
+        return {
+            "profile": comparison["profile"],
+            "query": query,
+            "bundles": bundles,
+            "comparison": comparison,
+        }
 
     def get_retrieval(self, retrieval_id: str, *, cursor: str | None = None) -> JsonObject:
         path = f"{self._scope_path()}/retrievals/{_uuid_string(retrieval_id, 'retrieval_id')}"

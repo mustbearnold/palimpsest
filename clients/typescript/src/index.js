@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,6 +35,94 @@ export class PartialRememberError extends PalimpsestError {
     this.episode = episode;
     this.cause = cause;
   }
+}
+
+export function compareProjectBundles(bundles) {
+  if (!bundles || typeof bundles !== "object" || Array.isArray(bundles)) {
+    throw new PalimpsestConfigurationError("bundles must be an object of project IDs to retrieval responses");
+  }
+  const projectIds = Object.keys(bundles).map((projectId) => nonEmptyText(projectId, "projectId")).sort();
+  if (projectIds.length < 2 || new Set(projectIds).size !== projectIds.length) {
+    throw new PalimpsestConfigurationError("bundles must contain at least two distinct projects");
+  }
+
+  const grouped = new Map();
+  const itemCounts = Object.fromEntries(projectIds.map((projectId) => [projectId, 0]));
+  for (const projectId of projectIds) {
+    const bundle = bundles[projectId];
+    if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
+      throw new PalimpsestProtocolError(`retrieval bundle for ${projectId} must be an object`);
+    }
+    const items = bundle.items ?? [];
+    if (!Array.isArray(items)) {
+      throw new PalimpsestProtocolError(`retrieval bundle for ${projectId} must contain an items array`);
+    }
+    for (const [itemIndex, item] of items.entries()) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new PalimpsestProtocolError(`retrieval item ${itemIndex} for ${projectId} must be an object`);
+      }
+      const displayKey = typeof item.key === "string" && item.key.trim() ? item.key.trim() : null;
+      const comparisonKey = displayKey === null
+        ? `__unkeyed__:${projectId}:${itemIndex}`
+        : displayKey.toLowerCase();
+      let group = grouped.get(comparisonKey);
+      if (!group) {
+        group = { key: displayKey, itemsByProject: new Map(), valueHashes: new Set() };
+        grouped.set(comparisonKey, group);
+      }
+      if (group.key === null && displayKey !== null) group.key = displayKey;
+      const value = Object.hasOwn(item, "value") ? item.value : null;
+      const valueSha256 = valueSha256For(value);
+      if (!group.itemsByProject.has(projectId)) group.itemsByProject.set(projectId, []);
+      group.itemsByProject.get(projectId).push({
+        fact_id: optionalText(item.fact_id),
+        revision_id: optionalText(item.revision_id),
+        namespace: optionalText(item.namespace),
+        value_sha256: valueSha256,
+      });
+      group.valueHashes.add(valueSha256);
+      itemCounts[projectId] += 1;
+    }
+  }
+
+  const groups = [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([comparisonKey, group]) => {
+    const projects = [...group.itemsByProject.keys()].sort();
+    const classification = projects.length === 1
+      ? "project_specific"
+      : group.valueHashes.size === 1
+        ? "exact_match"
+        : "same_key_different_value";
+    const itemsByProject = Object.create(null);
+    for (const projectId of projects) itemsByProject[projectId] = group.itemsByProject.get(projectId);
+    return {
+      comparison_key: comparisonKey,
+      key: group.key,
+      classification,
+      projects,
+      items_by_project: itemsByProject,
+    };
+  });
+  const summary = {
+    bundle_count: projectIds.length,
+    item_count: Object.values(itemCounts).reduce((total, count) => total + count, 0),
+    items_by_project: itemCounts,
+    group_count: groups.length,
+    exact_match_groups: groups.filter((group) => group.classification === "exact_match").length,
+    same_key_different_value_groups: groups.filter((group) => group.classification === "same_key_different_value").length,
+    project_specific_groups: groups.filter((group) => group.classification === "project_specific").length,
+  };
+  return {
+    profile: "project-comparison-structural-v1",
+    projects: projectIds,
+    semantic_inference: {
+      performed: false,
+      method: "normalized-fact-key-and-value-sha256-v1",
+      same_key_different_value_is_review_candidate: true,
+    },
+    durable_write: false,
+    summary,
+    groups,
+  };
 }
 
 export class PalimpsestClient {
@@ -231,6 +319,17 @@ export class PalimpsestClient {
       });
     }
     return results;
+  }
+
+  async compareByProject(query, projectIds, options = {}) {
+    const text = nonEmptyText(query, "query");
+    const bundles = await this.recallByProject(text, projectIds, options);
+    return {
+      profile: "project-comparison-structural-v1",
+      query: text,
+      bundles,
+      comparison: compareProjectBundles(bundles),
+    };
   }
 
   async getRetrieval(retrievalId, { cursor = null } = {}) {
@@ -517,6 +616,26 @@ function responseEnvelope(data, response) {
     etag: response.headers.etag ?? null,
     location: response.headers.location ?? null,
   };
+}
+
+function valueSha256For(value) {
+  return createHash("sha256").update(stableJson(value), "utf8").digest("hex");
+}
+
+function stableJson(value) {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  throw new PalimpsestProtocolError("retrieval item values must be JSON-compatible");
+}
+
+function optionalText(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function baseUrlValue(value) {

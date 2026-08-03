@@ -12,6 +12,7 @@ from .client import (
     PalimpsestTransportError,
     PartialRememberError,
 )
+from .comparison import compare_project_bundles
 from .ingest import (
     IngestReport,
     IngestionError,
@@ -38,6 +39,7 @@ __all__ = [
     "PalimpsestTimeoutError",
     "PalimpsestTransportError",
     "PartialRememberError",
+    "compare_project_bundles",
     "IngestReport",
     "IngestionError",
     "IngestionRunner",
