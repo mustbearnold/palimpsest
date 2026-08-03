@@ -69,6 +69,7 @@ conditional requests and stops only at a server-reported terminal state.
 
 `recallByProject` returns separate retrieval responses with exact project
 namespaces. `compareByProject` returns those bundles plus deterministic
-exact-key/value-digest classifications. Same-key/different-value groups are
-review candidates only: no model inference, semantic conflict claim, or
-durable write occurs.
+exact-key/value-digest classifications and bounded token-overlap candidates
+for differently keyed session messages. Same-key/different-value and lexical
+overlap groups are review candidates only: no model inference, semantic
+conflict claim, or durable write occurs.

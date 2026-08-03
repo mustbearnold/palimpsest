@@ -142,9 +142,10 @@ comparison = client.compare_by_project(
 it gives a caller or model clean evidence bundles to compare. The
 `compare_by_project` helper returns those bundles plus a structural summary:
 exact key/value matches, project-specific keys, and same-key/different-value
-review candidates. It uses canonical value digests, performs no model
-inference, and writes no memory; callers must inspect the returned bundles
-before treating a review candidate as a real semantic conflict.
+review candidates, plus bounded token-overlap candidates for differently keyed
+session messages. It uses canonical value digests and lexical Jaccard only,
+performs no model inference, and writes no memory; callers must inspect the
+returned bundles before treating any candidate as a real semantic conflict.
 
 The local MCP adapter exposes the same operations as
 `palimpsest_recall_by_project` and `palimpsest_compare_by_project`. Both

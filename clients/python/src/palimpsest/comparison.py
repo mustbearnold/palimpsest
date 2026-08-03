@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
 
 COMPARISON_PROFILE = "project-comparison-structural-v1"
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+_LEXICAL_OVERLAP_THRESHOLD = 0.5
+_LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS = 3
+_LEXICAL_OVERLAP_MAXIMUM_CANDIDATES = 100
 
 
 def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
@@ -34,6 +39,7 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("bundles must contain at least two distinct projects")
 
     grouped: dict[str, dict[str, Any]] = {}
+    text_items: list[dict[str, Any]] = []
     item_counts = {project_id: 0 for project_id in project_ids}
     for project_id in project_ids:
         bundle = normalized_bundles[project_id]
@@ -59,15 +65,31 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
             if group["key"] is None and display_key is not None:
                 group["key"] = display_key
             value_sha256 = _value_sha256(item.get("value"))
+            item_ref = {
+                "fact_id": _optional_text(item.get("fact_id")),
+                "revision_id": _optional_text(item.get("revision_id")),
+                "namespace": _optional_text(item.get("namespace")),
+                "key": display_key,
+                "value_sha256": value_sha256,
+            }
             group["items_by_project"].setdefault(project_id, []).append(
                 {
-                    "fact_id": _optional_text(item.get("fact_id")),
-                    "revision_id": _optional_text(item.get("revision_id")),
-                    "namespace": _optional_text(item.get("namespace")),
-                    "value_sha256": value_sha256,
+                    key: item_ref[key]
+                    for key in ("fact_id", "revision_id", "namespace", "value_sha256")
                 }
             )
             group["value_hashes"].add(value_sha256)
+            content = _item_content(item)
+            tokens = frozenset(_TOKEN_PATTERN.findall(content.casefold()))
+            if tokens:
+                text_items.append(
+                    {
+                        "project_id": project_id,
+                        "item_index": item_index,
+                        "tokens": tokens,
+                        "ref": item_ref,
+                    }
+                )
             item_counts[project_id] += 1
 
     result_groups: list[dict[str, Any]] = []
@@ -93,6 +115,7 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
             }
         )
 
+    lexical_review = _lexical_review(text_items)
     counts = {
         "exact_match_groups": sum(
             group["classification"] == "exact_match" for group in result_groups
@@ -113,15 +136,82 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
             "same_key_different_value_is_review_candidate": True,
         },
         "durable_write": False,
+        "lexical_review": lexical_review,
         "summary": {
             "bundle_count": len(project_ids),
             "item_count": sum(item_counts.values()),
             "items_by_project": item_counts,
             "group_count": len(result_groups),
+            "lexical_review_candidate_count": len(lexical_review["candidates"]),
+            "lexical_review_truncated": lexical_review["truncated"],
             **counts,
         },
         "groups": result_groups,
     }
+
+
+def _lexical_review(text_items: list[dict[str, Any]]) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    for left_index, left in enumerate(text_items):
+        for right in text_items[left_index + 1 :]:
+            if left["project_id"] == right["project_id"]:
+                continue
+            shared = left["tokens"] & right["tokens"]
+            if len(shared) < _LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS:
+                continue
+            union = left["tokens"] | right["tokens"]
+            score = len(shared) / len(union)
+            if score < _LEXICAL_OVERLAP_THRESHOLD:
+                continue
+            ordered = sorted(
+                (
+                    (left["project_id"], left["item_index"], left),
+                    (right["project_id"], right["item_index"], right),
+                ),
+                key=lambda value: (value[0], value[1]),
+            )
+            candidates.append(
+                {
+                    "similarity": round(score, 6),
+                    "projects": [ordered[0][0], ordered[1][0]],
+                    "items": [
+                        _lexical_item_ref(ordered[0][2]),
+                        _lexical_item_ref(ordered[1][2]),
+                    ],
+                }
+            )
+    candidates.sort(
+        key=lambda candidate: (
+            -candidate["similarity"],
+            candidate["projects"],
+            [item.get("revision_id") or "" for item in candidate["items"]],
+        )
+    )
+    truncated = len(candidates) > _LEXICAL_OVERLAP_MAXIMUM_CANDIDATES
+    return {
+        "profile": "token-jaccard-v1",
+        "threshold": _LEXICAL_OVERLAP_THRESHOLD,
+        "minimum_shared_tokens": _LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS,
+        "truncated": truncated,
+        "candidates": candidates[:_LEXICAL_OVERLAP_MAXIMUM_CANDIDATES],
+    }
+
+
+def _lexical_item_ref(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "fact_id": item["ref"]["fact_id"],
+        "revision_id": item["ref"]["revision_id"],
+        "namespace": item["ref"]["namespace"],
+        "key": item["ref"]["key"],
+        "value_sha256": item["ref"]["value_sha256"],
+    }
+
+
+def _item_content(item: Mapping[str, Any]) -> str:
+    value = item.get("value")
+    if isinstance(value, Mapping) and isinstance(value.get("content"), str):
+        return value["content"]
+    return value if isinstance(value, str) else ""
 
 
 def _project_id(value: Any) -> str:

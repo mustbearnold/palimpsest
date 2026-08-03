@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TOKEN_PATTERN = /[a-z0-9]+/g;
+const LEXICAL_OVERLAP_THRESHOLD = 0.5;
+const LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS = 3;
+const LEXICAL_OVERLAP_MAXIMUM_CANDIDATES = 100;
 
 export class PalimpsestError extends Error {}
 
@@ -47,6 +51,7 @@ export function compareProjectBundles(bundles) {
   }
 
   const grouped = new Map();
+  const textItems = [];
   const itemCounts = Object.fromEntries(projectIds.map((projectId) => [projectId, 0]));
   for (const projectId of projectIds) {
     const bundle = bundles[projectId];
@@ -73,14 +78,23 @@ export function compareProjectBundles(bundles) {
       if (group.key === null && displayKey !== null) group.key = displayKey;
       const value = Object.hasOwn(item, "value") ? item.value : null;
       const valueSha256 = valueSha256For(value);
-      if (!group.itemsByProject.has(projectId)) group.itemsByProject.set(projectId, []);
-      group.itemsByProject.get(projectId).push({
+      const itemRef = {
         fact_id: optionalText(item.fact_id),
         revision_id: optionalText(item.revision_id),
         namespace: optionalText(item.namespace),
+        key: displayKey,
         value_sha256: valueSha256,
+      };
+      if (!group.itemsByProject.has(projectId)) group.itemsByProject.set(projectId, []);
+      group.itemsByProject.get(projectId).push({
+        fact_id: itemRef.fact_id,
+        revision_id: itemRef.revision_id,
+        namespace: itemRef.namespace,
+        value_sha256: itemRef.value_sha256,
       });
       group.valueHashes.add(valueSha256);
+      const tokens = new Set(itemContent(item).toLowerCase().match(TOKEN_PATTERN) ?? []);
+      if (tokens.size > 0) textItems.push({ projectId, itemIndex, tokens, ref: itemRef });
       itemCounts[projectId] += 1;
     }
   }
@@ -102,11 +116,14 @@ export function compareProjectBundles(bundles) {
       items_by_project: itemsByProject,
     };
   });
+  const lexicalReview = buildLexicalReview(textItems);
   const summary = {
     bundle_count: projectIds.length,
     item_count: Object.values(itemCounts).reduce((total, count) => total + count, 0),
     items_by_project: itemCounts,
     group_count: groups.length,
+    lexical_review_candidate_count: lexicalReview.candidates.length,
+    lexical_review_truncated: lexicalReview.truncated,
     exact_match_groups: groups.filter((group) => group.classification === "exact_match").length,
     same_key_different_value_groups: groups.filter((group) => group.classification === "same_key_different_value").length,
     project_specific_groups: groups.filter((group) => group.classification === "project_specific").length,
@@ -120,6 +137,7 @@ export function compareProjectBundles(bundles) {
       same_key_different_value_is_review_candidate: true,
     },
     durable_write: false,
+    lexical_review: lexicalReview,
     summary,
     groups,
   };
@@ -636,6 +654,60 @@ function stableJson(value) {
 
 function optionalText(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function itemContent(item) {
+  const value = item.value;
+  if (value && typeof value === "object" && !Array.isArray(value) && typeof value.content === "string") {
+    return value.content;
+  }
+  return typeof value === "string" ? value : "";
+}
+
+function buildLexicalReview(textItems) {
+  const candidates = [];
+  for (let leftIndex = 0; leftIndex < textItems.length; leftIndex += 1) {
+    const left = textItems[leftIndex];
+    for (const right of textItems.slice(leftIndex + 1)) {
+      if (left.projectId === right.projectId) continue;
+      const shared = [...left.tokens].filter((token) => right.tokens.has(token));
+      if (shared.length < LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS) continue;
+      const union = new Set([...left.tokens, ...right.tokens]);
+      const similarity = shared.length / union.size;
+      if (similarity < LEXICAL_OVERLAP_THRESHOLD) continue;
+      const ordered = [left, right].sort((first, second) => (
+        first.projectId.localeCompare(second.projectId) || first.itemIndex - second.itemIndex
+      ));
+      candidates.push({
+        similarity: Math.round(similarity * 1_000_000) / 1_000_000,
+        projects: ordered.map((item) => item.projectId),
+        items: ordered.map((item) => lexicalItemRef(item)),
+      });
+    }
+  }
+  candidates.sort((left, right) => (
+    right.similarity - left.similarity
+      || left.projects.join("\u0000").localeCompare(right.projects.join("\u0000"))
+      || (left.items[0].revision_id ?? "").localeCompare(right.items[0].revision_id ?? "")
+      || (left.items[1].revision_id ?? "").localeCompare(right.items[1].revision_id ?? "")
+  ));
+  return {
+    profile: "token-jaccard-v1",
+    threshold: LEXICAL_OVERLAP_THRESHOLD,
+    minimum_shared_tokens: LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS,
+    truncated: candidates.length > LEXICAL_OVERLAP_MAXIMUM_CANDIDATES,
+    candidates: candidates.slice(0, LEXICAL_OVERLAP_MAXIMUM_CANDIDATES),
+  };
+}
+
+function lexicalItemRef(item) {
+  return {
+    fact_id: item.ref.fact_id,
+    revision_id: item.ref.revision_id,
+    namespace: item.ref.namespace,
+    key: item.ref.key,
+    value_sha256: item.ref.value_sha256,
+  };
 }
 
 function baseUrlValue(value) {

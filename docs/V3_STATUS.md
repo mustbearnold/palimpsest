@@ -40,7 +40,8 @@ is not an official release or a production-readiness claim.
   each project gets its own namespace, the Python, TypeScript, and MCP helpers
   return one retrieval bundle per project, and comparison groups exact keys by
   canonical value digest. Same-key/different-value groups are review
-  candidates, not semantic conflict conclusions.
+  candidates, not semantic conflict conclusions; bounded token-overlap hints
+  also connect differently keyed session messages for agent review.
 - The ingestion adapters handle the observed local Codex, Claude Code, and
   Hermes seams, but they are not provider APIs, native hooks, or a universal
   transcript parser. Tool rows, private thinking, system prompts, and tool
@@ -63,7 +64,7 @@ is not an official release or a production-readiness claim.
 
 - Automatic semantic project diffs, conflict explanations, or model-driven
   consolidation of raw session messages into higher-level facts. The current
-  structural comparison deliberately stops before those claims.
+  key and lexical comparison deliberately stops before those claims.
 - Valkey/Redis cache plus provider-specific artifact/object deletion,
   revocation, outage, and recovery evidence.
 - Provider-managed backup/PITR orchestration, independent backup disposition,

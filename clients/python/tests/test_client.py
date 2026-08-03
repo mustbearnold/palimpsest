@@ -317,6 +317,33 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(len(FakeApi.requests), 2)
         self.assertTrue(all(request["path"].endswith("/retrievals") for request in FakeApi.requests))
 
+    def test_compare_project_bundles_returns_bounded_lexical_review_candidates(self) -> None:
+        comparison = compare_project_bundles(
+            {
+                "project-a": {
+                    "items": [
+                        {
+                            "key": "decision-a",
+                            "value": {"content": "release target ships on stable channel"},
+                        }
+                    ]
+                },
+                "project-b": {
+                    "items": [
+                        {
+                            "key": "decision-b",
+                            "value": {"content": "release target ships on beta channel"},
+                        }
+                    ]
+                },
+            }
+        )
+
+        self.assertEqual(comparison["lexical_review"]["profile"], "token-jaccard-v1")
+        self.assertEqual(comparison["summary"]["lexical_review_candidate_count"], 1)
+        self.assertGreaterEqual(comparison["lexical_review"]["candidates"][0]["similarity"], 0.5)
+        self.assertFalse(comparison["semantic_inference"]["performed"])
+
     def test_correct_uses_strong_etag_and_forget_starts_deletion(self) -> None:
         self.client.correct(
             FACT,

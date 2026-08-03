@@ -243,3 +243,19 @@ test("compareByProject retrieves isolated bundles and adds a structural summary"
     globalThis.fetch = originalFetch;
   }
 });
+
+test("compareProjectBundles returns bounded lexical review candidates", () => {
+  const comparison = compareProjectBundles({
+    "project-a": {
+      items: [{ key: "decision-a", value: { content: "release target ships on stable channel" } }],
+    },
+    "project-b": {
+      items: [{ key: "decision-b", value: { content: "release target ships on beta channel" } }],
+    },
+  });
+
+  assert.equal(comparison.lexical_review.profile, "token-jaccard-v1");
+  assert.equal(comparison.summary.lexical_review_candidate_count, 1);
+  assert.ok(comparison.lexical_review.candidates[0].similarity >= 0.5);
+  assert.equal(comparison.semantic_inference.performed, false);
+});

@@ -256,7 +256,8 @@ The Python and TypeScript clients also expose per-project recall helpers that
 return isolated evidence bundles for deliberate comparison; they do not
 silently mix namespaces. Their comparison helpers additionally identify exact
 key/value matches and same-key/different-value review candidates using
-deterministic digests, without making a semantic claim or durable write.
+deterministic digests, plus bounded lexical-overlap candidates for differently
+keyed session messages, without making a semantic claim or durable write.
 On Linux, `bash scripts/install-palimpsest-ingest-service.sh` installs the
 discovery watcher as an owner-only systemd user service for continuous local
 ingestion; see [ADR-0022](docs/adr/0022-supervised-local-ingestion-service.md).

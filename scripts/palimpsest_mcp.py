@@ -214,8 +214,9 @@ def _tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "Compare the same authorized query across two or more projects. The result keeps "
                 "each evidence bundle isolated and adds deterministic exact-key/value-digest "
-                "classifications. Same-key/different-value groups are review candidates, not "
-                "semantic conflict claims; this tool performs no model inference and writes no memory."
+                "classifications plus bounded lexical-overlap hints. Same-key/different-value "
+                "and lexical-overlap groups are review candidates, not semantic conflict claims; "
+                "this tool performs no model inference and writes no memory."
             ),
             "inputSchema": {
                 "type": "object",

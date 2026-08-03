@@ -31,7 +31,8 @@ The Python and TypeScript clients additionally expose `compare_by_project` and
 group the visible items by normalized fact key and compare canonical SHA-256
 digests of their JSON values. They report exact matches, project-specific keys,
 and same-key/different-value review candidates while returning the original
-bundles unchanged.
+bundles unchanged. They also return a bounded token-Jaccard review list for
+content items whose keys differ but whose visible text overlaps.
 
 The local MCP adapter exposes the same operation as
 `palimpsest_compare_by_project`. The summary is explicitly structural: it does
