@@ -18,6 +18,27 @@ direct database lexical query, not HTTP overhead, vector retrieval, embedding
 generation, concurrency, cost, cold-start behavior, provider durability, or a
 million-revision run.
 
+## Rejected index experiment
+
+An exploratory 100,000-revision run tested a temporary covering index intended
+to match current-revision selection:
+
+```sql
+CREATE INDEX fact_revisions_scale_current_probe_idx
+ON memory.fact_revisions (
+    tenant_id, subject_id, fact_id, revision_no DESC, revision_id
+)
+INCLUDE (case_id, recorded_at, valid_during, sensitivity, content_sha256);
+```
+
+The index was dropped after the run and the reserved scope was verified empty.
+With five serial queries, the indexed profile measured p50 3,954.626 ms,
+p95 4,075.814 ms, p99 4,080.489 ms, and mean 3,975.363 ms, versus the
+baseline's p50 3,684.607 ms and p95 3,857.059 ms. It was therefore rejected;
+the result is exploratory evidence, not a replacement release profile. The
+next remediation must use the captured plan and node timings rather than add
+another unmeasured index.
+
 ## Profile and result
 
 | Field | Value |
