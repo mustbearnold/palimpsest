@@ -98,6 +98,15 @@ private filesystem path when enabling canonical-history exports; the development
 default is `var/palimpsest/exports`. Stop the service with `Ctrl+C`, then stop
 PostgreSQL without deleting its volume:
 
+For a self-hosted object-store deployment, set all of
+`PALIMPSEST_EXPORT_S3_ENDPOINT`, `PALIMPSEST_EXPORT_S3_BUCKET`,
+`PALIMPSEST_EXPORT_S3_REGION`, `PALIMPSEST_EXPORT_S3_ACCESS_KEY_ID`, and
+`PALIMPSEST_EXPORT_S3_SECRET_ACCESS_KEY`. `PALIMPSEST_EXPORT_S3_PREFIX` and
+`PALIMPSEST_EXPORT_S3_SESSION_TOKEN` are optional. The server then uses the
+signed, conditional-write S3-compatible export store; a partial configuration
+fails startup instead of silently falling back to local files. See
+[ADR-0024](docs/adr/0024-s3-compatible-export-package-store.md).
+
 `PALIMPSEST_OPERATION_GRANTS` is empty by default. Trusted deployments may set
 the comma-separated closed vocabulary `canonical_history_export` and/or
 `subject_delete`; unknown grants fail startup. The grants do not add public

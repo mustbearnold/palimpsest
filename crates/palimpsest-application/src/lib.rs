@@ -27,7 +27,8 @@ pub use export::{
     ExportCreateOutcome, ExportMaterialization, ExportOperationState, ExportOperationView,
     ExportPackageError, ExportPackageMetadata, ExportPackageStore, ExportProcessingContext,
     ExportRecord, ExportRecordKind, ExportRepository, ExportStoreError, FileExportPackageStore,
-    InMemoryExportPackageStore, NewExport,
+    InMemoryExportPackageStore, NewExport, S3_EXPORT_PACKAGE_STORE_PROFILE, S3ExportPackageStore,
+    S3ExportPackageStoreConfig, S3ExportPackageStoreConfigError,
 };
 pub use recovery::{
     RESTORE_FENCE_LEDGER_PROFILE, RESTORE_FENCE_LEDGER_SCHEMA_VERSION, RestoreFenceEntry,

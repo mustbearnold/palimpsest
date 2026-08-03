@@ -9,8 +9,8 @@ use axum::{
     routing::get,
 };
 use palimpsest_application::{
-    EmbeddingProvider, ExportWorkerAuthorizer, FileExportPackageStore, MemoryService, ServiceError,
-    UnavailableEmbeddingProvider,
+    EmbeddingProvider, ExportPackageStore, ExportWorkerAuthorizer, FileExportPackageStore,
+    MemoryService, S3ExportPackageStore, ServiceError, UnavailableEmbeddingProvider,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
 use palimpsest_http::{Authenticator, ContentLeaseCleanupCounters};
@@ -243,7 +243,7 @@ pub fn memory_service_with_embedding_provider(
         lifecycle_controller_pool,
     ));
     let exports = runtime_repository.clone();
-    let export_store = Arc::new(FileExportPackageStore::new(export_root()));
+    let export_store = export_store();
     MemoryService::new(
         lifecycle_repository,
         runtime_repository.clone(),
@@ -259,6 +259,14 @@ fn export_root() -> PathBuf {
     std::env::var_os("PALIMPSEST_EXPORT_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("var/palimpsest/exports"))
+}
+
+fn export_store() -> Arc<dyn ExportPackageStore> {
+    match S3ExportPackageStore::from_environment() {
+        Ok(Some(store)) => Arc::new(store),
+        Ok(None) => Arc::new(FileExportPackageStore::new(export_root())),
+        Err(error) => panic!("invalid Palimpsest S3 export configuration: {error}"),
+    }
 }
 
 fn spawn_deletion_worker(service: MemoryService) {

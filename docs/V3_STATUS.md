@@ -30,6 +30,9 @@ is not an official release or a production-readiness claim.
 - A guarded PostgreSQL custom-format logical backup rehearsal can restore into
   an isolated empty database and compare content-free schema, extension,
   migration, and selected row-count probes.
+- An optional S3-compatible export package store is wired behind the same
+  contract as the private filesystem store, with SigV4 signing, conditional
+  publication, retry comparison, and delete-already-absent semantics.
 
 ## Somewhat working
 
@@ -41,9 +44,10 @@ is not an official release or a production-readiness claim.
   Hermes seams, but they are not provider APIs, native hooks, or a universal
   transcript parser. Tool rows, private thinking, system prompts, and tool
   results are deliberately excluded.
-- Export packages use a private local filesystem store. The deterministic
-  package contract and failure/recovery tests work, but S3-compatible object
-  storage is not yet a shipped adapter.
+- Export packages use a private local filesystem store by default, while the
+  S3-compatible adapter is contract-tested against a local object-shaped
+  fixture. A live provider's durability, deletion, outage, and recovery
+  behavior is not yet evidenced.
 - Restore work proves database-copy replay and logical dump/restore. It does
   not prove base-backup/WAL/PITR recovery, backup expiry, or production RPO/RTO.
 - The default server embedding provider is unavailable; exact and lexical
@@ -54,8 +58,8 @@ is not an official release or a production-readiness claim.
 
 - Automatic semantic project diffs, conflict explanations, or model-driven
   consolidation of raw session messages into higher-level facts.
-- Valkey/Redis cache and S3-compatible artifact/object adapters with their
-  deletion, revocation, outage, and recovery contracts.
+- Valkey/Redis cache plus provider-specific artifact/object deletion,
+  revocation, outage, and recovery evidence.
 - Provider-managed backup/PITR orchestration, independent backup disposition,
   and full restore suppression against a real backup provider.
 - Million-revision latency, throughput, cost, capacity, availability, and SLA

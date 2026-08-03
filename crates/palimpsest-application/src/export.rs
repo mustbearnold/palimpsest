@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    env,
     fs::OpenOptions,
     io::{self, Write},
     path::PathBuf,
@@ -11,11 +12,14 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 use crate::{IdempotencyRequest, RepositoryError};
 use async_trait::async_trait;
+use hmac::{Hmac, Mac};
 use palimpsest_domain::{ExportId, PrincipalId, SubjectId, TenantId};
+use reqwest::{Client, Method, RequestBuilder, StatusCode};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use url::Url;
 use uuid::Uuid;
 
 pub const CANONICAL_HISTORY_EXPORT_PROFILE: &str = "palimpsest-canonical-history-v1";
@@ -196,6 +200,427 @@ pub trait ExportPackageStore: Send + Sync {
             Err(error) => Err(error),
         }
     }
+}
+
+pub const S3_EXPORT_PACKAGE_STORE_PROFILE: &str = "s3-compatible-path-style-v1";
+
+#[derive(Debug, Error)]
+pub enum S3ExportPackageStoreConfigError {
+    #[error("S3 export endpoint must be an HTTP(S) URL with a host and no query or fragment")]
+    InvalidEndpoint,
+    #[error("S3 export configuration field is empty: {0}")]
+    EmptyField(&'static str),
+    #[error("S3 export configuration is missing a required environment variable: {0}")]
+    MissingEnvironment(&'static str),
+    #[error("S3 export prefix contains an unsafe path segment")]
+    InvalidPrefix,
+}
+
+#[derive(Clone)]
+pub struct S3ExportPackageStoreConfig {
+    endpoint: Url,
+    bucket: String,
+    prefix: String,
+    region: String,
+    access_key_id: String,
+    secret_access_key: String,
+    session_token: Option<String>,
+}
+
+impl S3ExportPackageStoreConfig {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        endpoint: impl Into<String>,
+        bucket: impl Into<String>,
+        prefix: impl Into<String>,
+        region: impl Into<String>,
+        access_key_id: impl Into<String>,
+        secret_access_key: impl Into<String>,
+        session_token: Option<String>,
+    ) -> Result<Self, S3ExportPackageStoreConfigError> {
+        let endpoint = Url::parse(&endpoint.into())
+            .map_err(|_| S3ExportPackageStoreConfigError::InvalidEndpoint)?;
+        if !matches!(endpoint.scheme(), "http" | "https")
+            || endpoint.host_str().is_none()
+            || endpoint.cannot_be_a_base()
+            || endpoint.username() != ""
+            || endpoint.password().is_some()
+            || endpoint.query().is_some()
+            || endpoint.fragment().is_some()
+        {
+            return Err(S3ExportPackageStoreConfigError::InvalidEndpoint);
+        }
+
+        let bucket = required_config_value(bucket.into(), "bucket")?;
+        let region = required_config_value(region.into(), "region")?;
+        let access_key_id = required_config_value(access_key_id.into(), "access_key_id")?;
+        let secret_access_key =
+            required_config_value(secret_access_key.into(), "secret_access_key")?;
+        let prefix = prefix.into().trim_matches('/').to_owned();
+        if prefix
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        {
+            return Err(S3ExportPackageStoreConfigError::InvalidPrefix);
+        }
+        let session_token = session_token
+            .filter(|token| !token.trim().is_empty())
+            .map(|token| token.trim().to_owned());
+
+        Ok(Self {
+            endpoint,
+            bucket,
+            prefix,
+            region,
+            access_key_id,
+            secret_access_key,
+            session_token,
+        })
+    }
+
+    pub fn from_environment() -> Result<Option<Self>, S3ExportPackageStoreConfigError> {
+        let endpoint = env::var("PALIMPSEST_EXPORT_S3_ENDPOINT").ok();
+        let bucket = env::var("PALIMPSEST_EXPORT_S3_BUCKET").ok();
+        let prefix = env::var("PALIMPSEST_EXPORT_S3_PREFIX").ok();
+        let region = env::var("PALIMPSEST_EXPORT_S3_REGION").ok();
+        let access_key_id = env::var("PALIMPSEST_EXPORT_S3_ACCESS_KEY_ID").ok();
+        let secret_access_key = env::var("PALIMPSEST_EXPORT_S3_SECRET_ACCESS_KEY").ok();
+        let session_token = env::var("PALIMPSEST_EXPORT_S3_SESSION_TOKEN").ok();
+
+        if endpoint.is_none()
+            && bucket.is_none()
+            && prefix.is_none()
+            && region.is_none()
+            && access_key_id.is_none()
+            && secret_access_key.is_none()
+            && session_token.is_none()
+        {
+            return Ok(None);
+        }
+
+        let endpoint = endpoint.ok_or(S3ExportPackageStoreConfigError::MissingEnvironment(
+            "PALIMPSEST_EXPORT_S3_ENDPOINT",
+        ))?;
+        let bucket = bucket.ok_or(S3ExportPackageStoreConfigError::MissingEnvironment(
+            "PALIMPSEST_EXPORT_S3_BUCKET",
+        ))?;
+        let region = region.ok_or(S3ExportPackageStoreConfigError::MissingEnvironment(
+            "PALIMPSEST_EXPORT_S3_REGION",
+        ))?;
+        let access_key_id =
+            access_key_id.ok_or(S3ExportPackageStoreConfigError::MissingEnvironment(
+                "PALIMPSEST_EXPORT_S3_ACCESS_KEY_ID",
+            ))?;
+        let secret_access_key =
+            secret_access_key.ok_or(S3ExportPackageStoreConfigError::MissingEnvironment(
+                "PALIMPSEST_EXPORT_S3_SECRET_ACCESS_KEY",
+            ))?;
+
+        Self::new(
+            endpoint,
+            bucket,
+            prefix.unwrap_or_default(),
+            region,
+            access_key_id,
+            secret_access_key,
+            session_token,
+        )
+        .map(Some)
+    }
+}
+
+fn required_config_value(
+    value: String,
+    name: &'static str,
+) -> Result<String, S3ExportPackageStoreConfigError> {
+    let value = value.trim().to_owned();
+    if value.is_empty() {
+        Err(S3ExportPackageStoreConfigError::EmptyField(name))
+    } else {
+        Ok(value)
+    }
+}
+
+#[derive(Clone)]
+pub struct S3ExportPackageStore {
+    client: Client,
+    config: Arc<S3ExportPackageStoreConfig>,
+}
+
+impl S3ExportPackageStore {
+    pub fn from_config(config: S3ExportPackageStoreConfig) -> Self {
+        Self {
+            client: Client::new(),
+            config: Arc::new(config),
+        }
+    }
+
+    pub fn from_environment() -> Result<Option<Self>, S3ExportPackageStoreConfigError> {
+        S3ExportPackageStoreConfig::from_environment().map(|config| config.map(Self::from_config))
+    }
+
+    fn object_url(&self, export_id: ExportId, suffix: &str) -> Url {
+        let mut url = self.config.endpoint.clone();
+        {
+            let mut segments = url
+                .path_segments_mut()
+                .expect("validated S3 endpoint must support path segments");
+            segments.push(&self.config.bucket);
+            if !self.config.prefix.is_empty() {
+                for segment in self.config.prefix.split('/') {
+                    segments.push(segment);
+                }
+            }
+            segments.push(&format!("{}.{}", export_id.0, suffix));
+        }
+        url
+    }
+
+    fn signed_request(
+        &self,
+        method: Method,
+        url: &Url,
+        body: &[u8],
+        if_none_match: Option<&str>,
+        now: OffsetDateTime,
+    ) -> RequestBuilder {
+        let payload_hash = sha256_hex(body);
+        let amz_date = aws_timestamp(now);
+        let date = &amz_date[..8];
+        let host = host_header(url);
+        let mut headers = BTreeMap::from([
+            ("host".to_owned(), host.clone()),
+            ("x-amz-content-sha256".to_owned(), payload_hash.clone()),
+            ("x-amz-date".to_owned(), amz_date.clone()),
+        ]);
+        if let Some(value) = if_none_match {
+            headers.insert("if-none-match".to_owned(), value.to_owned());
+        }
+        if let Some(token) = self.config.session_token.as_ref() {
+            headers.insert("x-amz-security-token".to_owned(), token.clone());
+        }
+        let canonical_headers = headers
+            .iter()
+            .map(|(name, value)| format!("{}:{}\n", name, canonical_header_value(value)))
+            .collect::<String>();
+        let signed_headers = headers.keys().cloned().collect::<Vec<_>>().join(";");
+        let canonical_request = format!(
+            "{}\n{}\n\n{}\n{}\n{}",
+            method,
+            canonical_uri(url),
+            canonical_headers,
+            signed_headers,
+            payload_hash,
+        );
+        let scope = format!("{date}/{}/{}/aws4_request", self.config.region, "s3");
+        let string_to_sign = format!(
+            "AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{}",
+            sha256_hex(canonical_request.as_bytes())
+        );
+        let date_key = hmac_sha256(
+            format!("AWS4{}", self.config.secret_access_key).as_bytes(),
+            date.as_bytes(),
+        );
+        let region_key = hmac_sha256(&date_key, self.config.region.as_bytes());
+        let service_key = hmac_sha256(&region_key, b"s3");
+        let signing_key = hmac_sha256(&service_key, b"aws4_request");
+        let signature = hex::encode(hmac_sha256(&signing_key, string_to_sign.as_bytes()));
+        let authorization = format!(
+            "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+            self.config.access_key_id, scope, signed_headers, signature
+        );
+
+        let mut request = self
+            .client
+            .request(method.clone(), url.clone())
+            .header(reqwest::header::HOST, host)
+            .header(
+                "x-amz-content-sha256",
+                headers["x-amz-content-sha256"].as_str(),
+            )
+            .header("x-amz-date", headers["x-amz-date"].as_str())
+            .header(reqwest::header::AUTHORIZATION, authorization);
+        if let Some(value) = if_none_match {
+            request = request.header(reqwest::header::IF_NONE_MATCH, value);
+        }
+        if let Some(token) = self.config.session_token.as_ref() {
+            request = request.header("x-amz-security-token", token);
+        }
+        if method == Method::PUT {
+            request = request.body(body.to_owned());
+        }
+        request
+    }
+
+    async fn read_object(&self, url: Url) -> Result<Vec<u8>, ExportStoreError> {
+        let response = self
+            .signed_request(Method::GET, &url, &[], None, OffsetDateTime::now_utc())
+            .send()
+            .await
+            .map_err(|_| ExportStoreError::Unavailable)?;
+        match response.status() {
+            StatusCode::OK => response
+                .bytes()
+                .await
+                .map(|bytes| bytes.to_vec())
+                .map_err(|_| ExportStoreError::Unavailable),
+            StatusCode::NOT_FOUND => Err(ExportStoreError::NotFound),
+            _ => Err(ExportStoreError::Unavailable),
+        }
+    }
+
+    async fn put_if_absent(&self, url: Url, bytes: &[u8]) -> Result<(), ExportStoreError> {
+        let response = self
+            .signed_request(
+                Method::PUT,
+                &url,
+                bytes,
+                Some("*"),
+                OffsetDateTime::now_utc(),
+            )
+            .send()
+            .await
+            .map_err(|_| ExportStoreError::Unavailable)?;
+        if response.status().is_success() {
+            Ok(())
+        } else if response.status() == StatusCode::PRECONDITION_FAILED {
+            Err(ExportStoreError::Conflict)
+        } else {
+            Err(ExportStoreError::Unavailable)
+        }
+    }
+
+    async fn delete_object(&self, url: Url) -> Result<(), ExportStoreError> {
+        let response = self
+            .signed_request(Method::DELETE, &url, &[], None, OffsetDateTime::now_utc())
+            .send()
+            .await
+            .map_err(|_| ExportStoreError::Unavailable)?;
+        if response.status().is_success() || response.status() == StatusCode::NOT_FOUND {
+            Ok(())
+        } else {
+            Err(ExportStoreError::Unavailable)
+        }
+    }
+}
+
+#[async_trait]
+impl ExportPackageStore for S3ExportPackageStore {
+    async fn stage(
+        &self,
+        export_id: ExportId,
+        package: &CanonicalHistoryPackage,
+    ) -> Result<ExportPackageMetadata, ExportStoreError> {
+        let mut bytes = Vec::new();
+        let metadata = package
+            .write_to(&mut bytes)
+            .map_err(map_package_write_error)?;
+        let url = self.object_url(export_id, "staging");
+        match self.read_object(url.clone()).await {
+            Ok(existing) => {
+                if existing == bytes {
+                    Ok(metadata)
+                } else {
+                    Err(ExportStoreError::Conflict)
+                }
+            }
+            Err(ExportStoreError::NotFound) => {
+                match self.put_if_absent(url.clone(), &bytes).await {
+                    Ok(()) => Ok(metadata),
+                    Err(ExportStoreError::Conflict) => {
+                        let existing = self.read_object(url).await?;
+                        if existing == bytes {
+                            Ok(metadata)
+                        } else {
+                            Err(ExportStoreError::Conflict)
+                        }
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn publish(&self, export_id: ExportId) -> Result<(), ExportStoreError> {
+        let staging_url = self.object_url(export_id, "staging");
+        let published_url = self.object_url(export_id, "zip");
+        let staged = self.read_object(staging_url.clone()).await?;
+        match self.read_object(published_url.clone()).await {
+            Ok(published) => {
+                if published != staged {
+                    return Err(ExportStoreError::Conflict);
+                }
+            }
+            Err(ExportStoreError::NotFound) => {
+                match self.put_if_absent(published_url.clone(), &staged).await {
+                    Ok(()) => {}
+                    Err(ExportStoreError::Conflict) => {
+                        let published = self.read_object(published_url).await?;
+                        if published != staged {
+                            return Err(ExportStoreError::Conflict);
+                        }
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        }
+        self.delete_object(staging_url).await
+    }
+
+    async fn read(&self, export_id: ExportId) -> Result<Vec<u8>, ExportStoreError> {
+        self.read_object(self.object_url(export_id, "zip")).await
+    }
+
+    async fn discard_staging(&self, export_id: ExportId) -> Result<(), ExportStoreError> {
+        self.delete_object(self.object_url(export_id, "staging"))
+            .await
+    }
+
+    async fn discard_published(&self, export_id: ExportId) -> Result<(), ExportStoreError> {
+        self.delete_object(self.object_url(export_id, "zip")).await
+    }
+}
+
+fn canonical_uri(url: &Url) -> String {
+    let path = url.path();
+    if path.is_empty() {
+        "/".to_owned()
+    } else {
+        path.to_owned()
+    }
+}
+
+fn host_header(url: &Url) -> String {
+    let mut host = url.host_str().unwrap_or_default().to_owned();
+    if let Some(port) = url.port() {
+        host.push(':');
+        host.push_str(&port.to_string());
+    }
+    host
+}
+
+fn canonical_header_value(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn aws_timestamp(timestamp: OffsetDateTime) -> String {
+    format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        timestamp.year(),
+        timestamp.month() as u8,
+        timestamp.day(),
+        timestamp.hour(),
+        timestamp.minute(),
+        timestamp.second(),
+    )
+}
+
+fn hmac_sha256(key: &[u8], value: &[u8]) -> Vec<u8> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts every key length");
+    mac.update(value);
+    mac.finalize().into_bytes().to_vec()
 }
 
 #[derive(Clone, Default)]
@@ -1098,6 +1523,190 @@ mod tests {
         store.discard_staging(export_id).await.unwrap();
         store.discard_published(export_id).await.unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[derive(Clone, Default)]
+    struct FakeS3State {
+        objects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+        signed_requests: Arc<Mutex<Vec<String>>>,
+    }
+
+    async fn fake_s3_handler(
+        axum::extract::State(state): axum::extract::State<FakeS3State>,
+        request: axum::extract::Request,
+    ) -> axum::response::Response {
+        use axum::{body::to_bytes, response::IntoResponse};
+
+        let method = request.method().clone();
+        let path = request.uri().path().to_owned();
+        let if_none_match = request
+            .headers()
+            .get(reqwest::header::IF_NONE_MATCH)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let signed = request
+            .headers()
+            .contains_key(reqwest::header::AUTHORIZATION)
+            && request.headers().contains_key("x-amz-content-sha256")
+            && request.headers().contains_key("x-amz-date");
+        state
+            .signed_requests
+            .lock()
+            .unwrap()
+            .push(format!("{} {} signed={signed}", method, path));
+        let body = to_bytes(request.into_body(), 16 * 1024 * 1024)
+            .await
+            .unwrap()
+            .to_vec();
+        let mut objects = state.objects.lock().unwrap();
+        match method {
+            axum::http::Method::PUT => {
+                if if_none_match.as_deref() == Some("*") && objects.contains_key(&path) {
+                    return axum::http::StatusCode::PRECONDITION_FAILED.into_response();
+                }
+                objects.insert(path, body);
+                axum::http::StatusCode::OK.into_response()
+            }
+            axum::http::Method::GET => objects
+                .get(&path)
+                .cloned()
+                .map(|bytes| (axum::http::StatusCode::OK, bytes).into_response())
+                .unwrap_or_else(|| axum::http::StatusCode::NOT_FOUND.into_response()),
+            axum::http::Method::DELETE => {
+                objects.remove(&path);
+                axum::http::StatusCode::NO_CONTENT.into_response()
+            }
+            _ => axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response(),
+        }
+    }
+
+    #[tokio::test]
+    async fn s3_package_store_signs_requests_and_recovers_idempotently() {
+        use axum::{Router, routing::any};
+
+        let state = FakeS3State::default();
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new()
+            .fallback(any(fake_s3_handler))
+            .with_state(state.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let config = S3ExportPackageStoreConfig::new(
+            format!("http://{address}"),
+            "palimpsest-test",
+            "exports",
+            "us-east-1",
+            "access-key",
+            "secret-key",
+            None,
+        )
+        .unwrap();
+        let store = S3ExportPackageStore::from_config(config);
+        let package = CanonicalHistoryPackage::build(vec![], context()).unwrap();
+        let export_id = ExportId(Uuid::now_v7());
+        let expected = package.as_bytes().unwrap();
+
+        store.stage(export_id, &package).await.unwrap();
+        store.publish(export_id).await.unwrap();
+        assert_eq!(store.read(export_id).await.unwrap(), expected);
+
+        // A retry after a crash between publication and staging cleanup sees
+        // the same published bytes and safely removes the duplicate staging object.
+        store.stage(export_id, &package).await.unwrap();
+        store.publish(export_id).await.unwrap();
+        assert_eq!(store.read(export_id).await.unwrap(), expected);
+
+        let different = CanonicalHistoryPackage::build(
+            vec![record(
+                ExportRecordKind::Episode,
+                99,
+                40,
+                json!({"different": true}),
+            )],
+            context(),
+        )
+        .unwrap();
+        store.stage(export_id, &different).await.unwrap();
+        assert!(matches!(
+            store.publish(export_id).await,
+            Err(ExportStoreError::Conflict)
+        ));
+        assert_eq!(store.read(export_id).await.unwrap(), expected);
+        store.discard_staging(export_id).await.unwrap();
+        store.discard_published(export_id).await.unwrap();
+        assert!(store.probe_absent(export_id).await.unwrap());
+
+        let signed_requests = state.signed_requests.lock().unwrap();
+        assert!(!signed_requests.is_empty());
+        assert!(
+            signed_requests
+                .iter()
+                .all(|request| request.contains("signed=true"))
+        );
+        drop(signed_requests);
+        server.abort();
+    }
+
+    #[test]
+    fn s3_configuration_rejects_unsafe_endpoint_and_prefix() {
+        assert!(matches!(
+            S3ExportPackageStoreConfig::new(
+                "https://access:secret@example.invalid",
+                "bucket",
+                "exports",
+                "us-east-1",
+                "access",
+                "secret",
+                None,
+            ),
+            Err(S3ExportPackageStoreConfigError::InvalidEndpoint)
+        ));
+        assert!(matches!(
+            S3ExportPackageStoreConfig::new(
+                "https://example.invalid",
+                "bucket",
+                "exports/../private",
+                "us-east-1",
+                "access",
+                "secret",
+                None,
+            ),
+            Err(S3ExportPackageStoreConfigError::InvalidPrefix)
+        ));
+    }
+
+    #[test]
+    fn s3_sigv4_authorization_is_deterministic() {
+        let config = S3ExportPackageStoreConfig::new(
+            "https://s3.example.test",
+            "bucket",
+            "exports",
+            "us-east-1",
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            None,
+        )
+        .unwrap();
+        let store = S3ExportPackageStore::from_config(config);
+        let url = store.object_url(ExportId(Uuid::from_u128(12)), "zip");
+        let timestamp = OffsetDateTime::parse("2026-08-03T00:00:00Z", &Rfc3339).unwrap();
+        let request = store
+            .signed_request(Method::GET, &url, &[], None, timestamp)
+            .build()
+            .unwrap();
+        assert_eq!(
+            request
+                .headers()
+                .get(reqwest::header::AUTHORIZATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20260803/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=0a34a84c0f19666c79fbd4af9cbbc0fc95eb1fcd9c48e1271c18498f73f0575f"
+        );
     }
 
     fn zip_local_file_names(bytes: &[u8]) -> Vec<String> {
