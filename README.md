@@ -10,13 +10,13 @@ truth.
 
 ## Status
 
-The repository contains a checked development slice for the PostgreSQL-backed
-HTTP service, including temporal memory, hybrid retrieval, canonical-history
-exports, fenced subject deletion, an executable fail-closed restore replay for
-an independent deletion-fence ledger, and a dependency-free Python client for
-the governed lifecycle. It is not a production release: cache, artifact,
-backup/PITR adapters, external identity, complete restore rehearsal, and
-operational release gates remain deployment work.
+Palimpsest is a defensible v2 development milestone for a self-hosted,
+PostgreSQL-backed agent memory service. It includes temporal memory, hybrid
+retrieval, crash-safe checkpoints, canonical-history exports, fenced subject
+deletion, fail-closed restore replay, a local Codex MCP adapter, and a
+dependency-free Python client for the governed lifecycle. It is not an
+official or production release. See the [v2 status](docs/V2_STATUS.md) for the
+evidence and the deliberately unclaimed deployment boundaries.
 
 ## Product commitments
 
