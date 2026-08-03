@@ -1,0 +1,19 @@
+{
+  "name": "@palimpsest/client",
+  "version": "0.1.0",
+  "description": "Dependency-free TypeScript and JavaScript client for Palimpsest",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "types": "./src/index.d.ts",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

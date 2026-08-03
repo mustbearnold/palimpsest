@@ -18,3 +18,5 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate repository contract
         run: bash scripts/check-repo.sh
+      - name: Verify TypeScript client contract tests
+        run: node --test clients/typescript/test/*.test.mjs

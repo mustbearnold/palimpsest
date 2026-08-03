@@ -1,0 +1,58 @@
+# Palimpsest TypeScript client
+
+This is a dependency-free TypeScript/JavaScript client for Palimpsest's
+versioned `/v1` HTTP API. It uses the platform `fetch` implementation and
+ships runtime JavaScript plus TypeScript declarations, so no generator or
+bundler is required. The server remains responsible for authorization,
+temporal correctness, write-policy validation, and deletion state.
+
+Install it from a checkout:
+
+```bash
+npm install ./clients/typescript
+```
+
+The high-level helpers mirror the Python client:
+
+```ts
+import { PalimpsestClient } from "@palimpsest/client";
+
+const client = new PalimpsestClient({
+  baseUrl: "http://127.0.0.1:8080",
+  bearerToken: "operator-issued-token",
+  tenantId: "019be000-0000-7000-8000-000000000010",
+  subjectId: "019be000-0000-7000-8000-000000000020",
+  caseId: "019be000-0000-7000-8000-000000000030",
+});
+
+const saved = await client.remember("The customer moved to 20 New Street.", {
+  key: "shipping-address",
+  idempotencyKey: "case-123-address-1",
+});
+const current = await client.recall("shipping address", {
+  idempotencyKey: "case-123-recall-1",
+});
+const fact = await client.getFactResponse(saved.fact.fact_id);
+await client.correct(saved.fact.fact_id, {
+  supersedesRevisionId: fact.data.revision.revision_id,
+  value: { address: "22 New Street" },
+  observedAt: "2026-08-03T00:00:00Z",
+  validTime: { from: "2026-08-03T00:00:00Z" },
+  evidenceEpisodeIds: [saved.episode.episode_id],
+  writePolicy: { id: "direct-evidence", version: "1" },
+  confidence: 1,
+  sensitivity: "internal",
+  retentionPolicyId: "standard",
+  ifMatch: fact.etag,
+  idempotencyKey: "case-123-address-2",
+});
+```
+
+Mutations generate an idempotency key when one is omitted. Callers that retry
+should supply a stable key. `remember` intentionally performs two durable
+requests; if the episode succeeds and fact promotion fails, it throws
+`PartialRememberError` with the committed episode and typed cause.
+
+Ready export status is represented as a `303` response with its download
+`Location`; redirects are not followed implicitly. `waitForDeletion` uses
+conditional requests and stops only at a server-reported terminal state.

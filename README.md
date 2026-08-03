@@ -181,6 +181,20 @@ export, and deletion status methods. It uses the same authorized HTTP boundary
 as MCP and never connects directly to PostgreSQL. See the [Python client guide](clients/python/README.md)
 and [client boundary ADR](docs/adr/0013-python-client-boundary.md).
 
+### Use Palimpsest from TypeScript or JavaScript
+
+The checkout also includes a dependency-free ESM client with TypeScript
+declarations:
+
+```bash
+npm install ./clients/typescript
+```
+
+It exposes the same governed `remember`, `recall`, `correct`, `forget`,
+checkpoint, export, deletion, and lower-level HTTP helpers as the Python
+client. See the [TypeScript client guide](clients/typescript/README.md) and
+[client boundary ADR](docs/adr/0018-typescript-client-boundary.md).
+
 ## Validation
 
 ```bash

@@ -57,6 +57,9 @@ jobs:
       - name: Verify Python client
         run: python3 -m unittest discover -s clients/python/tests -p 'test_*.py'
 
+      - name: Verify TypeScript client
+        run: node --test clients/typescript/test/*.test.mjs
+
       - name: Check formatting
         run: cargo fmt --all --check
 
