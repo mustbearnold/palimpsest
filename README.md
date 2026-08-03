@@ -51,6 +51,22 @@ Start the dependency and the Rust HTTP service with one command:
 bash scripts/dev-up.sh
 ```
 
+The launcher applies checked-in migrations before starting the service. The
+server process itself never changes the schema on startup. Operators can
+inspect or apply migrations explicitly with the same binary:
+
+```bash
+PALIMPSEST_MIGRATION_DATABASE_URL='postgresql://migrator:password@db/palimpsest' cargo run --locked -- migrate status
+PALIMPSEST_MIGRATION_DATABASE_URL='postgresql://migrator:password@db/palimpsest' cargo run --locked -- migrate plan
+PALIMPSEST_MIGRATION_DATABASE_URL='postgresql://migrator:password@db/palimpsest' cargo run --locked -- migrate apply
+```
+
+status and plan are read-only. apply takes the Palimpsest PostgreSQL advisory
+lock and runs only forward, checked-in SQLx migrations; it reports pending,
+failed, unknown, and checksum-mismatched versions as content-free JSON. Use a
+privileged migration identity for apply and keep the runtime identity for the
+HTTP process.
+
 The same binary has a read-only operator diagnostic. It never starts HTTP or
 applies migrations; it prints content-free JSON and exits nonzero when a
 prerequisite is not ready:

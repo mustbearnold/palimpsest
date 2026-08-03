@@ -17,9 +17,10 @@ use uuid::Uuid;
 async fn main() -> Result<()> {
     match env::args().nth(1).as_deref() {
         Some("doctor") => return run_doctor().await,
+        Some("migrate") => return run_migrate().await,
         Some("--help" | "-h") => {
             write_stdout(
-                "Usage: palimpsest-server [doctor]\n  doctor  check PostgreSQL, pgvector, schema, and runtime-role prerequisites",
+                "Usage: palimpsest-server [doctor|migrate]\n  doctor  check PostgreSQL, pgvector, schema, and runtime-role prerequisites\n  migrate status|plan|apply  inspect or apply checked-in SQLx migrations",
             )?;
             return Ok(());
         }
@@ -49,9 +50,6 @@ async fn main() -> Result<()> {
     let pool = PgPool::connect(&database_url)
         .await
         .context("connect to PALIMPSEST_DATABASE_URL")?;
-    palimpsest_postgres::migrate(&pool)
-        .await
-        .context("apply database migrations")?;
     let lifecycle_controller_pool = if operation_grants.contains(&OperationGrant::SubjectDelete) {
         let controller_database_url = required("PALIMPSEST_LIFECYCLE_CONTROLLER_DATABASE_URL")?;
         PgPool::connect(&controller_database_url)
@@ -81,6 +79,103 @@ async fn main() -> Result<()> {
     .await
     .context("serve HTTP API")?;
     Ok(())
+}
+
+async fn run_migrate() -> Result<()> {
+    let operation = env::args().nth(2);
+    if matches!(operation.as_deref(), Some("--help" | "-h") | None) {
+        write_stdout(
+            "Usage: palimpsest-server migrate <status|plan|apply>\n  migrate status  report applied, pending, failed, and incompatible migrations\n  migrate plan    show pending migrations and transaction mode\n  migrate apply   acquire the migration lock and apply pending migrations",
+        )?;
+        if operation.is_none() {
+            bail!("migrate operation is required");
+        }
+        return Ok(());
+    }
+    let operation = operation.expect("migrate operation was checked above");
+    if !matches!(operation.as_str(), "status" | "plan" | "apply") {
+        bail!("unknown migrate operation {operation}");
+    }
+
+    let database_url = env::var("PALIMPSEST_MIGRATION_DATABASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env::var("PALIMPSEST_DATABASE_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        });
+    let database_url = match database_url {
+        Some(database_url) => database_url,
+        None => {
+            write_migration_failure(&operation, "database-url-missing")?;
+            bail!("migration command failed");
+        }
+    };
+    let pool = match PgPool::connect(&database_url).await {
+        Ok(pool) => pool,
+        Err(_) => {
+            write_migration_failure(&operation, "connection-failed")?;
+            bail!("migration command failed");
+        }
+    };
+
+    if operation == "apply" && palimpsest_postgres::migrate(&pool).await.is_err() {
+        pool.close().await;
+        write_migration_failure(&operation, "migration-failed")?;
+        bail!("migration command failed");
+    }
+    let status = match palimpsest_postgres::migration_status(&pool).await {
+        Ok(status) => status,
+        Err(_) => {
+            pool.close().await;
+            write_migration_failure(&operation, "status-query-failed")?;
+            bail!("migration command failed");
+        }
+    };
+    pool.close().await;
+    let report = migration_report(&operation, &status);
+    let report_json = serde_json::to_string_pretty(&report)?;
+    write_stdout(&report_json)?;
+    if report["status"] == "blocked" {
+        bail!("migration command failed");
+    }
+    Ok(())
+}
+
+fn migration_report(operation: &str, status: &palimpsest_postgres::MigrationStatus) -> Value {
+    let blocked = !status.failed_versions.is_empty()
+        || !status.unknown_versions.is_empty()
+        || !status.checksum_mismatches.is_empty();
+    let current = status.migration_table_exists && status.pending.is_empty() && !blocked;
+    json!({
+        "operation": operation,
+        "status": if current { "current" } else if blocked { "blocked" } else { "pending" },
+        "database": status.database,
+        "migration_table_exists": status.migration_table_exists,
+        "expected_version": status.expected_version,
+        "applied_versions": status.applied_versions,
+        "failed_versions": status.failed_versions,
+        "unknown_versions": status.unknown_versions,
+        "checksum_mismatches": status.checksum_mismatches,
+        "pending": status.pending.iter().map(|migration| json!({
+            "version": migration.version,
+            "description": migration.description,
+            "transactional": migration.transactional
+        })).collect::<Vec<_>>(),
+        "lock": {
+            "name": palimpsest_postgres::MIGRATION_LOCK_NAME,
+            "available": status.lock_available
+        }
+    })
+}
+
+fn write_migration_failure(operation: &str, code: &str) -> Result<()> {
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": operation,
+        "status": "blocked",
+        "error": {"code": code}
+    }))?)
 }
 
 async fn run_doctor() -> Result<()> {

@@ -87,6 +87,7 @@ else
 fi
 
 export PALIMPSEST_DATABASE_URL="${PALIMPSEST_DATABASE_URL:-postgresql://palimpsest_runtime:palimpsest-runtime-local-only@127.0.0.1:${postgres_port}/palimpsest}"
+export PALIMPSEST_MIGRATION_DATABASE_URL="${PALIMPSEST_MIGRATION_DATABASE_URL:-$PALIMPSEST_DATABASE_URL}"
 export PALIMPSEST_BEARER_TOKEN="${PALIMPSEST_BEARER_TOKEN:-palimpsest-local-development-token}"
 export PALIMPSEST_PRINCIPAL_ID="${PALIMPSEST_PRINCIPAL_ID:-local-development-principal}"
 export PALIMPSEST_TENANT_ID="${PALIMPSEST_TENANT_ID:-019be000-0000-7000-8000-000000000010}"
@@ -94,5 +95,7 @@ export PALIMPSEST_SUBJECT_ID="${PALIMPSEST_SUBJECT_ID:-019be000-0000-7000-8000-0
 export PALIMPSEST_ALLOWED_SENSITIVITIES="${PALIMPSEST_ALLOWED_SENSITIVITIES:-internal}"
 export PALIMPSEST_BIND="${PALIMPSEST_BIND:-127.0.0.1:8080}"
 
-echo "PostgreSQL is healthy; starting Palimpsest at http://${PALIMPSEST_BIND}"
+echo "PostgreSQL is healthy; applying Palimpsest migrations"
+cargo run --locked --package palimpsest-server -- migrate apply
+echo "Starting Palimpsest at http://${PALIMPSEST_BIND}"
 exec cargo run --locked --package palimpsest-server

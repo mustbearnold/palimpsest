@@ -64,10 +64,7 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Apply migrations to PostgreSQL 18
-        run: |
-          for migration_file in migrations/*.sql; do
-            psql "$PALIMPSEST_MIGRATION_DATABASE_URL" --set ON_ERROR_STOP=1 --single-transaction --file "$migration_file"
-          done
+        run: cargo run --locked --package palimpsest-server -- migrate apply
 
       - name: Verify PostgreSQL and pgvector versions
         run: |

@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use palimpsest_application::{
@@ -30,7 +33,10 @@ use palimpsest_domain::{
 };
 use pgvector::Vector;
 use sha2::{Digest, Sha256};
-use sqlx::{Decode, PgPool, Postgres, Row, Transaction, Type, postgres::PgRow};
+use sqlx::{
+    Decode, Either, PgPool, Postgres, Row, Transaction, Type,
+    postgres::{PgAdvisoryLock, PgRow},
+};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 #[derive(Clone)]
@@ -75,6 +81,28 @@ pub struct RestoreFenceReplayReport {
 }
 
 const EMBEDDING_PROJECTION_LEASE_POLICY_ID: &str = "embedding-projection-v1";
+
+pub const MIGRATION_LOCK_NAME: &str = "palimpsest:migrations:v1";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationPlanEntry {
+    pub version: i64,
+    pub description: String,
+    pub transactional: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationStatus {
+    pub database: String,
+    pub expected_version: i64,
+    pub migration_table_exists: bool,
+    pub applied_versions: Vec<i64>,
+    pub failed_versions: Vec<i64>,
+    pub unknown_versions: Vec<i64>,
+    pub checksum_mismatches: Vec<i64>,
+    pub pending: Vec<MigrationPlanEntry>,
+    pub lock_available: bool,
+}
 
 #[derive(Clone, Debug)]
 struct ProjectionJob {
@@ -3258,12 +3286,115 @@ impl PostgresMemoryRepository {
     }
 }
 
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
-    sqlx::migrate!("../../migrations").run(pool).await
+    let connection = pool
+        .acquire()
+        .await
+        .map_err(sqlx::migrate::MigrateError::Execute)?;
+    let lock = PgAdvisoryLock::new(MIGRATION_LOCK_NAME);
+    let mut guard = lock
+        .acquire(connection)
+        .await
+        .map_err(sqlx::migrate::MigrateError::Execute)?;
+    let migration_result = MIGRATOR.run(&mut *guard).await;
+    let release_result = guard
+        .release_now()
+        .await
+        .map_err(sqlx::migrate::MigrateError::Execute);
+    match (migration_result, release_result) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(_)) => Ok(()),
+    }
+}
+
+pub async fn migration_status(pool: &PgPool) -> Result<MigrationStatus, sqlx::Error> {
+    let database: String = sqlx::query_scalar("SELECT current_database()::text")
+        .fetch_one(pool)
+        .await?;
+    let migration_table_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations') IS NOT NULL")
+            .fetch_one(pool)
+            .await?;
+    let known_migrations: BTreeMap<_, _> = MIGRATOR
+        .iter()
+        .map(|migration| (migration.version, migration))
+        .collect();
+    let mut recorded_versions = BTreeSet::new();
+    let mut applied_versions = Vec::new();
+    let mut failed_versions = Vec::new();
+    let mut unknown_versions = Vec::new();
+    let mut checksum_mismatches = Vec::new();
+
+    if migration_table_exists {
+        let rows = sqlx::query(
+            "SELECT version, success, checksum
+             FROM _sqlx_migrations
+             ORDER BY version",
+        )
+        .fetch_all(pool)
+        .await?;
+        for row in rows {
+            let version: i64 = row.try_get("version")?;
+            let success: bool = row.try_get("success")?;
+            let checksum: Vec<u8> = row.try_get("checksum")?;
+            recorded_versions.insert(version);
+            if success {
+                applied_versions.push(version);
+            } else {
+                failed_versions.push(version);
+            }
+            match known_migrations.get(&version) {
+                Some(migration) if migration.checksum.as_ref() != checksum.as_slice() => {
+                    checksum_mismatches.push(version);
+                }
+                None => unknown_versions.push(version),
+                Some(_) => {}
+            }
+        }
+    }
+
+    let pending = known_migrations
+        .values()
+        .filter(|migration| migration.migration_type.is_up_migration())
+        .filter(|migration| !recorded_versions.contains(&migration.version))
+        .map(|migration| MigrationPlanEntry {
+            version: migration.version,
+            description: migration.description.to_string(),
+            transactional: !migration.no_tx,
+        })
+        .collect();
+    let lock_available = migration_lock_available(pool).await?;
+
+    Ok(MigrationStatus {
+        database,
+        expected_version: latest_migration_version(),
+        migration_table_exists,
+        applied_versions,
+        failed_versions,
+        unknown_versions,
+        checksum_mismatches,
+        pending,
+        lock_available,
+    })
+}
+
+async fn migration_lock_available(pool: &PgPool) -> Result<bool, sqlx::Error> {
+    let connection = pool.acquire().await?;
+    let lock = PgAdvisoryLock::new(MIGRATION_LOCK_NAME);
+    match lock.try_acquire(connection).await? {
+        Either::Left(guard) => {
+            guard.release_now().await?;
+            Ok(true)
+        }
+        Either::Right(_) => Ok(false),
+    }
 }
 
 pub fn latest_migration_version() -> i64 {
-    sqlx::migrate!("../../migrations")
+    MIGRATOR
         .iter()
         .map(|migration| migration.version)
         .max()
