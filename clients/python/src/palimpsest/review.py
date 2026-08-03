@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .comparison import compare_project_bundles
 
 
 PROJECT_REVIEW_PROFILE = "project-comparison-semantic-review-v1"
+PROJECT_CONSOLIDATION_PROFILE = "project-comparison-governed-consolidation-v1"
 _STRUCTURAL_COMPARISON_PROFILE = "project-comparison-structural-v1"
 _ALLOWED_CLASSIFICATIONS = frozenset(
     {
@@ -23,6 +25,161 @@ _ALLOWED_CLASSIFICATIONS = frozenset(
 _MAX_CLAIMS = 100
 _MAX_EVIDENCE_PER_CLAIM = 20
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def prepare_project_consolidation(
+    validated_review: Mapping[str, Any],
+    writes: Sequence[Mapping[str, Any]],
+    *,
+    consolidation_id: str,
+) -> dict[str, Any]:
+    """Prepare explicit, attributable fact writes for validated review claims.
+
+    The caller supplies the fact value and write policy. Episode lineage and
+    per-claim idempotency keys are derived from the validated review so a
+    caller cannot replace cited evidence or accidentally share a retry key
+    between claims. This function never performs I/O.
+    """
+
+    if not isinstance(validated_review, Mapping):
+        raise ValueError("validated_review must be an object")
+    if validated_review.get("profile") != PROJECT_REVIEW_PROFILE:
+        raise ValueError("validated_review must come from the semantic review profile")
+    contract_validation = validated_review.get("contract_validation")
+    if not isinstance(contract_validation, Mapping) or contract_validation.get("passed") is not True:
+        raise ValueError("validated_review must have passed contract validation")
+    normalized_consolidation_id = _bounded_text(consolidation_id, "consolidation_id", 255)
+    if not isinstance(writes, Sequence) or isinstance(writes, (str, bytes)) or not writes:
+        raise ValueError("writes must be a non-empty array")
+    if len(writes) > _MAX_CLAIMS:
+        raise ValueError(f"writes must contain at most {_MAX_CLAIMS} entries")
+
+    raw_claims = validated_review.get("claims")
+    if not isinstance(raw_claims, list) or not raw_claims:
+        raise ValueError("validated_review.claims must be a non-empty array")
+    claims: dict[str, Mapping[str, Any]] = {}
+    for claim in raw_claims:
+        if not isinstance(claim, Mapping):
+            raise ValueError("validated_review claims must be objects")
+        claim_id = _bounded_text(claim.get("claim_id"), "validated_review claim_id", 128)
+        if claim_id in claims:
+            raise ValueError(f"validated_review claim ID is duplicated: {claim_id}")
+        claims[claim_id] = claim
+
+    normalized_writes: list[dict[str, Any]] = []
+    claim_ids: set[str] = set()
+    source_episode_ids: set[str] = set()
+    for write_index, raw_write in enumerate(writes):
+        if not isinstance(raw_write, Mapping):
+            raise ValueError(f"writes[{write_index}] must be an object")
+        claim_id = _bounded_text(raw_write.get("claim_id"), f"writes[{write_index}].claim_id", 128)
+        if claim_id in claim_ids:
+            raise ValueError(f"writes claim ID is duplicated: {claim_id}")
+        claim_ids.add(claim_id)
+        claim = claims.get(claim_id)
+        if claim is None:
+            raise ValueError(f"writes[{write_index}] references an unknown claim: {claim_id}")
+        classification = _bounded_text(
+            claim.get("classification"), f"validated_review.claims[{claim_id}].classification", 64
+        )
+        if classification == "insufficient_evidence":
+            raise ValueError(f"claim {claim_id} has insufficient_evidence and cannot be consolidated")
+        if "evidence_episode_ids" in raw_write:
+            raise ValueError("evidence_episode_ids are derived from the validated claim")
+        if "idempotency_key" in raw_write:
+            raise ValueError("idempotency_key is derived from consolidation_id and claim_id")
+
+        evidence_episode_ids = _claim_episode_ids(claim, claim_id)
+        source_episode_ids.update(evidence_episode_ids)
+        observed_at = _bounded_text(raw_write.get("observed_at"), f"writes[{write_index}].observed_at", 255)
+        valid_time = _mapping(raw_write.get("valid_time"), f"writes[{write_index}].valid_time")
+        write_policy = _write_policy(raw_write.get("write_policy"), f"writes[{write_index}].write_policy")
+        confidence = raw_write.get("confidence")
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
+            raise ValueError(f"writes[{write_index}].confidence must be a number from 0 to 1")
+        if raw_write.get("value") is None:
+            raise ValueError(f"writes[{write_index}].value must not be null")
+        normalized_writes.append(
+            {
+                "claim_id": claim_id,
+                "classification": classification,
+                "claim_summary": _bounded_text(
+                    claim.get("summary"), f"validated_review.claims[{claim_id}].summary", 2000
+                ),
+                "namespace": _bounded_text(raw_write.get("namespace"), f"writes[{write_index}].namespace", 255),
+                "key": _bounded_text(raw_write.get("key"), f"writes[{write_index}].key", 512),
+                "value": raw_write["value"],
+                "observed_at": observed_at,
+                "valid_time": valid_time,
+                "evidence_episode_ids": evidence_episode_ids,
+                "write_policy": write_policy,
+                "confidence": float(confidence),
+                "sensitivity": _bounded_text(
+                    raw_write.get("sensitivity"), f"writes[{write_index}].sensitivity", 255
+                ),
+                "retention_policy_id": _bounded_text(
+                    raw_write.get("retention_policy_id"), f"writes[{write_index}].retention_policy_id", 255
+                ),
+                "idempotency_key": _consolidation_idempotency_key(
+                    normalized_consolidation_id, claim_id
+                ),
+            }
+        )
+
+    return {
+        "profile": PROJECT_CONSOLIDATION_PROFILE,
+        "consolidation_id": normalized_consolidation_id,
+        "reviewer": dict(validated_review.get("reviewer", {})),
+        "review_policy": dict(validated_review.get("review_policy", {})),
+        "claim_ids": [write["claim_id"] for write in normalized_writes],
+        "source_episode_ids": sorted(source_episode_ids),
+        "writes": normalized_writes,
+        "durable_write": False,
+    }
+
+
+def _claim_episode_ids(claim: Mapping[str, Any], claim_id: str) -> list[str]:
+    raw_evidence = claim.get("evidence")
+    if not isinstance(raw_evidence, list) or not raw_evidence:
+        raise ValueError(f"validated_review claim {claim_id} has no evidence")
+    episode_ids: set[str] = set()
+    for evidence_index, citation in enumerate(raw_evidence):
+        if not isinstance(citation, Mapping):
+            raise ValueError(f"validated_review claim {claim_id} evidence must be objects")
+        raw_episode_ids = citation.get("evidence_episode_ids")
+        if not isinstance(raw_episode_ids, list) or not raw_episode_ids:
+            raise ValueError(
+                f"validated_review claim {claim_id} evidence[{evidence_index}] has no episode IDs"
+            )
+        for episode_index, episode_id in enumerate(raw_episode_ids):
+            episode_ids.add(
+                _bounded_text(
+                    episode_id,
+                    f"validated_review claim {claim_id} evidence[{evidence_index}].evidence_episode_ids[{episode_index}]",
+                    255,
+                )
+            )
+    if not episode_ids:
+        raise ValueError(f"validated_review claim {claim_id} has no evidence episode IDs")
+    return sorted(episode_ids)
+
+
+def _mapping(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be an object")
+    return dict(value)
+
+
+def _write_policy(value: Any, name: str) -> dict[str, Any]:
+    policy = _mapping(value, name)
+    policy["id"] = _bounded_text(policy.get("id"), f"{name}.id", 255)
+    policy["version"] = _bounded_text(policy.get("version"), f"{name}.version", 255)
+    return policy
+
+
+def _consolidation_idempotency_key(consolidation_id: str, claim_id: str) -> str:
+    digest = hashlib.sha256(f"{consolidation_id}\x00{claim_id}".encode("utf-8")).hexdigest()
+    return f"palimpsest-consolidation-v1:{digest}"
 
 
 def validate_project_review(

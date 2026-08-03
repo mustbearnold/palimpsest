@@ -4,6 +4,11 @@ export type JsonObject = Record<string, any>;
 export function projectNamespace(projectId: string, prefix?: string): string;
 export function compareProjectBundles(bundles: Record<string, JsonObject>): JsonObject;
 export function validateProjectReview(comparisonResult: JsonObject, review: JsonObject): JsonObject;
+export function prepareProjectConsolidation(
+  validatedReview: JsonObject,
+  writes: JsonObject[],
+  options: { consolidationId: string },
+): JsonObject;
 
 export interface PalimpsestResponse<T extends JsonObject = JsonObject> {
   data: T;
@@ -38,6 +43,13 @@ export class PartialRememberError extends PalimpsestError {
   readonly episode: JsonObject;
   readonly cause: PalimpsestError;
   constructor(episode: JsonObject, cause: PalimpsestError);
+}
+export class PartialConsolidationError extends PalimpsestError {
+  readonly consolidationId: string;
+  readonly completed: JsonObject[];
+  readonly failedWrite: JsonObject;
+  readonly cause: PalimpsestError;
+  constructor(consolidationId: string, completed: JsonObject[], failedWrite: JsonObject, cause: PalimpsestError);
 }
 
 export interface ClientOptions {
@@ -104,6 +116,12 @@ export class PalimpsestClient {
       namespacePrefix?: string;
       idempotencyKeyPrefix?: string | null;
     },
+  ): Promise<JsonObject>;
+  consolidateProjectReview(
+    comparisonResult: JsonObject,
+    review: JsonObject,
+    writes: JsonObject[],
+    options: { consolidationId: string },
   ): Promise<JsonObject>;
   getRetrieval(retrievalId: string, options?: { cursor?: string | null }): Promise<JsonObject>;
   saveCheckpointResponse(agentId: string, threadId: string, options: JsonObject): Promise<PalimpsestResponse>;

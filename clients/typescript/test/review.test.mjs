@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { compareProjectBundles, validateProjectReview } from "../src/index.js";
+import {
+  compareProjectBundles,
+  prepareProjectConsolidation,
+  validateProjectReview,
+} from "../src/index.js";
 
 function comparisonResult() {
   const bundles = {
@@ -56,6 +60,21 @@ function reviewPayload() {
   };
 }
 
+function consolidationWrite() {
+  return {
+    claim_id: "claim-release-target",
+    namespace: "shared",
+    key: "release-target-difference",
+    value: { content: "The projects target different release channels." },
+    observed_at: "2026-08-03T00:00:00Z",
+    valid_time: { from: "2026-08-03T00:00:00Z" },
+    write_policy: { id: "project-consolidation", version: "1" },
+    confidence: 0.91,
+    sensitivity: "internal",
+    retention_policy_id: "standard",
+  };
+}
+
 test("valid project review is attributed and non-writing", () => {
   const result = validateProjectReview(comparisonResult(), reviewPayload());
 
@@ -83,5 +102,38 @@ test("project review rejects a comparison not matching its bundles", () => {
   assert.throws(
     () => validateProjectReview(result, reviewPayload()),
     /does not match its bundles/,
+  );
+});
+
+test("consolidation plan derives episode lineage and stable retry key", () => {
+  const validated = validateProjectReview(comparisonResult(), reviewPayload());
+  const plan = prepareProjectConsolidation(validated, [consolidationWrite()], { consolidationId: "review-run-1" });
+  const repeat = prepareProjectConsolidation(validated, [consolidationWrite()], { consolidationId: "review-run-1" });
+
+  assert.equal(plan.profile, "project-comparison-governed-consolidation-v1");
+  assert.deepEqual(plan.claim_ids, ["claim-release-target"]);
+  assert.deepEqual(plan.source_episode_ids, ["episode-a", "episode-b"]);
+  assert.deepEqual(plan.writes[0].evidence_episode_ids, ["episode-a", "episode-b"]);
+  assert.equal(plan.writes[0].classification, "semantic_conflict");
+  assert.equal(plan.writes[0].idempotency_key, repeat.writes[0].idempotency_key);
+  assert.match(plan.writes[0].idempotency_key, /^palimpsest-consolidation-v1:/);
+});
+
+test("consolidation plan rejects insufficient evidence and caller lineage", () => {
+  const validated = validateProjectReview(comparisonResult(), reviewPayload());
+  validated.claims[0].classification = "insufficient_evidence";
+  assert.throws(
+    () => prepareProjectConsolidation(validated, [{ ...consolidationWrite(), evidence_episode_ids: ["unrelated"] }], {
+      consolidationId: "review-run-1",
+    }),
+    /insufficient_evidence/,
+  );
+
+  const validReview = validateProjectReview(comparisonResult(), reviewPayload());
+  assert.throws(
+    () => prepareProjectConsolidation(validReview, [{ ...consolidationWrite(), evidence_episode_ids: ["unrelated"] }], {
+      consolidationId: "review-run-1",
+    }),
+    /evidence_episode_ids are derived/,
   );
 });

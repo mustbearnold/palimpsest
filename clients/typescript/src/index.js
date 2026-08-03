@@ -7,6 +7,7 @@ const LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS = 3;
 const LEXICAL_OVERLAP_MAXIMUM_CANDIDATES = 100;
 const LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET = 20;
 const PROJECT_REVIEW_PROFILE = "project-comparison-semantic-review-v1";
+const PROJECT_CONSOLIDATION_PROFILE = "project-comparison-governed-consolidation-v1";
 const STRUCTURAL_COMPARISON_PROFILE = "project-comparison-structural-v1";
 const PROJECT_REVIEW_CLASSIFICATIONS = new Set([
   "same_meaning",
@@ -50,6 +51,18 @@ export class PartialRememberError extends PalimpsestError {
     super(`episode ${episodeId} was saved, but fact promotion failed: ${cause.message}`);
     this.name = "PartialRememberError";
     this.episode = episode;
+    this.cause = cause;
+  }
+}
+
+export class PartialConsolidationError extends PalimpsestError {
+  constructor(consolidationId, completed, failedWrite, cause) {
+    const claimId = failedWrite && typeof failedWrite === "object" ? failedWrite.claim_id ?? "unknown" : "unknown";
+    super(`consolidation ${consolidationId} committed ${completed.length} claim(s), but claim ${claimId} failed: ${cause.message}`);
+    this.name = "PartialConsolidationError";
+    this.consolidationId = consolidationId;
+    this.completed = completed;
+    this.failedWrite = failedWrite;
     this.cause = cause;
   }
 }
@@ -340,6 +353,158 @@ export function validateProjectReview(comparisonResult, review) {
   };
 }
 
+export function prepareProjectConsolidation(validatedReview, writes, { consolidationId } = {}) {
+  if (!validatedReview || typeof validatedReview !== "object" || Array.isArray(validatedReview)) {
+    throw new PalimpsestConfigurationError("validatedReview must be an object");
+  }
+  if (validatedReview.profile !== PROJECT_REVIEW_PROFILE) {
+    throw new PalimpsestConfigurationError("validatedReview must come from the semantic review profile");
+  }
+  if (!validatedReview.contract_validation || validatedReview.contract_validation.passed !== true) {
+    throw new PalimpsestConfigurationError("validatedReview must have passed contract validation");
+  }
+  const normalizedConsolidationId = reviewBoundedText(consolidationId, "consolidationId", 255);
+  if (!Array.isArray(writes) || writes.length === 0) {
+    throw new PalimpsestConfigurationError("writes must be a non-empty array");
+  }
+  if (writes.length > PROJECT_REVIEW_MAXIMUM_CLAIMS) {
+    throw new PalimpsestConfigurationError(`writes must contain at most ${PROJECT_REVIEW_MAXIMUM_CLAIMS} entries`);
+  }
+  if (!Array.isArray(validatedReview.claims) || validatedReview.claims.length === 0) {
+    throw new PalimpsestConfigurationError("validatedReview.claims must be a non-empty array");
+  }
+  const claims = new Map();
+  validatedReview.claims.forEach((claim) => {
+    if (!claim || typeof claim !== "object" || Array.isArray(claim)) {
+      throw new PalimpsestConfigurationError("validatedReview claims must be objects");
+    }
+    const claimId = reviewBoundedText(claim.claim_id, "validatedReview claim_id", 128);
+    if (claims.has(claimId)) {
+      throw new PalimpsestConfigurationError(`validatedReview claim ID is duplicated: ${claimId}`);
+    }
+    claims.set(claimId, claim);
+  });
+
+  const selectedClaimIds = new Set();
+  const sourceEpisodeIds = new Set();
+  const normalizedWrites = writes.map((rawWrite, writeIndex) => {
+    if (!rawWrite || typeof rawWrite !== "object" || Array.isArray(rawWrite)) {
+      throw new PalimpsestConfigurationError(`writes[${writeIndex}] must be an object`);
+    }
+    const claimId = reviewBoundedText(rawWrite.claim_id, `writes[${writeIndex}].claim_id`, 128);
+    if (selectedClaimIds.has(claimId)) {
+      throw new PalimpsestConfigurationError(`writes claim ID is duplicated: ${claimId}`);
+    }
+    selectedClaimIds.add(claimId);
+    const claim = claims.get(claimId);
+    if (!claim) {
+      throw new PalimpsestConfigurationError(`writes[${writeIndex}] references an unknown claim: ${claimId}`);
+    }
+    const classification = reviewBoundedText(
+      claim.classification,
+      `validatedReview.claims[${claimId}].classification`,
+      64,
+    );
+    if (classification === "insufficient_evidence") {
+      throw new PalimpsestConfigurationError(`claim ${claimId} has insufficient_evidence and cannot be consolidated`);
+    }
+    if (Object.hasOwn(rawWrite, "evidence_episode_ids")) {
+      throw new PalimpsestConfigurationError("evidence_episode_ids are derived from the validated claim");
+    }
+    if (Object.hasOwn(rawWrite, "idempotency_key")) {
+      throw new PalimpsestConfigurationError("idempotency_key is derived from consolidationId and claimId");
+    }
+    const evidenceEpisodeIds = claimEpisodeIds(claim, claimId);
+    evidenceEpisodeIds.forEach((episodeId) => sourceEpisodeIds.add(episodeId));
+    const validTime = objectCopy(rawWrite.valid_time, `writes[${writeIndex}].valid_time`);
+    const writePolicy = writePolicyCopy(rawWrite.write_policy, `writes[${writeIndex}].write_policy`);
+    const confidence = confidenceValue(rawWrite.confidence);
+    const value = nonNull(rawWrite.value, `writes[${writeIndex}].value`);
+    return {
+      claim_id: claimId,
+      classification,
+      claim_summary: reviewBoundedText(
+        claim.summary,
+        `validatedReview.claims[${claimId}].summary`,
+        2000,
+      ),
+      namespace: reviewBoundedText(rawWrite.namespace, `writes[${writeIndex}].namespace`, 255),
+      key: reviewBoundedText(rawWrite.key, `writes[${writeIndex}].key`, 512),
+      value,
+      observed_at: reviewBoundedText(rawWrite.observed_at, `writes[${writeIndex}].observed_at`, 255),
+      valid_time: validTime,
+      evidence_episode_ids: evidenceEpisodeIds,
+      write_policy: writePolicy,
+      confidence,
+      sensitivity: reviewBoundedText(rawWrite.sensitivity, `writes[${writeIndex}].sensitivity`, 255),
+      retention_policy_id: reviewBoundedText(
+        rawWrite.retention_policy_id,
+        `writes[${writeIndex}].retention_policy_id`,
+        255,
+      ),
+      idempotency_key: consolidationIdempotencyKey(normalizedConsolidationId, claimId),
+    };
+  });
+
+  return {
+    profile: PROJECT_CONSOLIDATION_PROFILE,
+    consolidation_id: normalizedConsolidationId,
+    reviewer: { ...(validatedReview.reviewer ?? {}) },
+    review_policy: { ...(validatedReview.review_policy ?? {}) },
+    claim_ids: normalizedWrites.map((write) => write.claim_id),
+    source_episode_ids: [...sourceEpisodeIds].sort(),
+    writes: normalizedWrites,
+    durable_write: false,
+  };
+}
+
+function claimEpisodeIds(claim, claimId) {
+  if (!Array.isArray(claim.evidence) || claim.evidence.length === 0) {
+    throw new PalimpsestConfigurationError(`validatedReview claim ${claimId} has no evidence`);
+  }
+  const episodeIds = new Set();
+  claim.evidence.forEach((citation, evidenceIndex) => {
+    if (!citation || typeof citation !== "object" || Array.isArray(citation)) {
+      throw new PalimpsestConfigurationError(`validatedReview claim ${claimId} evidence must be objects`);
+    }
+    if (!Array.isArray(citation.evidence_episode_ids) || citation.evidence_episode_ids.length === 0) {
+      throw new PalimpsestConfigurationError(
+        `validatedReview claim ${claimId} evidence[${evidenceIndex}] has no episode IDs`,
+      );
+    }
+    citation.evidence_episode_ids.forEach((episodeId, episodeIndex) => {
+      episodeIds.add(reviewBoundedText(
+        episodeId,
+        `validatedReview claim ${claimId} evidence[${evidenceIndex}].evidence_episode_ids[${episodeIndex}]`,
+        255,
+      ));
+    });
+  });
+  if (episodeIds.size === 0) {
+    throw new PalimpsestConfigurationError(`validatedReview claim ${claimId} has no evidence episode IDs`);
+  }
+  return [...episodeIds].sort();
+}
+
+function objectCopy(value, name) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PalimpsestConfigurationError(`${name} must be an object`);
+  }
+  return { ...value };
+}
+
+function writePolicyCopy(value, name) {
+  const policy = objectCopy(value, name);
+  policy.id = reviewBoundedText(policy.id, `${name}.id`, 255);
+  policy.version = reviewBoundedText(policy.version, `${name}.version`, 255);
+  return policy;
+}
+
+function consolidationIdempotencyKey(consolidationId, claimId) {
+  const digest = createHash("sha256").update(`${consolidationId}\u0000${claimId}`, "utf8").digest("hex");
+  return `palimpsest-consolidation-v1:${digest}`;
+}
+
 export class PalimpsestClient {
   constructor({ baseUrl, bearerToken, tenantId, subjectId, caseId = null, timeoutMs = 30_000 }) {
     this.baseUrl = baseUrlValue(baseUrl);
@@ -544,6 +709,62 @@ export class PalimpsestClient {
       query: text,
       bundles,
       comparison: compareProjectBundles(bundles),
+    };
+  }
+
+  async consolidateProjectReview(comparisonResult, review, writes, { consolidationId } = {}) {
+    let validatedReview;
+    let plan;
+    try {
+      validatedReview = validateProjectReview(comparisonResult, review);
+      plan = prepareProjectConsolidation(validatedReview, writes, { consolidationId });
+    } catch (error) {
+      if (error instanceof PalimpsestConfigurationError) throw error;
+      throw new PalimpsestConfigurationError(error.message);
+    }
+
+    const completed = [];
+    for (const plannedWrite of plan.writes) {
+      let fact;
+      try {
+        fact = await this.createFact({
+          namespace: plannedWrite.namespace,
+          key: plannedWrite.key,
+          value: plannedWrite.value,
+          observedAt: plannedWrite.observed_at,
+          validTime: plannedWrite.valid_time,
+          evidenceEpisodeIds: plannedWrite.evidence_episode_ids,
+          writePolicy: plannedWrite.write_policy,
+          confidence: plannedWrite.confidence,
+          sensitivity: plannedWrite.sensitivity,
+          retentionPolicyId: plannedWrite.retention_policy_id,
+          idempotencyKey: plannedWrite.idempotency_key,
+        });
+      } catch (error) {
+        if (error instanceof PalimpsestError) {
+          throw new PartialConsolidationError(plan.consolidation_id, completed, plannedWrite, error);
+        }
+        throw error;
+      }
+      completed.push({
+        claim_id: plannedWrite.claim_id,
+        classification: plannedWrite.classification,
+        claim_summary: plannedWrite.claim_summary,
+        evidence_episode_ids: plannedWrite.evidence_episode_ids,
+        idempotency_key: plannedWrite.idempotency_key,
+        fact,
+      });
+    }
+
+    return {
+      profile: PROJECT_CONSOLIDATION_PROFILE,
+      consolidation_id: plan.consolidation_id,
+      reviewer: plan.reviewer,
+      review_policy: plan.review_policy,
+      claim_ids: plan.claim_ids,
+      source_episode_ids: plan.source_episode_ids,
+      writes: completed,
+      durable_write: true,
     };
   }
 

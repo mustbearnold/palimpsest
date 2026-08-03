@@ -6,6 +6,74 @@ import { PalimpsestClient, compareProjectBundles } from "../src/index.js";
 const TENANT = "019be000-0000-7000-8000-000000000010";
 const SUBJECT = "019be000-0000-7000-8000-000000000020";
 const CASE = "019be000-0000-7000-8000-000000000030";
+const PROJECT_EPISODE_A = "019be000-0000-7000-8000-0000000000d0";
+const PROJECT_EPISODE_B = "019be000-0000-7000-8000-0000000000e0";
+
+function projectComparisonResult() {
+  const bundles = {
+    "project-a": {
+      items: [{
+        fact_id: "fact-a",
+        revision_id: "revision-a",
+        namespace: "agent_session:project-a",
+        key: "release-target",
+        value: { content: "ship version one" },
+        evidence_episode_ids: [PROJECT_EPISODE_A],
+      }],
+    },
+    "project-b": {
+      items: [{
+        fact_id: "fact-b",
+        revision_id: "revision-b",
+        namespace: "agent_session:project-b",
+        key: "release-target",
+        value: { content: "ship version two" },
+        evidence_episode_ids: [PROJECT_EPISODE_B],
+      }],
+    },
+  };
+  const comparison = compareProjectBundles(bundles);
+  return { profile: comparison.profile, bundles, comparison };
+}
+
+function projectReview() {
+  return {
+    reviewer: {
+      principal_id: "agent:project-review",
+      provider: "openai",
+      model: "gpt-5",
+      model_revision: "2026-08-03",
+      prompt_sha256: "a".repeat(64),
+    },
+    review_policy: { id: "project-review-v1", version: "1", sha256: "b".repeat(64) },
+    claims: [{
+      claim_id: "claim-release-target",
+      classification: "semantic_conflict",
+      summary: "The projects record different release targets.",
+      projects: ["project-a", "project-b"],
+      confidence: 0.91,
+      evidence: [
+        { project_id: "project-a", fact_id: "fact-a", revision_id: "revision-a", evidence_episode_ids: [PROJECT_EPISODE_A] },
+        { project_id: "project-b", fact_id: "fact-b", revision_id: "revision-b", evidence_episode_ids: [PROJECT_EPISODE_B] },
+      ],
+    }],
+  };
+}
+
+function consolidationWrite(key, claimId = "claim-release-target") {
+  return {
+    claim_id: claimId,
+    namespace: "shared",
+    key,
+    value: { content: "The projects target different release channels." },
+    observed_at: "2026-08-03T00:00:00Z",
+    valid_time: { from: "2026-08-03T00:00:00Z" },
+    write_policy: { id: "project-consolidation", version: "1" },
+    confidence: 0.91,
+    sensitivity: "internal",
+    retention_policy_id: "standard",
+  };
+}
 
 test("remember uses separate governed episode and fact writes", async () => {
   const requests = [];
@@ -43,6 +111,94 @@ test("remember uses separate governed episode and fact writes", async () => {
     ]);
     assert.equal(JSON.parse(requests[0].init.body).payload.content, "The address is 10 Test Street.");
     assert.equal(JSON.parse(requests[1].init.body).evidence_episode_ids[0], "019be000-0000-7000-8000-000000000040");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("consolidation writes only validated episode lineage", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ fact_id: "019be000-0000-7000-8000-000000000050" }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const client = new PalimpsestClient({
+      baseUrl: "http://127.0.0.1:8080",
+      bearerToken: "test-token",
+      tenantId: TENANT,
+      subjectId: SUBJECT,
+      caseId: CASE,
+    });
+    const result = await client.consolidateProjectReview(
+      projectComparisonResult(),
+      projectReview(),
+      [consolidationWrite("release-target-difference")],
+      { consolidationId: "review-run-1" },
+    );
+
+    assert.equal(result.profile, "project-comparison-governed-consolidation-v1");
+    assert.equal(result.durable_write, true);
+    assert.deepEqual(result.source_episode_ids, [PROJECT_EPISODE_A, PROJECT_EPISODE_B]);
+    assert.equal(result.writes[0].fact.fact_id, "019be000-0000-7000-8000-000000000050");
+    assert.deepEqual(requests[0].body.evidence_episode_ids, [PROJECT_EPISODE_A, PROJECT_EPISODE_B]);
+    assert.match(requests[0].init.headers["Idempotency-Key"], /^palimpsest-consolidation-v1:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("consolidation failure reports completed claims for retry", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response(JSON.stringify({ fact_id: "019be000-0000-7000-8000-000000000050" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ type: "invalid-request" }), {
+      status: 422,
+      headers: { "content-type": "application/problem+json" },
+    });
+  };
+
+  try {
+    const client = new PalimpsestClient({
+      baseUrl: "http://127.0.0.1:8080",
+      bearerToken: "test-token",
+      tenantId: TENANT,
+      subjectId: SUBJECT,
+      caseId: CASE,
+    });
+    const review = projectReview();
+    review.claims.push({ ...review.claims[0], claim_id: "claim-release-target-copy" });
+    await assert.rejects(
+      client.consolidateProjectReview(
+        projectComparisonResult(),
+        review,
+        [
+          consolidationWrite("release-target-difference"),
+          consolidationWrite("release-target-difference-copy", "claim-release-target-copy"),
+        ],
+        { consolidationId: "review-run-2" },
+      ),
+      (error) => {
+        assert.equal(error.constructor.name, "PartialConsolidationError");
+        assert.equal(error.completed.length, 1);
+        assert.equal(error.completed[0].claim_id, "claim-release-target");
+        assert.equal(error.failedWrite.claim_id, "claim-release-target-copy");
+        assert.equal(error.cause.statusCode, 422);
+        return true;
+      },
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

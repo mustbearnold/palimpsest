@@ -127,6 +127,23 @@ class PalimpsestClient:
         except (PalimpsestError, ValueError) as exc:
             raise AdapterError(str(exc)) from None
 
+    def consolidate_project_review(
+        self,
+        comparison_result: dict[str, Any],
+        review: dict[str, Any],
+        writes: list[dict[str, Any]],
+        consolidation_id: str,
+    ) -> dict[str, Any]:
+        try:
+            return self._client.consolidate_project_review(
+                comparison_result,
+                review,
+                writes,
+                consolidation_id=consolidation_id,
+            )
+        except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
+
     def remember(self, **kwargs: Any) -> dict[str, Any]:
         try:
             return self._client.remember(**kwargs)
@@ -262,6 +279,59 @@ def _tool_definitions() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "palimpsest_consolidate_project_review",
+            "description": (
+                "Write explicitly supplied facts for selected claims from a validated semantic project review. "
+                "The claim's cited source episode IDs are derived by Palimpsest, while the caller must supply "
+                "the value, temporal fields, sensitivity, retention policy, and registered write policy. "
+                "This is a governed per-claim write, not semantic truth or an atomic batch. Reuse the same "
+                "consolidation_id and write inputs to retry safely after a partial failure."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["comparison_result", "review", "writes", "consolidation_id"],
+                "properties": {
+                    "comparison_result": {"type": "object", "additionalProperties": True},
+                    "review": {"type": "object", "additionalProperties": True},
+                    "consolidation_id": {"type": "string", "minLength": 1, "maxLength": 255},
+                    "writes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 100,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "claim_id",
+                                "namespace",
+                                "key",
+                                "value",
+                                "observed_at",
+                                "valid_time",
+                                "write_policy",
+                                "confidence",
+                                "sensitivity",
+                                "retention_policy_id",
+                            ],
+                            "properties": {
+                                "claim_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                                "namespace": {"type": "string", "minLength": 1, "maxLength": 255},
+                                "key": {"type": "string", "minLength": 1, "maxLength": 512},
+                                "value": {},
+                                "observed_at": {"type": "string", "minLength": 1, "maxLength": 255},
+                                "valid_time": {"type": "object", "additionalProperties": True},
+                                "write_policy": {"type": "object", "additionalProperties": True},
+                                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                                "sensitivity": {"type": "string", "minLength": 1, "maxLength": 255},
+                                "retention_policy_id": {"type": "string", "minLength": 1, "maxLength": 255},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        {
             "name": "palimpsest_remember",
             "description": (
                 "Save an explicitly user-approved memory in Palimpsest. Call only when the user "
@@ -325,6 +395,28 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
             if not isinstance(review, dict):
                 raise AdapterError("review must be an object")
             return _tool_result(client.validate_project_review(comparison_result, review))
+
+        if name == "palimpsest_consolidate_project_review":
+            comparison_result = arguments.get("comparison_result")
+            review = arguments.get("review")
+            writes = arguments.get("writes")
+            if not isinstance(comparison_result, dict):
+                raise AdapterError("comparison_result must be an object")
+            if not isinstance(review, dict):
+                raise AdapterError("review must be an object")
+            if not isinstance(writes, list) or not writes:
+                raise AdapterError("writes must be a non-empty array")
+            if not all(isinstance(write, dict) for write in writes):
+                raise AdapterError("writes must contain objects")
+            consolidation_id = _string_argument(arguments, "consolidation_id", required=True)
+            return _tool_result(
+                client.consolidate_project_review(
+                    comparison_result,
+                    review,
+                    writes,
+                    consolidation_id,
+                )
+            )
 
         if name == "palimpsest_remember":
             content = _string_argument(arguments, "content", required=True)

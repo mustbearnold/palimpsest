@@ -207,9 +207,12 @@ codex mcp add palimpsest \
 Codex will then have `palimpsest_retrieve` for authorized current-memory
 searches, `palimpsest_recall_by_project` for isolated side-by-side project
 evidence, `palimpsest_compare_by_project` for deterministic key/value-digest
-review candidates plus observed project context and bounded token-difference hints, and
-`palimpsest_remember` for explicitly requested saves.
-The comparison tool does not infer semantic conflicts or consolidate memories.
+review candidates plus observed project context and bounded token-difference
+hints, `palimpsest_validate_project_review` for checking an external semantic
+interpretation, `palimpsest_consolidate_project_review` for explicitly approved
+per-claim governed writes, and `palimpsest_remember` for explicitly requested
+saves. The comparison tool does not infer semantic conflicts; consolidation
+requires caller-supplied values, temporal fields, and a registered write policy.
 The adapter uses the HTTP API, keeps the configured tenant and subject scope,
 and never exposes delete or export operations. Verify registration with
 `codex mcp list`.
@@ -264,8 +267,13 @@ keyed session messages, without making a semantic claim or durable write.
 When an external model or human has interpreted those candidates, clients and
 the MCP adapter can validate the review with `validate_project_review`; every
 claim must cite returned fact/revision and source-episode IDs plus reviewer and
-policy digests. Validation still does not make the claim canonical or write a
-consolidated fact. See [ADR-0026](docs/adr/0026-attributable-semantic-project-review.md).
+policy digests. After validation, the Python and TypeScript clients and MCP
+adapter can execute an explicit `consolidate_project_review` plan: Palimpsest
+derives the cited episode lineage, applies the caller's write policy, and uses
+one deterministic idempotency key per claim. It reports partial completion for
+retry and does not claim atomic batch behavior or semantic truth. See
+[ADR-0026](docs/adr/0026-attributable-semantic-project-review.md) and
+[ADR-0028](docs/adr/0028-governed-project-review-consolidation.md).
 On Linux, `bash scripts/install-palimpsest-ingest-service.sh` installs the
 discovery watcher as an owner-only systemd user service for continuous local
 ingestion; see [ADR-0022](docs/adr/0022-supervised-local-ingestion-service.md).

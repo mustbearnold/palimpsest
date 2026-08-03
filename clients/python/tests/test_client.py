@@ -16,6 +16,7 @@ from palimpsest import (  # noqa: E402
     PalimpsestClient,
     PalimpsestConfigurationError,
     PalimpsestHttpError,
+    PartialConsolidationError,
     PartialRememberError,
     compare_project_bundles,
 )
@@ -32,11 +33,97 @@ THREAD = "019be000-0000-7000-8000-0000000000a0"
 CHECKPOINT_REVISION = "019be000-0000-7000-8000-0000000000b0"
 EXPORT = "019be000-0000-7000-8000-0000000000c0"
 EXPORT_PACKAGE = b"PK\x03\x04palimpsest"
+PROJECT_EPISODE_A = "019be000-0000-7000-8000-0000000000d0"
+PROJECT_EPISODE_B = "019be000-0000-7000-8000-0000000000e0"
+
+
+def project_comparison_result() -> dict[str, object]:
+    bundles = {
+        "project-a": {
+            "items": [
+                {
+                    "fact_id": "fact-a",
+                    "revision_id": "revision-a",
+                    "namespace": "agent_session:project-a",
+                    "key": "release-target",
+                    "value": {"content": "ship version one"},
+                    "evidence_episode_ids": [PROJECT_EPISODE_A],
+                }
+            ]
+        },
+        "project-b": {
+            "items": [
+                {
+                    "fact_id": "fact-b",
+                    "revision_id": "revision-b",
+                    "namespace": "agent_session:project-b",
+                    "key": "release-target",
+                    "value": {"content": "ship version two"},
+                    "evidence_episode_ids": [PROJECT_EPISODE_B],
+                }
+            ]
+        },
+    }
+    comparison = compare_project_bundles(bundles)
+    return {"profile": comparison["profile"], "bundles": bundles, "comparison": comparison}
+
+
+def project_review() -> dict[str, object]:
+    return {
+        "reviewer": {
+            "principal_id": "agent:project-review",
+            "provider": "openai",
+            "model": "gpt-5",
+            "model_revision": "2026-08-03",
+            "prompt_sha256": "a" * 64,
+        },
+        "review_policy": {"id": "project-review-v1", "version": "1", "sha256": "b" * 64},
+        "claims": [
+            {
+                "claim_id": "claim-release-target",
+                "classification": "semantic_conflict",
+                "summary": "The projects record different release targets.",
+                "projects": ["project-a", "project-b"],
+                "confidence": 0.91,
+                "evidence": [
+                    {
+                        "project_id": "project-a",
+                        "fact_id": "fact-a",
+                        "revision_id": "revision-a",
+                        "evidence_episode_ids": [PROJECT_EPISODE_A],
+                    },
+                    {
+                        "project_id": "project-b",
+                        "fact_id": "fact-b",
+                        "revision_id": "revision-b",
+                        "evidence_episode_ids": [PROJECT_EPISODE_B],
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def consolidation_write(key: str) -> dict[str, object]:
+    return {
+        "claim_id": "claim-release-target",
+        "namespace": "shared",
+        "key": key,
+        "value": {"content": "The projects target different release channels."},
+        "observed_at": "2026-08-03T00:00:00Z",
+        "valid_time": {"from": "2026-08-03T00:00:00Z"},
+        "write_policy": {"id": "project-consolidation", "version": "1"},
+        "confidence": 0.91,
+        "sensitivity": "internal",
+        "retention_policy_id": "standard",
+    }
 
 
 class FakeApi(BaseHTTPRequestHandler):
     requests: list[dict[str, object]] = []
     fail_fact: bool = False
+    fail_fact_after: int | None = None
+    fact_calls: int = 0
     deletion_calls: int = 0
     export_calls: int = 0
 
@@ -57,10 +144,14 @@ class FakeApi(BaseHTTPRequestHandler):
         )
         if self.path.endswith("/episodes"):
             self._json(201, {"episode_id": EPISODE, "payload": body})
-        elif self.path.endswith("/facts") and self.fail_fact:
-            self._json(422, {"type": "invalid-request"})
         elif self.path.endswith("/facts"):
-            self._json(201, {"fact_id": FACT, "revision_id": REVISION, "value": body["value"]})
+            FakeApi.fact_calls += 1
+            if self.fail_fact or (
+                self.fail_fact_after is not None and FakeApi.fact_calls > self.fail_fact_after
+            ):
+                self._json(422, {"type": "invalid-request"})
+            else:
+                self._json(201, {"fact_id": FACT, "revision_id": REVISION, "value": body["value"]})
         elif self.path.endswith("/retrievals"):
             self._json(201, {"status": "results", "items": [], "next_cursor": None})
         elif self.path.endswith("/deletions"):
@@ -161,6 +252,8 @@ class ClientTests(unittest.TestCase):
     def setUp(self) -> None:
         FakeApi.requests = []
         FakeApi.fail_fact = False
+        FakeApi.fail_fact_after = None
+        FakeApi.fact_calls = 0
         FakeApi.deletion_calls = 0
         FakeApi.export_calls = 0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
@@ -192,6 +285,47 @@ class ClientTests(unittest.TestCase):
             ["remember-1:episode", "remember-1:fact"],
         )
         self.assertTrue(all(item["headers"]["Authorization"] == "Bearer test-token" for item in FakeApi.requests))
+
+    def test_consolidation_writes_only_validated_episode_lineage(self) -> None:
+        result = self.client.consolidate_project_review(
+            project_comparison_result(),
+            project_review(),
+            [consolidation_write("release-target-difference")],
+            consolidation_id="review-run-1",
+        )
+
+        self.assertEqual(result["profile"], "project-comparison-governed-consolidation-v1")
+        self.assertTrue(result["durable_write"])
+        self.assertEqual(result["source_episode_ids"], [PROJECT_EPISODE_A, PROJECT_EPISODE_B])
+        self.assertEqual(result["writes"][0]["fact"]["fact_id"], FACT)
+        self.assertEqual(len(FakeApi.requests), 1)
+        request = FakeApi.requests[0]
+        self.assertEqual(request["body"]["evidence_episode_ids"], [PROJECT_EPISODE_A, PROJECT_EPISODE_B])
+        self.assertEqual(request["body"]["namespace"], "shared")
+        self.assertTrue(request["headers"]["Idempotency-Key"].startswith("palimpsest-consolidation-v1:"))
+
+    def test_consolidation_failure_reports_completed_claims_for_retry(self) -> None:
+        comparison = project_comparison_result()
+        review = project_review()
+        review["claims"].append({**review["claims"][0], "claim_id": "claim-release-target-copy"})
+        writes = [
+            consolidation_write("release-target-difference"),
+            {**consolidation_write("release-target-difference-copy"), "claim_id": "claim-release-target-copy"},
+        ]
+        FakeApi.fail_fact_after = 1
+
+        with self.assertRaises(PartialConsolidationError) as raised:
+            self.client.consolidate_project_review(
+                comparison,
+                review,
+                writes,
+                consolidation_id="review-run-2",
+            )
+
+        self.assertEqual(len(raised.exception.completed), 1)
+        self.assertEqual(raised.exception.completed[0]["claim_id"], "claim-release-target")
+        self.assertEqual(raised.exception.failed_write["claim_id"], "claim-release-target-copy")
+        self.assertIsInstance(raised.exception.cause, PalimpsestHttpError)
 
     def test_recall_sends_explicit_temporal_perspective_and_filters(self) -> None:
         self.client.recall(

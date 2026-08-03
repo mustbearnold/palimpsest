@@ -5,7 +5,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from palimpsest import compare_project_bundles, validate_project_review
+from palimpsest import (
+    compare_project_bundles,
+    prepare_project_consolidation,
+    validate_project_review,
+)
 
 
 def comparison_result() -> dict[str, object]:
@@ -117,6 +121,86 @@ class ProjectReviewTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "requires at least two distinct cited values"):
             validate_project_review(result, review)
+
+    def test_consolidation_plan_derives_episode_lineage_and_stable_retry_key(self) -> None:
+        validated = validate_project_review(comparison_result(), review_payload())
+
+        plan = prepare_project_consolidation(
+            validated,
+            [
+                {
+                    "claim_id": "claim-release-target",
+                    "namespace": "shared",
+                    "key": "release-target-difference",
+                    "value": {"content": "The projects target different release channels."},
+                    "observed_at": "2026-08-03T00:00:00Z",
+                    "valid_time": {"from": "2026-08-03T00:00:00Z"},
+                    "write_policy": {"id": "project-consolidation", "version": "1"},
+                    "confidence": 0.91,
+                    "sensitivity": "internal",
+                    "retention_policy_id": "standard",
+                }
+            ],
+            consolidation_id="review-run-1",
+        )
+
+        self.assertEqual(plan["profile"], "project-comparison-governed-consolidation-v1")
+        self.assertEqual(plan["claim_ids"], ["claim-release-target"])
+        self.assertEqual(plan["source_episode_ids"], ["episode-a", "episode-b"])
+        self.assertEqual(plan["writes"][0]["evidence_episode_ids"], ["episode-a", "episode-b"])
+        self.assertEqual(plan["writes"][0]["classification"], "semantic_conflict")
+        repeat = prepare_project_consolidation(
+            validated,
+            [
+                {
+                    "claim_id": "claim-release-target",
+                    "namespace": "shared",
+                    "key": "release-target-difference",
+                    "value": {"content": "The projects target different release channels."},
+                    "observed_at": "2026-08-03T00:00:00Z",
+                    "valid_time": {"from": "2026-08-03T00:00:00Z"},
+                    "write_policy": {"id": "project-consolidation", "version": "1"},
+                    "confidence": 0.91,
+                    "sensitivity": "internal",
+                    "retention_policy_id": "standard",
+                }
+            ],
+            consolidation_id="review-run-1",
+        )
+        self.assertEqual(plan["writes"][0]["idempotency_key"], repeat["writes"][0]["idempotency_key"])
+        self.assertTrue(plan["writes"][0]["idempotency_key"].startswith("palimpsest-consolidation-v1:"))
+        self.assertLessEqual(len(plan["writes"][0]["idempotency_key"]), 255)
+
+    def test_consolidation_plan_rejects_insufficient_evidence_and_caller_lineage(self) -> None:
+        validated = validate_project_review(comparison_result(), review_payload())
+        validated["claims"][0]["classification"] = "insufficient_evidence"
+        write = {
+            "claim_id": "claim-release-target",
+            "namespace": "shared",
+            "key": "release-target-difference",
+            "value": {"content": "not enough evidence"},
+            "observed_at": "2026-08-03T00:00:00Z",
+            "valid_time": {"from": "2026-08-03T00:00:00Z"},
+            "write_policy": {"id": "project-consolidation", "version": "1"},
+            "confidence": 0.5,
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+            "evidence_episode_ids": ["unrelated-episode"],
+        }
+
+        with self.assertRaisesRegex(ValueError, "insufficient_evidence"):
+            prepare_project_consolidation(validated, [write], consolidation_id="review-run-1")
+
+        valid_write = dict(write)
+        valid_write.pop("evidence_episode_ids")
+        valid_review = validate_project_review(comparison_result(), review_payload())
+        valid_write["claim_id"] = "claim-release-target"
+        with self.assertRaisesRegex(ValueError, "evidence_episode_ids are derived"):
+            prepare_project_consolidation(
+                valid_review,
+                [{**valid_write, "evidence_episode_ids": ["unrelated-episode"]}],
+                consolidation_id="review-run-1",
+            )
 
     def test_comparison_normalizes_integral_json_numbers(self) -> None:
         bundles = {

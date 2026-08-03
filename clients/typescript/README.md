@@ -87,5 +87,26 @@ const validated = validateProjectReview(comparison, review);
 ```
 
 Validation checks returned fact/revision and source-episode citations plus
-reviewer and policy digests. It does not prove semantic truth or write a
-consolidated fact; that remains an explicit governed operation.
+reviewer and policy digests. An explicitly approved consolidation can then
+write caller-supplied facts while deriving source episode lineage from the
+validated claims:
+
+```js
+const result = await client.consolidateProjectReview(comparison, review, [{
+  claim_id: "claim-release-target",
+  namespace: "shared",
+  key: "release-target-difference",
+  value: { content: "The projects target different release channels." },
+  observed_at: "2026-08-03T00:00:00Z",
+  valid_time: { from: "2026-08-03T00:00:00Z" },
+  write_policy: { id: "project-consolidation", version: "1" },
+  confidence: 0.91,
+  sensitivity: "internal",
+  retention_policy_id: "standard",
+}], { consolidationId: "review-run-1" });
+```
+
+Reuse the consolidation ID and all write inputs to retry. Each claim is a
+separate idempotent fact write, so a later failure raises
+`PartialConsolidationError` with the committed prefix. It is not an atomic
+batch and does not prove semantic truth.

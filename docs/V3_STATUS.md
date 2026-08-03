@@ -27,8 +27,10 @@ is not an official release or a production-readiness claim.
   bundles plus deterministic exact-key/value-digest review candidates.
 - The Python, TypeScript, and MCP surfaces can validate an external semantic
   project review against returned fact/revision and source-episode evidence,
-  reviewer/model metadata, and a versioned policy digest. This is a provenance
-  guard, not an automatic model or a durable consolidation write.
+  reviewer/model metadata, and a versioned policy digest. They can then run an
+  explicit governed consolidation over selected claims: episode lineage is
+  derived from the validated evidence, each fact write is idempotent, and
+  partial completion is retryable through a typed result.
 - `watch --discover` checks the conventional current-user stores, and the
   optional Linux systemd user service can supervise that watcher continuously.
 - A guarded PostgreSQL custom-format logical backup rehearsal can restore into
@@ -54,6 +56,12 @@ is not an official release or a production-readiness claim.
   also connect differently keyed session messages for agent review and include
   a bounded shared/only-in token delta. The result also carries observed
   project-root, branch, source, role, and unique-session context labels.
+- The semantic-review path is usable but deliberately bounded: an external
+  model or human supplies the interpretation, Palimpsest validates its
+  citations, and an explicitly approved consolidation writes selected claims
+  through the normal governed fact seam. The client-coordinated sequence is
+  retryable per claim but not an atomic batch, and it does not prove semantic
+  truth.
 - The ingestion adapters handle the observed local Codex, Claude Code, and
   Hermes seams, but they are not provider APIs, native hooks, or a universal
   transcript parser. Tool rows, private thinking, system prompts, and tool
@@ -80,8 +88,9 @@ is not an official release or a production-readiness claim.
 
 - Automatic model-driven semantic project diffs, conflict explanations, or
   consolidation of raw session messages into higher-level facts. The new
-  validator can check an external interpretation, but Palimpsest still does
-  not call a model or promote that interpretation automatically.
+  validator can check and explicitly promote an external interpretation, but
+  Palimpsest still does not call a model or promote unreviewed output
+  automatically.
 - Automatic per-request detection of arbitrary out-of-band corruption in the
   derived current-revision projection. The owner-only rebuild path exists, but
   a canonical latest-row comparison on every request was measured and
@@ -103,9 +112,9 @@ is not an official release or a production-readiness claim.
 ## Next v3 frontier
 
 The next high-value slices are a cheaper completeness/fallback boundary,
-deterministic object/cache fault injection, concurrent million-revision
-evidence, and an explicit governed consolidation workflow over validated review
-claims.
+deterministic object/cache fault injection, and concurrent million-revision
+evidence. Server-side atomic consolidation jobs and provider-native semantic
+review remain separate future boundaries.
 v3 is only honest when those remaining
 boundaries are either implemented with evidence or clearly retained as
 non-claims.

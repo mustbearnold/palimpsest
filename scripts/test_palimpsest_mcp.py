@@ -85,6 +85,7 @@ class FakeClient:
         self.project_retrievals: list[tuple[str, list[str], int]] = []
         self.project_comparisons: list[tuple[str, list[str], int]] = []
         self.project_reviews: list[tuple[dict[str, object], dict[str, object]]] = []
+        self.project_consolidations: list[tuple[dict[str, object], dict[str, object], list[dict[str, object]], str]] = []
         self.memories: list[dict[str, object]] = []
 
     def retrieve(self, query: str, page_size: int) -> dict[str, object]:
@@ -104,6 +105,16 @@ class FakeClient:
     ) -> dict[str, object]:
         self.project_reviews.append((comparison_result, review))
         return validate_project_review(comparison_result, review)
+
+    def consolidate_project_review(
+        self,
+        comparison_result: dict[str, object],
+        review: dict[str, object],
+        writes: list[dict[str, object]],
+        consolidation_id: str,
+    ) -> dict[str, object]:
+        self.project_consolidations.append((comparison_result, review, writes, consolidation_id))
+        return {"profile": "project-comparison-governed-consolidation-v1", "durable_write": True}
 
     def remember(self, **kwargs: object) -> dict[str, object]:
         self.memories.append(kwargs)
@@ -129,6 +140,7 @@ class McpAdapterTests(unittest.TestCase):
                 "palimpsest_recall_by_project",
                 "palimpsest_compare_by_project",
                 "palimpsest_validate_project_review",
+                "palimpsest_consolidate_project_review",
                 "palimpsest_remember",
             ],
         )
@@ -246,6 +258,48 @@ class McpAdapterTests(unittest.TestCase):
         self.assertEqual(self.client.project_reviews, [(comparison_result, review)])
         rendered = json.loads(response["result"]["content"][0]["text"])
         self.assertFalse(rendered["durable_write"])
+
+    def test_consolidate_project_review_routes_explicit_write_plan(self) -> None:
+        comparison_result = make_comparison_result()
+        review = make_review_payload()
+        writes = [
+            {
+                "claim_id": "claim-release-target",
+                "namespace": "shared",
+                "key": "release-target-difference",
+                "value": {"content": "The projects target different release channels."},
+                "observed_at": "2026-08-03T00:00:00Z",
+                "valid_time": {"from": "2026-08-03T00:00:00Z"},
+                "write_policy": {"id": "project-consolidation", "version": "1"},
+                "confidence": 0.91,
+                "sensitivity": "internal",
+                "retention_policy_id": "standard",
+            }
+        ]
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_consolidate_project_review",
+                    "arguments": {
+                        "comparison_result": comparison_result,
+                        "review": review,
+                        "writes": writes,
+                        "consolidation_id": "review-run-1",
+                    },
+                },
+            },
+            self.client,
+        )
+        self.assertNotIn("isError", response["result"])
+        self.assertEqual(
+            self.client.project_consolidations,
+            [(comparison_result, review, writes, "review-run-1")],
+        )
+        rendered = json.loads(response["result"]["content"][0]["text"])
+        self.assertTrue(rendered["durable_write"])
 
     def test_notifications_do_not_produce_output(self) -> None:
         incoming = io.StringIO(

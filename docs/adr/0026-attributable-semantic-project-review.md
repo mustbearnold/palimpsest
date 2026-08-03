@@ -40,15 +40,17 @@ The review also carries a reviewer principal, provider/model/revision metadata,
 a prompt digest, and a versioned review-policy digest. A `semantic_conflict`
 claim must cite at least two distinct canonical values. The validator returns a
 normalized, provenance-rich review, but performs no model call, does not decide
-semantic truth, and never writes memory. Any consolidation remains an explicit
-governed fact write using the cited source episodes and a durable write policy.
+semantic truth, and never writes memory. Explicit promotion of selected claims
+is defined separately by [ADR-0028](0028-governed-project-review-consolidation.md);
+it uses the cited source episodes and a durable write policy.
 
 ## Consequences
 
 Agents can ask a model or human to interpret the isolated project evidence and
 then have Palimpsest reject ungrounded or unattributed claims before they are
-used for a later write. The interface is provider-neutral and stores no prompt
-or private transcript, only its digest and bounded claim metadata. Palimpsest
-still does not provide automatic semantic understanding or consolidation; the
-external reviewer remains responsible for the interpretation, and the durable
-MemoryService remains responsible for authorization and write policy.
+used by the explicit, per-claim consolidation workflow. The interface is
+provider-neutral and stores no prompt or private transcript, only its digest
+and bounded claim metadata. Palimpsest still does not provide automatic
+semantic understanding or raw-session consolidation; the external reviewer
+remains responsible for the interpretation, and the durable MemoryService
+remains responsible for authorization and write policy.

@@ -162,11 +162,38 @@ validated = validate_project_review(comparison, review)
 
 The review must identify the reviewer/model and policy digests, cite returned
 fact revisions and source episode IDs for every named project, and remains
-non-authoritative and non-writing. A caller must still make an explicit
-governed fact write if the review warrants consolidation.
+non-authoritative and non-writing. If the caller explicitly approves a
+consolidation, provide the fact value and all write-governance fields; episode
+lineage is taken from the validated claim rather than accepted from the caller:
 
-The local MCP adapter exposes the same operations as
-`palimpsest_recall_by_project` and `palimpsest_compare_by_project`. Both
+```python
+result = client.consolidate_project_review(
+    comparison,
+    review,
+    [{
+        "claim_id": "claim-release-target",
+        "namespace": "shared",
+        "key": "release-target-difference",
+        "value": {"content": "The projects target different release channels."},
+        "observed_at": "2026-08-03T00:00:00Z",
+        "valid_time": {"from": "2026-08-03T00:00:00Z"},
+        "write_policy": {"id": "project-consolidation", "version": "1"},
+        "confidence": 0.91,
+        "sensitivity": "internal",
+        "retention_policy_id": "standard",
+    }],
+    consolidation_id="review-run-1",
+)
+```
+
+The consolidation ID and all write inputs must be reused for a retry. Each
+claim is a separate idempotent fact write, so a later failure raises
+`PartialConsolidationError` with the committed prefix; the operation is not an
+atomic batch and does not prove semantic truth.
+
+The local MCP adapter exposes the same project recall and comparison operations
+plus `palimpsest_validate_project_review` and the explicitly approved
+`palimpsest_consolidate_project_review` write operation. Recall and comparison
 require at least two distinct project IDs, so an agent can ask one question and
 receive explicitly keyed bundles without cross-project candidate mixing; the
 comparison tool adds only the deterministic structural summary described

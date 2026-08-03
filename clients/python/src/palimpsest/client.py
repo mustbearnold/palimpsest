@@ -17,6 +17,11 @@ from urllib import error, parse, request
 
 from .ingest import project_namespace
 from .comparison import compare_project_bundles
+from .review import (
+    PROJECT_CONSOLIDATION_PROFILE,
+    prepare_project_consolidation,
+    validate_project_review,
+)
 
 
 JsonObject = dict[str, Any]
@@ -79,6 +84,27 @@ class PartialRememberError(PalimpsestError):
         self.cause = cause
         episode_id = episode.get("episode_id", "unknown")
         super().__init__(f"episode {episode_id} was saved, but fact promotion failed: {cause}")
+
+
+class PartialConsolidationError(PalimpsestError):
+    """Some per-claim consolidation writes committed before a later failure."""
+
+    def __init__(
+        self,
+        consolidation_id: str,
+        completed: list[JsonObject],
+        failed_write: JsonObject,
+        cause: PalimpsestError,
+    ) -> None:
+        self.consolidation_id = consolidation_id
+        self.completed = completed
+        self.failed_write = failed_write
+        self.cause = cause
+        claim_id = failed_write.get("claim_id", "unknown")
+        super().__init__(
+            f"consolidation {consolidation_id} committed {len(completed)} claim(s), "
+            f"but claim {claim_id} failed: {cause}"
+        )
 
 
 @dataclass(frozen=True)
@@ -534,6 +560,75 @@ class PalimpsestClient:
             "query": query,
             "bundles": bundles,
             "comparison": comparison,
+        }
+
+    def consolidate_project_review(
+        self,
+        comparison_result: Mapping[str, Any],
+        review: Mapping[str, Any],
+        writes: Sequence[Mapping[str, Any]],
+        *,
+        consolidation_id: str,
+    ) -> JsonObject:
+        """Durably write explicit facts for validated cross-project claims.
+
+        Validation and plan preparation complete before the first request. The
+        service receives only episode IDs cited by the validated review. Each
+        claim is a separate idempotent fact write; a later failure raises
+        ``PartialConsolidationError`` with completed writes so the same inputs
+        and consolidation ID can be retried safely.
+        """
+
+        try:
+            validated_review = validate_project_review(comparison_result, review)
+            plan = prepare_project_consolidation(
+                validated_review,
+                writes,
+                consolidation_id=consolidation_id,
+            )
+        except ValueError as exc:
+            raise PalimpsestConfigurationError(str(exc)) from exc
+
+        completed: list[JsonObject] = []
+        for planned_write in plan["writes"]:
+            try:
+                fact = self.create_fact(
+                    namespace=planned_write["namespace"],
+                    key=planned_write["key"],
+                    value=planned_write["value"],
+                    observed_at=planned_write["observed_at"],
+                    valid_time=planned_write["valid_time"],
+                    evidence_episode_ids=planned_write["evidence_episode_ids"],
+                    write_policy=planned_write["write_policy"],
+                    confidence=planned_write["confidence"],
+                    sensitivity=planned_write["sensitivity"],
+                    retention_policy_id=planned_write["retention_policy_id"],
+                    idempotency_key=planned_write["idempotency_key"],
+                )
+            except PalimpsestError as exc:
+                raise PartialConsolidationError(
+                    plan["consolidation_id"], completed, planned_write, exc
+                ) from exc
+            completed.append(
+                {
+                    "claim_id": planned_write["claim_id"],
+                    "classification": planned_write["classification"],
+                    "claim_summary": planned_write["claim_summary"],
+                    "evidence_episode_ids": planned_write["evidence_episode_ids"],
+                    "idempotency_key": planned_write["idempotency_key"],
+                    "fact": fact,
+                }
+            )
+
+        return {
+            "profile": PROJECT_CONSOLIDATION_PROFILE,
+            "consolidation_id": plan["consolidation_id"],
+            "reviewer": plan["reviewer"],
+            "review_policy": plan["review_policy"],
+            "claim_ids": plan["claim_ids"],
+            "source_episode_ids": plan["source_episode_ids"],
+            "writes": completed,
+            "durable_write": True,
         }
 
     def get_retrieval(self, retrieval_id: str, *, cursor: str | None = None) -> JsonObject:
