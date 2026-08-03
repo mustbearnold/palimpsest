@@ -88,6 +88,50 @@ class SourceSpec:
         object.__setattr__(self, "path", Path(self.path).expanduser().resolve())
 
 
+def discover_local_sources(
+    *,
+    home: str | Path | None = None,
+    codex_sessions: str | Path | None = None,
+    claude_projects: str | Path | None = None,
+    hermes_state_db: str | Path | None = None,
+) -> tuple[SourceSpec, ...]:
+    """Find exact, current-user agent stores without scanning the home tree.
+
+    Discovery is intentionally narrow: it checks the conventional Codex,
+    Claude Code, and Hermes locations only. Callers must opt into discovery;
+    explicit ``SourceSpec`` values remain the right choice for another
+    account, a non-standard installation, or a path requiring separate
+    authorization. Missing stores are omitted so a long-lived watcher can
+    notice a provider when it is started after the watcher.
+    """
+
+    home_path = Path(home).expanduser().resolve() if home is not None else Path.home().resolve()
+    candidates = (
+        ("codex", codex_sessions or home_path / ".codex" / "sessions"),
+        ("claude", claude_projects or home_path / ".claude" / "projects"),
+        ("hermes", hermes_state_db or home_path / ".hermes" / "state.db"),
+    )
+    sources: list[SourceSpec] = []
+    seen: set[tuple[str, Path]] = set()
+    for kind, raw_path in candidates:
+        candidate = Path(raw_path).expanduser()
+        if candidate.is_symlink():
+            continue
+        path = candidate.resolve()
+        if not path.exists():
+            continue
+        if kind == "hermes" and not path.is_file():
+            continue
+        if kind != "hermes" and not path.is_dir():
+            continue
+        key = (kind, path)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(SourceSpec(kind, path))
+    return tuple(sources)
+
+
 @dataclass(frozen=True)
 class IngestReport:
     """Content-free operational result for one polling pass."""

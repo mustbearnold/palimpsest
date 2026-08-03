@@ -198,11 +198,13 @@ client. See the [TypeScript client guide](clients/typescript/README.md) and
 ### Ingest coding-agent sessions
 
 Palimpsest includes an opt-in [project-aware session ingestion guide](clients/python/README.md#ingest-coding-agent-sessions)
-for Codex, Claude Code, and Hermes. It polls explicitly selected local source
-paths, redacts common credential-shaped values, excludes tools and private
-thinking, and writes through the authorized HTTP API. Each repository gets a
-stable retrieval namespace so memories from multiple projects do not have to
-share one undifferentiated search pool. See [ADR-0019](docs/adr/0019-project-aware-agent-session-ingestion.md).
+for Codex, Claude Code, and Hermes. It can poll explicitly selected local
+source paths or the exact conventional locations for the current user with
+`--discover`; it redacts common credential-shaped values, excludes tools and
+private thinking, and writes through the authorized HTTP API. Each repository
+gets a stable retrieval namespace so memories from multiple projects do not
+have to share one undifferentiated search pool. See [ADR-0019](docs/adr/0019-project-aware-agent-session-ingestion.md)
+and [ADR-0021](docs/adr/0021-local-agent-source-discovery.md).
 The Python and TypeScript clients also expose per-project recall helpers that
 return isolated evidence bundles for deliberate comparison; they do not
 silently mix namespaces or pretend to generate a diff.

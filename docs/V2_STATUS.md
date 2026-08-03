@@ -38,6 +38,14 @@ reimplement the governance rules.
   deletion polling, checkpoint read/save, export status, and binary export
   download. It reports partial episode/fact promotion instead of pretending
   that a two-request convenience helper is atomic.
+- The dependency-free TypeScript client exposes the same governed HTTP seam,
+  and both clients can return isolated recall bundles for multiple project
+  namespaces.
+- The opt-in ingestion bridge follows text-only Codex, Claude Code, and Hermes
+  session data with resumable cursors, common credential redaction, stable
+  project identities, and explicit `--discover` support for the conventional
+  current-user stores. It does not ingest tools, private thinking, or hidden
+  system prompts.
 
 ## Evidence bar
 
@@ -64,8 +72,9 @@ milestone:
   scale claim;
 - production release/security gates, independent high-risk review, and a first
   production deployment;
-- public procedure/artifact APIs, TypeScript or embedded clients, automatic
-  model-driven consolidation, multi-region writes, and a hosted control plane.
+- public procedure/artifact APIs, embedded clients, automatic model-driven
+  consolidation, native/provider ingestion hooks, multi-region writes, and a
+  hosted control plane.
 
 Those boundaries keep “v2” honest: it means a coherent, trustworthy,
 self-hostable development product, not that every future adapter or production

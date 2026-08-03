@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Opt-in polling bridge from agent session stores to Palimpsest.
 
-This process has no source defaults. The caller must name each local source
-path explicitly, which is especially important when a path belongs to another
-user. It writes only through the authorized Palimpsest HTTP client.
+The caller must either name each local source path explicitly or opt into the
+narrow current-user discovery mode. It writes only through the authorized
+Palimpsest HTTP client.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from palimpsest import (  # noqa: E402
     PalimpsestClient,
     PalimpsestError,
     SourceSpec,
+    discover_local_sources,
 )
 
 
@@ -44,9 +45,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source",
         action="append",
-        required=True,
+        default=[],
         metavar="KIND=PATH",
         help="explicit source path; KIND is codex, claude, or hermes (repeatable)",
+    )
+    parser.add_argument(
+        "--discover",
+        action="store_true",
+        help="also check the exact current-user Codex, Claude, and Hermes locations",
     )
     parser.add_argument("--base-url", default=os.environ.get("PALIMPSEST_INGEST_BASE_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--bearer-token", default=os.environ.get("PALIMPSEST_INGEST_BEARER_TOKEN"))
@@ -61,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--project-root", default=os.environ.get("PALIMPSEST_INGEST_PROJECT_ROOT"))
+    parser.add_argument("--codex-sessions", default=os.environ.get("PALIMPSEST_INGEST_CODEX_SESSIONS"))
+    parser.add_argument("--claude-projects", default=os.environ.get("PALIMPSEST_INGEST_CLAUDE_PROJECTS"))
+    parser.add_argument("--hermes-state-db", default=os.environ.get("PALIMPSEST_INGEST_HERMES_STATE_DB"))
     parser.add_argument("--namespace-prefix", default="agent_session")
     parser.add_argument("--sensitivity", default="internal")
     parser.add_argument("--retention-policy-id", default="standard")
@@ -77,6 +86,29 @@ def _source_specs(values: list[str]) -> list[SourceSpec]:
             raise ValueError("--source must use KIND=PATH")
         specs.append(SourceSpec(kind.strip(), Path(path)))
     return specs
+
+
+def _sources(arguments: argparse.Namespace, *, allow_empty: bool = False) -> list[SourceSpec]:
+    specs = _source_specs(arguments.source)
+    if arguments.discover:
+        specs.extend(
+            discover_local_sources(
+                codex_sessions=arguments.codex_sessions,
+                claude_projects=arguments.claude_projects,
+                hermes_state_db=arguments.hermes_state_db,
+            )
+        )
+    deduplicated = []
+    seen = set()
+    for spec in specs:
+        key = (spec.kind, spec.path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduplicated.append(spec)
+    if not deduplicated and not allow_empty:
+        raise IngestionError("no ingestion sources were selected or discovered")
+    return deduplicated
 
 
 def _client(arguments: argparse.Namespace) -> PalimpsestClient:
@@ -106,22 +138,39 @@ def _run_once(arguments: argparse.Namespace, runner: IngestionRunner) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
+    if not arguments.source and not arguments.discover:
+        raise ValueError("provide --source KIND=PATH or opt into --discover")
     if arguments.interval_seconds <= 0:
         raise ValueError("--interval-seconds must be greater than zero")
-    runner = IngestionRunner(
-        _client(arguments),
-        _source_specs(arguments.source),
-        state_path=arguments.state_path,
-        backfill=arguments.backfill,
-        project_root=arguments.project_root,
-        namespace_prefix=arguments.namespace_prefix,
-        sensitivity=arguments.sensitivity,
-        retention_policy_id=arguments.retention_policy_id,
-    )
+    client = _client(arguments)
     if arguments.command == "once":
+        runner = IngestionRunner(
+            client,
+            _sources(arguments),
+            state_path=arguments.state_path,
+            backfill=arguments.backfill,
+            project_root=arguments.project_root,
+            namespace_prefix=arguments.namespace_prefix,
+            sensitivity=arguments.sensitivity,
+            retention_policy_id=arguments.retention_policy_id,
+        )
         return _run_once(arguments, runner)
     while True:
-        _run_once(arguments, runner)
+        sources = _sources(arguments, allow_empty=True)
+        if sources:
+            runner = IngestionRunner(
+                client,
+                sources,
+                state_path=arguments.state_path,
+                backfill=arguments.backfill,
+                project_root=arguments.project_root,
+                namespace_prefix=arguments.namespace_prefix,
+                sensitivity=arguments.sensitivity,
+                retention_policy_id=arguments.retention_policy_id,
+            )
+            _run_once(arguments, runner)
+        else:
+            print(json.dumps({"report": {"seen": 0, "ingested": 0, "skipped": 0, "baselined": 0, "project_ids": []}, "sources": []}, sort_keys=True), flush=True)
         time.sleep(arguments.interval_seconds)
 
 

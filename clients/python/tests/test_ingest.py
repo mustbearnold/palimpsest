@@ -19,6 +19,7 @@ from palimpsest.ingest import (  # noqa: E402
     parse_claude_record,
     parse_codex_record,
     parse_hermes_row,
+    discover_local_sources,
     project_namespace,
     redact_sensitive_text,
     SourceSpec,
@@ -26,6 +27,47 @@ from palimpsest.ingest import (  # noqa: E402
 
 
 class IngestionBoundaryTests(unittest.TestCase):
+    def test_local_discovery_checks_only_exact_provider_locations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            home = Path(temporary_directory)
+            (home / ".codex" / "sessions").mkdir(parents=True)
+            (home / ".claude" / "projects").mkdir(parents=True)
+            (home / ".hermes").mkdir()
+            (home / ".hermes" / "state.db").write_bytes(b"sqlite placeholder")
+            (home / "unrelated" / "nested").mkdir(parents=True)
+            (home / "unrelated" / "nested" / "secret.jsonl").write_text("{}\n", encoding="utf-8")
+
+            sources = discover_local_sources(home=home)
+
+            self.assertEqual(
+                [(source.kind, source.path) for source in sources],
+                [
+                    ("codex", (home / ".codex" / "sessions").resolve()),
+                    ("claude", (home / ".claude" / "projects").resolve()),
+                    ("hermes", (home / ".hermes" / "state.db").resolve()),
+                ],
+            )
+
+    def test_local_discovery_omits_missing_stores_for_later_watch_polls(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            home = Path(temporary_directory)
+            self.assertEqual(discover_local_sources(home=home), ())
+            (home / ".codex" / "sessions").mkdir(parents=True)
+            sources = discover_local_sources(home=home)
+            self.assertEqual([source.kind for source in sources], ["codex"])
+
+    def test_local_discovery_does_not_follow_a_conventional_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            home = root / "home"
+            external = root / "external-codex"
+            external.mkdir(parents=True)
+            home.mkdir()
+            (home / ".codex").mkdir()
+            (home / ".codex" / "sessions").symlink_to(external, target_is_directory=True)
+
+            self.assertEqual(discover_local_sources(home=home), ())
+
     def test_project_identity_and_secret_redaction_are_stable(self) -> None:
         first = ProjectIdentity.from_context("/tmp/project-a", branch="main")
         second = ProjectIdentity.from_context("/tmp/project-b", branch="main")

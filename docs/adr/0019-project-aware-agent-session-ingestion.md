@@ -64,7 +64,8 @@ separately. They are evidence-bundling conveniences, not model-based project
 comparison engines.
 
 `watch` is an explicit local process, not an unconfigured background daemon.
-Native hooks, provider APIs, richer secret classification, consolidation of
-raw episodes into higher-level facts, and a server-managed ingestion worker
-remain future slices. Source formats are treated as replaceable adapters and
-their tests must fail closed when the expected structure is absent.
+The companion `--discover` mode is covered by ADR-0021. Native hooks, provider
+APIs, richer secret classification, consolidation of raw episodes into
+higher-level facts, and a server-managed ingestion worker remain future
+slices. Source formats are treated as replaceable adapters and their tests
+must fail closed when the expected structure is absent.

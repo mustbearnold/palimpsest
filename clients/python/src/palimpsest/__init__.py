@@ -22,6 +22,7 @@ from .ingest import (
     parse_claude_record,
     parse_codex_record,
     parse_hermes_row,
+    discover_local_sources,
     project_namespace,
     redact_sensitive_text,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "parse_claude_record",
     "parse_codex_record",
     "parse_hermes_row",
+    "discover_local_sources",
     "project_namespace",
     "redact_sensitive_text",
 ]

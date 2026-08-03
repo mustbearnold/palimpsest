@@ -65,9 +65,9 @@ was atomic.
 ## Ingest coding-agent sessions
 
 The checkout includes an opt-in polling bridge for Codex, Claude Code, and
-Hermes. It accepts source paths explicitly and writes through this client, so
-the source owner must grant access to each path; it never silently scans home
-directories or another user's Hermes data.
+Hermes. It accepts source paths explicitly, or can check the exact conventional
+locations for the current user with `--discover`; it never scans a home tree or
+another user's Hermes data.
 
 Set the authorized Palimpsest connection in environment variables, then run a
 long-lived poller:
@@ -84,6 +84,18 @@ python3 scripts/palimpsest_ingest.py watch \
   --source claude="$HOME/.claude/projects" \
   --source hermes="$HOME/.hermes/state.db"
 ```
+
+For the conventional locations above, the equivalent discovery mode is:
+
+```bash
+python3 scripts/palimpsest_ingest.py watch --discover
+```
+
+Discovery is recalculated on every watch pass, so a provider store created
+after the watcher starts is picked up. Use `PALIMPSEST_INGEST_CODEX_SESSIONS`,
+`PALIMPSEST_INGEST_CLAUDE_PROJECTS`, or
+`PALIMPSEST_INGEST_HERMES_STATE_DB` for a non-standard location, or keep using
+`--source` when another account has separately authorized a path.
 
 The first pass baselines existing history and ingests only later events. Add
 `--backfill` when importing existing history is deliberate. Use
