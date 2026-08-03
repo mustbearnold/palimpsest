@@ -138,6 +138,11 @@ project_bundles = client.recall_by_project(
 it gives a caller or model clean evidence bundles to compare but does not
 claim to synthesize a semantic diff.
 
+The local MCP adapter exposes the same operation as
+`palimpsest_recall_by_project`. It requires at least two distinct project IDs,
+so an agent can ask one question and receive explicitly keyed bundles without
+cross-project candidate mixing.
+
 The bridge ingests user and assistant text only. It excludes tool rows,
 thinking blocks, system prompts, and tool results; common credential-shaped
 values are redacted before upload. This is a supervised local process rather

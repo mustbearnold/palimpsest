@@ -178,9 +178,12 @@ codex mcp add palimpsest \
 ```
 
 Codex will then have `palimpsest_retrieve` for authorized current-memory
-searches and `palimpsest_remember` for explicitly requested saves. The adapter
-uses the HTTP API, keeps the configured tenant and subject scope, and never
-exposes delete or export operations. Verify registration with `codex mcp list`.
+searches, `palimpsest_recall_by_project` for isolated side-by-side project
+evidence, and `palimpsest_remember` for explicitly requested saves. The
+project tool keeps candidate sets separate; it does not invent a semantic diff
+or consolidate conflicting memories. The adapter uses the HTTP API, keeps the
+configured tenant and subject scope, and never exposes delete or export
+operations. Verify registration with `codex mcp list`.
 
 Startup detects an incompatible legacy local volume and exits without deleting
 it. Preserve or back up needed local data before explicitly recreating a volume.

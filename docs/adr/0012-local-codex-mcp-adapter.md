@@ -16,10 +16,14 @@ the existing HTTP authorization boundary.
 
 Add `scripts/palimpsest_mcp.py` as a thin, local stdio MCP adapter. It talks to
 the running Palimpsest HTTP service with the configured bearer token, tenant,
-subject, and case identifiers. It exposes two tools:
+subject, and case identifiers. It exposes three tools:
 
 - `palimpsest_retrieve` creates an authorized current retrieval receipt and
   returns its visible fact items.
+- `palimpsest_recall_by_project` creates one authorized retrieval receipt per
+  named project and returns project-keyed evidence bundles. It requires at
+  least two distinct project IDs, owns the exact project namespaces, and does
+  not claim to infer a semantic diff or consolidate conflicts.
 - `palimpsest_remember` appends an immutable episode, then creates a governed
   `direct-evidence` fact that cites that episode. The operation is available to
   Codex but its tool description requires explicit user approval before a write.

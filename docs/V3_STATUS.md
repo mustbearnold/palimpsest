@@ -22,6 +22,9 @@ is not an official release or a production-readiness claim.
 - Codex, Claude Code, and Hermes user/assistant text can be ingested with
   resumable cursors, idempotent writes, common credential redaction, stable
   project identities, and exact project namespaces.
+- The local MCP adapter exposes `palimpsest_recall_by_project`, which gives an
+  agent separate authorized evidence bundles for a deliberate cross-project
+  comparison.
 - `watch --discover` checks the conventional current-user stores, and the
   optional Linux systemd user service can supervise that watcher continuously.
 - A guarded PostgreSQL custom-format logical backup rehearsal can restore into
@@ -31,9 +34,9 @@ is not an official release or a production-readiness claim.
 ## Somewhat working
 
 - Multiple-project understanding currently means clean evidence separation:
-  each project gets its own namespace and `recall_by_project` returns one
-  retrieval bundle per project. A caller or model can compare those bundles
-  without cross-project candidate mixing.
+  each project gets its own namespace and the Python, TypeScript, and MCP
+  helpers return one retrieval bundle per project. A caller or model can
+  compare those bundles without cross-project candidate mixing.
 - The ingestion adapters handle the observed local Codex, Claude Code, and
   Hermes seams, but they are not provider APIs, native hooks, or a universal
   transcript parser. Tool rows, private thinking, system prompts, and tool

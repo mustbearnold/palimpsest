@@ -102,6 +102,14 @@ class PalimpsestClient:
         except PalimpsestError as exc:
             raise AdapterError(str(exc)) from None
 
+    def recall_by_project(
+        self, query: str, project_ids: list[str], page_size: int
+    ) -> dict[str, Any]:
+        try:
+            return self._client.recall_by_project(query, project_ids, page_size=page_size)
+        except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
+
     def remember(self, **kwargs: Any) -> dict[str, Any]:
         try:
             return self._client.remember(**kwargs)
@@ -152,6 +160,30 @@ def _tool_definitions() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "palimpsest_recall_by_project",
+            "description": (
+                "Retrieve the same authorized query separately for two or more projects. "
+                "Use the returned project-keyed evidence bundles to compare project history "
+                "without mixing candidate sets. This tool does not infer a semantic diff or "
+                "consolidate conflicting memories."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["query", "project_ids"],
+                "properties": {
+                    "query": {"type": "string", "minLength": 1, "maxLength": 4096},
+                    "project_ids": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 20,
+                        "items": {"type": "string", "minLength": 1, "maxLength": 255},
+                    },
+                    "page_size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                },
+            },
+        },
+        {
             "name": "palimpsest_remember",
             "description": (
                 "Save an explicitly user-approved memory in Palimpsest. Call only when the user "
@@ -190,6 +222,27 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
                 raise AdapterError("query must contain at most 4096 UTF-8 bytes")
             page_size = _integer_argument(arguments, "page_size", 10, 1, 50)
             return _tool_result(client.retrieve(query, page_size))
+
+        if name == "palimpsest_recall_by_project":
+            query = _string_argument(arguments, "query", required=True)
+            if len(query.encode("utf-8")) > 4096:
+                raise AdapterError("query must contain at most 4096 UTF-8 bytes")
+            project_ids = arguments.get("project_ids")
+            if not isinstance(project_ids, list) or len(project_ids) < 2 or len(project_ids) > 20:
+                raise AdapterError("project_ids must be an array containing 2 to 20 project IDs")
+            normalized_project_ids: list[str] = []
+            for project_id in project_ids:
+                if not isinstance(project_id, str) or not project_id.strip():
+                    raise AdapterError("project_ids must contain non-empty strings")
+                normalized = project_id.strip()
+                if len(normalized) > 255:
+                    raise AdapterError("project_ids must contain at most 255 characters each")
+                if normalized not in normalized_project_ids:
+                    normalized_project_ids.append(normalized)
+            if len(normalized_project_ids) < 2:
+                raise AdapterError("project_ids must name at least two distinct projects")
+            page_size = _integer_argument(arguments, "page_size", 10, 1, 50)
+            return _tool_result(client.recall_by_project(query, normalized_project_ids, page_size))
 
         if name == "palimpsest_remember":
             content = _string_argument(arguments, "content", required=True)

@@ -16,11 +16,16 @@ import palimpsest_mcp  # noqa: E402
 class FakeClient:
     def __init__(self) -> None:
         self.retrievals: list[tuple[str, int]] = []
+        self.project_retrievals: list[tuple[str, list[str], int]] = []
         self.memories: list[dict[str, object]] = []
 
     def retrieve(self, query: str, page_size: int) -> dict[str, object]:
         self.retrievals.append((query, page_size))
         return {"status": "results", "items": [{"value": query}]}
+
+    def recall_by_project(self, query: str, project_ids: list[str], page_size: int) -> dict[str, object]:
+        self.project_retrievals.append((query, project_ids, page_size))
+        return {project_id: {"status": "results", "project_id": project_id} for project_id in project_ids}
 
     def remember(self, **kwargs: object) -> dict[str, object]:
         self.memories.append(kwargs)
@@ -41,7 +46,7 @@ class McpAdapterTests(unittest.TestCase):
         )
         self.assertEqual(
             [tool["name"] for tool in listing["result"]["tools"]],
-            ["palimpsest_retrieve", "palimpsest_remember"],
+            ["palimpsest_retrieve", "palimpsest_recall_by_project", "palimpsest_remember"],
         )
 
     def test_retrieve_is_scoped_to_the_tool_arguments(self) -> None:
@@ -74,6 +79,44 @@ class McpAdapterTests(unittest.TestCase):
         self.assertEqual(len(self.client.memories), 1)
         self.assertEqual(self.client.memories[0]["content"], "The release target is v1.")
         self.assertEqual(self.client.memories[0]["namespace"], "codex")
+
+    def test_recall_by_project_returns_separate_bundles(self) -> None:
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_recall_by_project",
+                    "arguments": {
+                        "query": "  release decision ",
+                        "project_ids": [" project-a ", "project-b", "project-b"],
+                        "page_size": 7,
+                    },
+                },
+            },
+            self.client,
+        )
+        self.assertNotIn("isError", response["result"])
+        self.assertEqual(self.client.project_retrievals, [("release decision", ["project-a", "project-b"], 7)])
+        rendered = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(sorted(rendered), ["project-a", "project-b"])
+
+    def test_recall_by_project_requires_distinct_projects(self) -> None:
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_recall_by_project",
+                    "arguments": {"query": "release", "project_ids": ["project-a", "project-a"]},
+                },
+            },
+            self.client,
+        )
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("two distinct projects", response["result"]["content"][0]["text"])
 
     def test_notifications_do_not_produce_output(self) -> None:
         incoming = io.StringIO(
