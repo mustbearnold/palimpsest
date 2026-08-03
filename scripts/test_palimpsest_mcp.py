@@ -11,6 +11,72 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import palimpsest_mcp  # noqa: E402
+from palimpsest import compare_project_bundles, validate_project_review  # noqa: E402
+
+
+def make_comparison_result() -> dict[str, object]:
+    bundles = {
+        "project-a": {
+            "items": [
+                {
+                    "fact_id": "fact-a",
+                    "revision_id": "revision-a",
+                    "key": "release-target",
+                    "value": {"content": "ship version one"},
+                    "evidence_episode_ids": ["episode-a"],
+                }
+            ]
+        },
+        "project-b": {
+            "items": [
+                {
+                    "fact_id": "fact-b",
+                    "revision_id": "revision-b",
+                    "key": "release-target",
+                    "value": {"content": "ship version two"},
+                    "evidence_episode_ids": ["episode-b"],
+                }
+            ]
+        },
+    }
+    comparison = compare_project_bundles(bundles)
+    return {"profile": comparison["profile"], "bundles": bundles, "comparison": comparison}
+
+
+def make_review_payload() -> dict[str, object]:
+    return {
+        "reviewer": {
+            "principal_id": "agent:project-review",
+            "provider": "openai",
+            "model": "gpt-5",
+            "model_revision": "2026-08-03",
+            "prompt_sha256": "a" * 64,
+        },
+        "review_policy": {"id": "project-review-v1", "version": "1", "sha256": "b" * 64},
+        "claims": [
+            {
+                "claim_id": "claim-release-target",
+                "classification": "semantic_conflict",
+                "summary": "The projects record different release targets.",
+                "projects": ["project-a", "project-b"],
+                "confidence": 0.91,
+                "evidence": [
+                    {
+                        "project_id": "project-a",
+                        "fact_id": "fact-a",
+                        "revision_id": "revision-a",
+                        "evidence_episode_ids": ["episode-a"],
+                    },
+                    {
+                        "project_id": "project-b",
+                        "fact_id": "fact-b",
+                        "revision_id": "revision-b",
+                        "evidence_episode_ids": ["episode-b"],
+                    },
+                ],
+            }
+        ],
+    }
 
 
 class FakeClient:
@@ -18,6 +84,7 @@ class FakeClient:
         self.retrievals: list[tuple[str, int]] = []
         self.project_retrievals: list[tuple[str, list[str], int]] = []
         self.project_comparisons: list[tuple[str, list[str], int]] = []
+        self.project_reviews: list[tuple[dict[str, object], dict[str, object]]] = []
         self.memories: list[dict[str, object]] = []
 
     def retrieve(self, query: str, page_size: int) -> dict[str, object]:
@@ -31,6 +98,12 @@ class FakeClient:
     def compare_by_project(self, query: str, project_ids: list[str], page_size: int) -> dict[str, object]:
         self.project_comparisons.append((query, project_ids, page_size))
         return {"profile": "project-comparison-structural-v1", "projects": project_ids}
+
+    def validate_project_review(
+        self, comparison_result: dict[str, object], review: dict[str, object]
+    ) -> dict[str, object]:
+        self.project_reviews.append((comparison_result, review))
+        return validate_project_review(comparison_result, review)
 
     def remember(self, **kwargs: object) -> dict[str, object]:
         self.memories.append(kwargs)
@@ -55,6 +128,7 @@ class McpAdapterTests(unittest.TestCase):
                 "palimpsest_retrieve",
                 "palimpsest_recall_by_project",
                 "palimpsest_compare_by_project",
+                "palimpsest_validate_project_review",
                 "palimpsest_remember",
             ],
         )
@@ -152,6 +226,26 @@ class McpAdapterTests(unittest.TestCase):
         )
         rendered = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(rendered["profile"], "project-comparison-structural-v1")
+
+    def test_validate_project_review_keeps_the_review_non_writing(self) -> None:
+        comparison_result = make_comparison_result()
+        review = make_review_payload()
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_validate_project_review",
+                    "arguments": {"comparison_result": comparison_result, "review": review},
+                },
+            },
+            self.client,
+        )
+        self.assertNotIn("isError", response["result"])
+        self.assertEqual(self.client.project_reviews, [(comparison_result, review)])
+        rendered = json.loads(response["result"]["content"][0]["text"])
+        self.assertFalse(rendered["durable_write"])
 
     def test_notifications_do_not_produce_output(self) -> None:
         incoming = io.StringIO(

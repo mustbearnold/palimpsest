@@ -3,6 +3,7 @@ export type JsonObject = Record<string, any>;
 
 export function projectNamespace(projectId: string, prefix?: string): string;
 export function compareProjectBundles(bundles: Record<string, JsonObject>): JsonObject;
+export function validateProjectReview(comparisonResult: JsonObject, review: JsonObject): JsonObject;
 
 export interface PalimpsestResponse<T extends JsonObject = JsonObject> {
   data: T;

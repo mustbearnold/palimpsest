@@ -16,7 +16,7 @@ the existing HTTP authorization boundary.
 
 Add `scripts/palimpsest_mcp.py` as a thin, local stdio MCP adapter. It talks to
 the running Palimpsest HTTP service with the configured bearer token, tenant,
-subject, and case identifiers. It exposes four tools:
+subject, and case identifiers. It exposes five tools:
 
 - `palimpsest_retrieve` creates an authorized current retrieval receipt and
   returns its visible fact items.
@@ -28,6 +28,10 @@ subject, and case identifiers. It exposes four tools:
   adds deterministic exact-key/value-digest classifications. A same-key,
   different-value result is a review candidate only; the adapter performs no
   model inference and no durable write.
+- `palimpsest_validate_project_review` validates a caller-supplied semantic
+  review against the fact/revision and source-episode IDs in a prior authorized
+  comparison result. It is a local, non-writing client-side validator: it does
+  not access the database, widen scope, or replace the HTTP contract.
 - `palimpsest_remember` appends an immutable episode, then creates a governed
   `direct-evidence` fact that cites that episode. The operation is available to
   Codex but its tool description requires explicit user approval before a write.

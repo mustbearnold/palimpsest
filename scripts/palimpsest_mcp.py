@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "clients/python/src
 from palimpsest import (  # noqa: E402
     PalimpsestClient as HttpClient,
     PalimpsestError,
+    validate_project_review,
 )
 
 
@@ -116,6 +117,14 @@ class PalimpsestClient:
         try:
             return self._client.compare_by_project(query, project_ids, page_size=page_size)
         except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
+
+    def validate_project_review(
+        self, comparison_result: dict[str, Any], review: dict[str, Any]
+    ) -> dict[str, Any]:
+        try:
+            return validate_project_review(comparison_result, review)
+        except (PalimpsestError, ValueError) as exc:
             raise AdapterError(str(exc)) from None
 
     def remember(self, **kwargs: Any) -> dict[str, Any]:
@@ -235,6 +244,24 @@ def _tool_definitions() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "palimpsest_validate_project_review",
+            "description": (
+                "Validate an external semantic review of a prior project comparison. Every claim "
+                "must cite returned fact revisions and source episode IDs and carry reviewer and "
+                "policy attribution. This validates provenance only; it does not prove semantic "
+                "truth or write a consolidated memory."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["comparison_result", "review"],
+                "properties": {
+                    "comparison_result": {"type": "object", "additionalProperties": True},
+                    "review": {"type": "object", "additionalProperties": True},
+                },
+            },
+        },
+        {
             "name": "palimpsest_remember",
             "description": (
                 "Save an explicitly user-approved memory in Palimpsest. Call only when the user "
@@ -289,6 +316,15 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
             normalized_project_ids = _project_ids_argument(arguments)
             page_size = _integer_argument(arguments, "page_size", 10, 1, 50)
             return _tool_result(client.compare_by_project(query, normalized_project_ids, page_size))
+
+        if name == "palimpsest_validate_project_review":
+            comparison_result = arguments.get("comparison_result")
+            review = arguments.get("review")
+            if not isinstance(comparison_result, dict):
+                raise AdapterError("comparison_result must be an object")
+            if not isinstance(review, dict):
+                raise AdapterError("review must be an object")
+            return _tool_result(client.validate_project_review(comparison_result, review))
 
         if name == "palimpsest_remember":
             content = _string_argument(arguments, "content", required=True)

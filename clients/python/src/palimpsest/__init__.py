@@ -27,6 +27,7 @@ from .ingest import (
     project_namespace,
     redact_sensitive_text,
 )
+from .review import PROJECT_REVIEW_PROFILE, validate_project_review
 
 __all__ = [
     "PalimpsestBinaryResponse",
@@ -40,6 +41,8 @@ __all__ = [
     "PalimpsestTransportError",
     "PartialRememberError",
     "compare_project_bundles",
+    "PROJECT_REVIEW_PROFILE",
+    "validate_project_review",
     "IngestReport",
     "IngestionError",
     "IngestionRunner",

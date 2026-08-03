@@ -76,3 +76,16 @@ metadata. Lexical candidates include a bounded shared/only-in token delta so
 wording changes are visible. Same-key/different-value and lexical-overlap
 groups are review candidates only: no model inference, semantic conflict claim,
 or durable write occurs.
+
+An external model or human can interpret the isolated evidence, after which the
+client can validate the bounded, attributed claims:
+
+```js
+import { validateProjectReview } from "palimpsest";
+
+const validated = validateProjectReview(comparison, review);
+```
+
+Validation checks returned fact/revision and source-episode citations plus
+reviewer and policy digests. It does not prove semantic truth or write a
+consolidated fact; that remains an explicit governed operation.

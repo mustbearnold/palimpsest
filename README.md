@@ -261,6 +261,11 @@ silently mix namespaces. Their comparison helpers additionally identify exact
 key/value matches and same-key/different-value review candidates using
 deterministic digests, plus bounded lexical-overlap candidates for differently
 keyed session messages, without making a semantic claim or durable write.
+When an external model or human has interpreted those candidates, clients and
+the MCP adapter can validate the review with `validate_project_review`; every
+claim must cite returned fact/revision and source-episode IDs plus reviewer and
+policy digests. Validation still does not make the claim canonical or write a
+consolidated fact. See [ADR-0026](docs/adr/0026-attributable-semantic-project-review.md).
 On Linux, `bash scripts/install-palimpsest-ingest-service.sh` installs the
 discovery watcher as an owner-only systemd user service for continuous local
 ingestion; see [ADR-0022](docs/adr/0022-supervised-local-ingestion-service.md).

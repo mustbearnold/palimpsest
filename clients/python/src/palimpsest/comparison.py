@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -308,7 +309,7 @@ def _optional_text(value: Any) -> str | None:
 def _value_sha256(value: Any) -> str:
     try:
         encoded = json.dumps(
-            value,
+            _canonical_json_value(value),
             ensure_ascii=False,
             allow_nan=False,
             sort_keys=True,
@@ -317,3 +318,23 @@ def _value_sha256(value: Any) -> str:
     except (TypeError, ValueError) as exc:
         raise ValueError("retrieval item values must be JSON-compatible") from exc
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_json_value(value: Any) -> Any:
+    """Normalize JSON values where runtimes otherwise hash equivalent numbers differently."""
+
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("retrieval item values must be JSON-compatible")
+        if value == 0:
+            return 0
+        if value.is_integer() and abs(value) < 1e21:
+            return int(value)
+        return value
+    if isinstance(value, Mapping):
+        return {key: _canonical_json_value(nested) for key, nested in value.items()}
+    if isinstance(value, list):
+        return [_canonical_json_value(nested) for nested in value]
+    raise ValueError("retrieval item values must be JSON-compatible")

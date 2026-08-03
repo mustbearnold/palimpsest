@@ -151,6 +151,20 @@ value digests and lexical Jaccard only, performs no model inference, and writes
 no memory; callers must inspect the returned bundles before treating any
 candidate as a real semantic conflict.
 
+After an external model or human has reviewed the evidence, validate its
+bounded claims before using them for a separate write:
+
+```python
+from palimpsest import validate_project_review
+
+validated = validate_project_review(comparison, review)
+```
+
+The review must identify the reviewer/model and policy digests, cite returned
+fact revisions and source episode IDs for every named project, and remains
+non-authoritative and non-writing. A caller must still make an explicit
+governed fact write if the review warrants consolidation.
+
 The local MCP adapter exposes the same operations as
 `palimpsest_recall_by_project` and `palimpsest_compare_by_project`. Both
 require at least two distinct project IDs, so an agent can ask one question and

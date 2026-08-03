@@ -25,6 +25,10 @@ is not an official release or a production-readiness claim.
 - The local MCP adapter exposes `palimpsest_recall_by_project` and
   `palimpsest_compare_by_project`, which give an agent separate authorized
   bundles plus deterministic exact-key/value-digest review candidates.
+- The Python, TypeScript, and MCP surfaces can validate an external semantic
+  project review against returned fact/revision and source-episode evidence,
+  reviewer/model metadata, and a versioned policy digest. This is a provenance
+  guard, not an automatic model or a durable consolidation write.
 - `watch --discover` checks the conventional current-user stores, and the
   optional Linux systemd user service can supervise that watcher continuously.
 - A guarded PostgreSQL custom-format logical backup rehearsal can restore into
@@ -66,9 +70,10 @@ is not an official release or a production-readiness claim.
 
 ## Not working yet
 
-- Automatic semantic project diffs, conflict explanations, or model-driven
-  consolidation of raw session messages into higher-level facts. The current
-  key and lexical comparison deliberately stops before those claims.
+- Automatic model-driven semantic project diffs, conflict explanations, or
+  consolidation of raw session messages into higher-level facts. The new
+  validator can check an external interpretation, but Palimpsest still does
+  not call a model or promote that interpretation automatically.
 - Valkey/Redis cache plus provider-specific artifact/object deletion,
   revocation, outage, and recovery evidence.
 - Provider-managed backup/PITR orchestration, independent backup disposition,
@@ -84,7 +89,7 @@ is not an official release or a production-readiness claim.
 
 The next high-value slices are deterministic object/cache fault injection,
 query-plan/index remediation followed by concurrent million-revision evidence,
-and a governed semantic interpretation/consolidation boundary that keeps
-every durable write attributable. v3 is only honest when those remaining
+and an explicit governed consolidation workflow over validated review claims.
+v3 is only honest when those remaining
 boundaries are either implemented with evidence or clearly retained as
 non-claims.
