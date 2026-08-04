@@ -28,7 +28,7 @@ is claimed and the backlog for what is not.
 - [Quickstart](docs/runbooks/quickstart.md) — run it locally
 - [Architecture](docs/architecture.md) — system shape
 - [Decisions](docs/decisions/) — architecture decision records
-- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
+- [Contributing](docs/runbooks/contributing.md) · [Security policy](docs/runbooks/security.md)
 
 ## License
 

@@ -4,12 +4,12 @@ set -euo pipefail
 required_files=(
     AGENTS.md
     README.md
-    SECURITY.md
     docs/architecture.md
     docs/decisions/0001-postgres-temporal-source-of-truth.md
     docs/decisions/0002-ai-ceo-and-github-governance.md
     docs/runbooks/issue-tracker.md
     docs/runbooks/triage-labels.md
+    docs/runbooks/security.md
     specs/constitution.md
     specs/conventions.md
     specs/001-memory-service/spec.md

@@ -105,23 +105,27 @@ Legend: CODE · TEST · CONFIG · ASSET · DOC · GENERATED · JUNK · UNKNOWN
 
 ## Judgment calls (documented deviations)
 
-- `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md` stay at root: platform-standard
-  repository files (GitHub community standards), analogous to the protected
-  legal set; `check-repo.sh` requires `SECURITY.md`.
-- `clients/*/README.md`, `.github/pull_request_template.md`, and
-  `.agents/skills/**/SKILL.md` remain outside `specs/`/`docs/`/`_attic/`: they
-  are package-local and platform/pinned-upstream artifacts, not project
-  documentation. The pinned skills still reference the pre-migration layout
-  (`CONTEXT.md`, `docs/adr/`, `docs/agents/`) upstream; they were not edited
-  because `skills-lock.json`/`skills-tree.sha256` pin them byte-for-byte.
+- `LICENSE` stays at root: protected by the protocol's legal-file invariant.
+- `clients/python/README.md` and `clients/typescript/README.md` remain
+  package-local: they are package metadata for PyPI/npm publication, part of
+  the client packages rather than project documentation.
+- `.github/pull_request_template.md` and the issue templates remain in
+  `.github/`: platform configuration for the GitHub contribution surface,
+  alongside workflows and CODEOWNERS.
+- `.agents/skills/**/SKILL.md` (41 files) remain untouched: pinned
+  byte-for-byte by `skills-lock.json`/`skills-tree.sha256`. The pinned
+  upstream skills still reference the pre-migration layout (`CONTEXT.md`,
+  `docs/adr/`, `docs/agents/`) and will follow when the pin is rotated.
+- `SECURITY.md` and `CONTRIBUTING.md` were sentenced in a follow-up pass:
+  moved to `docs/runbooks/security.md` and `docs/runbooks/contributing.md` per
+  the placement law, and `check-repo.sh` re-pointed. Tradeoff recorded here:
+  GitHub's security/community tabs only recognize `SECURITY.md` at the root,
+  `docs/`, or `.github/` — the runbook path is not surfaced by the platform.
+  If the human values the platform tab over placement law, restore the file
+  at root and note the deviation here.
 - `api/openapi.yaml`, `evaluations/retrieval-corpus-v1/`, `docker/`,
   `.github/`, `.agents/` are code/contract/config/fixture, not documentation;
   they are not relocated by this protocol.
-- `check-repo.sh` re-pointed at the post-migration tree in Phase 3, extended
-  with the constitution and conventions in Phase 4.
-- The conformance/doctor local test environment requires a non-superuser
-  `CREATEDB` runtime role (`palimpsest_local_runtime` locally) plus a separate
-  superuser migration URL; see the local test recipe in the handoff note.
 
 ## Deleted / atticked counts
 
