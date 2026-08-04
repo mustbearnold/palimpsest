@@ -9,9 +9,6 @@ everything.
 | `CONTEXT.md` | root | Domain glossary; content merged into `specs/constitution.md` (phase 4) | Read constitution; delete |
 | `PRODUCT_SPEC.md` | `docs/` | Product specification; requirements merged into `specs/001`–`specs/010` | Keep as historical spec; delete |
 | `domain.md` | `docs/agents/` | Single-context guidance; merged into `specs/constitution.md` | Delete |
-| `issue-tracker.md` | `docs/agents/` | Operational how-to; moved to `docs/runbooks/issue-tracker.md` | Delete |
-| `triage-labels.md` | `docs/agents/` | Operational how-to; moved to `docs/runbooks/triage-labels.md` | Delete |
-| `SKILLS_PROVENANCE.md` | `docs/` | Skills install/verify how-to; moved to `docs/runbooks/skills-provenance.md` | Delete |
 | `V2_STATUS.md` | `docs/` | Superseded milestone record | Keep as v2 baseline record |
 | `V3_STATUS.md` | `docs/` | Superseded by specs + quickstart; evidence snapshot | Keep as v3 evidence snapshot |
 | `evaluations/*.md` (11) | `docs/evaluations/` | Evidence reports; cited by specs 002/004/005 | Keep as evidence archive |

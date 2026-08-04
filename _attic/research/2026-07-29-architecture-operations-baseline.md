@@ -29,7 +29,7 @@ This report uses specifications and maintainer documentation current on the
 research date. Statements labeled **Source fact** report what a source says.
 Statements labeled **Recommendation** or **Inference** are Palimpsest decisions
 derived from those facts and the accepted product invariants in
-[`ADR-0001`](../adr/0001-postgres-temporal-source-of-truth.md).
+[`ADR-0001`](../../docs/decisions/0001-postgres-temporal-source-of-truth.md).
 
 Confidence is high for the durable boundaries, PostgreSQL posture, migration
 rules, API compatibility policy, and packaging format. Confidence is medium for

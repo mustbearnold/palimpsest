@@ -33,8 +33,8 @@ episodes, checkpoints, fact revisions and their provenance; derived lexical and
 vector projections; retrieval and idempotency artifacts; caches; export and
 artifact objects; logs; and PostgreSQL backup/restore behavior. It assumes the
 authorization-first and lifecycle invariants already accepted in
-[`ADR-0005`](../adr/0005-authorization-first-retrieval-receipts.md) and
-[`ADR-0007`](../adr/0007-deterministic-temporal-retrieval.md).
+[`ADR-0005`](../../docs/decisions/0005-authorization-first-retrieval-receipts.md) and
+[`ADR-0007`](../../docs/decisions/0007-deterministic-temporal-retrieval.md).
 
 The first slice does not decide a controller's lawful basis, verify a data
 subject's real-world identity, contact downstream controllers, implement legal

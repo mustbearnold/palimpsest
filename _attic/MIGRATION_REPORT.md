@@ -126,10 +126,10 @@ Legend: CODE · TEST · CONFIG · ASSET · DOC · GENERATED · JUNK · UNKNOWN
 ## Deleted / atticked counts
 
 - Deleted: `SDD_MIGRATION.md` (protocol self-delete, Phase 6).
-- Atticked: 26 files + 2 directories worth of entries (11 evaluations, 5
-  research, PRODUCT_SPEC, domain.md, CONTEXT.md, V2_STATUS, V3_STATUS,
-  SKILLS_PROVENANCE history) — see `_attic/ATTIC.md` for fates.
-- Moved: 28 ADRs → `docs/decisions/`; 3 agent docs → `docs/runbooks/`.
+- Atticked: 21 files (11 evaluations, 5 research, PRODUCT_SPEC, domain.md,
+  CONTEXT.md, V2_STATUS, V3_STATUS) — see `_attic/ATTIC.md` for fates.
+- Moved: 28 ADRs → `docs/decisions/`; 3 agent docs → `docs/runbooks/`
+  (issue-tracker, triage-labels, skills-provenance).
 - Created: 10 capability specs, `specs/constitution.md`, `specs/conventions.md`,
   `specs/BACKLOG.md`, `docs/architecture.md`, `docs/runbooks/quickstart.md`.
 
