@@ -3,15 +3,14 @@ set -euo pipefail
 
 required_files=(
   AGENTS.md
-  CONTEXT.md
   README.md
   SECURITY.md
-  docs/PRODUCT_SPEC.md
-  docs/adr/0001-postgres-temporal-source-of-truth.md
-  docs/adr/0002-ai-ceo-and-github-governance.md
-  docs/agents/domain.md
-  docs/agents/issue-tracker.md
-  docs/agents/triage-labels.md
+  docs/architecture.md
+  docs/decisions/0001-postgres-temporal-source-of-truth.md
+  docs/decisions/0002-ai-ceo-and-github-governance.md
+  docs/runbooks/issue-tracker.md
+  docs/runbooks/triage-labels.md
+  specs/001-memory-service/spec.md
   skills-tree.sha256
   skills-lock.json
 )

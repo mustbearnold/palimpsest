@@ -1,0 +1,71 @@
+# 002 — Authorized retrieval
+
+Status: active
+Owner: AI CEO
+
+## Purpose
+
+Time-aware hybrid retrieval that explains its results. Authorization,
+deletion, retention, sensitivity, and temporal filters run before candidate
+generation; lexical and vector search rank within the authorized set.
+
+## Requirements
+
+- R1. Tenant, subject, namespace, kind, sensitivity, deletion, retention, and
+  valid-time filters MUST run before lexical or vector candidate generation.
+- R2. Every retrieval MUST produce a durable receipt recording the policy
+  version, temporal perspective, and provenance needed to explain a result.
+- R3. Candidate generation MUST combine PostgreSQL full-text and pgvector
+  search; ranking MAY incorporate importance, confidence, type-specific
+  temporal decay, access context, and a versioned reranker.
+- R4. Retrieval policies MUST be versioned so behavior changes are
+  reproducible and comparable.
+- R5. Temporal decay MUST affect ranking only, never historical retention.
+  Stable identity, contractual, and security facts MAY have no recency decay.
+- R6. Current retrieval MUST use the scope-protected derived current
+  fact-revision projection, gated by the durable scope-local coverage marker;
+  `repair_required` or an expired horizon MUST fall back to canonical history
+  for missing facts. As-of retrieval MUST always use canonical history.
+- R7. The projection rebuild function MUST be owner-only; a per-request
+  canonical stale guard was measured and rejected as too slow, so monotonic
+  triggers, the coverage marker, and owner rebuild are the repair boundary.
+- R8. Embeddings MUST be derived indexes recording provider, model,
+  dimensions, normalization, content hash, and generation time, and MUST be
+  rebuildable from canonical records.
+- R9. Raw canonical text MUST be preserved independently of embeddings.
+
+## Acceptance criteria
+
+- [ ] A1. The `retrieval_candidates_are_authorized_before_ranking` conformance
+      scenario passes: forbidden memories never enter candidate sets, response
+      bodies, logs, or error details.
+- [ ] A2. Receipt creation and replay conformance scenarios pass, including
+      the lexical-receipt upgrade path across migrations 0006–0020.
+- [ ] A3. Concurrent retrievals converge on one receipt (idempotency).
+- [ ] A4. The rollback-only scale probe is repeatable and content-free; the
+      latest 100,000-revision coverage-gated profile (p95 1.747 s, p99
+      1.821 s) is recorded in the attic evaluation. The proposed million-row
+      gate (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT yet met — no SLA claim.
+
+## Out of scope
+
+- Automatic model-driven semantic interpretation of results (external
+  validation only; see spec 007).
+- A dedicated vector database unless a benchmark demonstrates a named pgvector
+  recall, latency, throughput, recovery, or cost failure.
+
+## Open questions
+
+- Million-revision latency, throughput, cost, capacity, and SLA evidence;
+  concurrent and cold-cache evidence.
+- Automatic per-request detection of arbitrary out-of-band projection
+  corruption (owner-only rebuild exists; per-request comparison was measured
+  at p95 4.609 s and rejected).
+
+## Links
+
+Code: `crates/palimpsest-postgres` (retrieval path, projection, coverage)
+Tests: `conformance_postgres18.rs` · `lexical_receipt_upgrade_postgres18.rs`
+Decisions: 0005, 0006, 0007, 0027
+Evidence: `_attic/evaluations/2026-08-03-authorized-lexical-scale-probe.md`
+Probe: `scripts/palimpsest-scale-probe.sh`
