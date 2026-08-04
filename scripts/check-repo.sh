@@ -10,6 +10,8 @@ required_files=(
   docs/decisions/0002-ai-ceo-and-github-governance.md
   docs/runbooks/issue-tracker.md
   docs/runbooks/triage-labels.md
+  specs/constitution.md
+  specs/conventions.md
   specs/001-memory-service/spec.md
   skills-tree.sha256
   skills-lock.json
