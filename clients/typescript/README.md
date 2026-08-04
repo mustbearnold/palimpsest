@@ -1,10 +1,6 @@
 # Palimpsest TypeScript client
 
-This is a dependency-free TypeScript/JavaScript client for Palimpsest's
-versioned `/v1` HTTP API. It uses the platform `fetch` implementation and
-ships runtime JavaScript plus TypeScript declarations, so no generator or
-bundler is required. The server remains responsible for authorization,
-temporal correctness, write-policy validation, and deletion state.
+This is a dependency-free TypeScript/JavaScript client for Palimpsest's versioned `/v1` HTTP API. It uses the platform `fetch` implementation and ships runtime JavaScript plus TypeScript declarations, so no generator or bundler is required. The server remains responsible for authorization, temporal correctness, write-policy validation, and deletion state.
 
 Install it from a checkout:
 
@@ -58,27 +54,13 @@ await client.correct(saved.fact.fact_id, {
 });
 ```
 
-Mutations generate an idempotency key when one is omitted. Callers that retry
-should supply a stable key. `remember` intentionally performs two durable
-requests; if the episode succeeds and fact promotion fails, it throws
-`PartialRememberError` with the committed episode and typed cause.
+Mutations generate an idempotency key when one is omitted. Callers that retry should supply a stable key. `remember` intentionally performs two durable requests; if the episode succeeds and fact promotion fails, it throws `PartialRememberError` with the committed episode and typed cause.
 
-Ready export status is represented as a `303` response with its download
-`Location`; redirects are not followed implicitly. `waitForDeletion` uses
-conditional requests and stops only at a server-reported terminal state.
+Ready export status is represented as a `303` response with its download `Location`; redirects are not followed implicitly. `waitForDeletion` uses conditional requests and stops only at a server-reported terminal state.
 
-`recallByProject` returns separate retrieval responses with exact project
-namespaces. `compareByProject` returns those bundles plus deterministic
-exact-key/value-digest classifications and bounded token-overlap candidates
-for differently keyed session messages. The result also reports project-root,
-branch, source, role, and unique-session context observed in returned ingestion
-metadata. Lexical candidates include a bounded shared/only-in token delta so
-wording changes are visible. Same-key/different-value and lexical-overlap
-groups are review candidates only: no model inference, semantic conflict claim,
-or durable write occurs.
+`recallByProject` returns separate retrieval responses with exact project namespaces. `compareByProject` returns those bundles plus deterministic exact-key/value-digest classifications and bounded token-overlap candidates for differently keyed session messages. The result also reports project-root, branch, source, role, and unique-session context observed in returned ingestion metadata. Lexical candidates include a bounded shared/only-in token delta so wording changes are visible. Same-key/different-value and lexical-overlap groups are review candidates only: no model inference, semantic conflict claim, or durable write occurs.
 
-An external model or human can interpret the isolated evidence, after which the
-client can validate the bounded, attributed claims:
+An external model or human can interpret the isolated evidence, after which the client can validate the bounded, attributed claims:
 
 ```js
 import { validateProjectReview } from "palimpsest";
@@ -86,10 +68,7 @@ import { validateProjectReview } from "palimpsest";
 const validated = validateProjectReview(comparison, review);
 ```
 
-Validation checks returned fact/revision and source-episode citations plus
-reviewer and policy digests. An explicitly approved consolidation can then
-write caller-supplied facts while deriving source episode lineage from the
-validated claims:
+Validation checks returned fact/revision and source-episode citations plus reviewer and policy digests. An explicitly approved consolidation can then write caller-supplied facts while deriving source episode lineage from the validated claims:
 
 ```js
 const result = await client.consolidateProjectReview(comparison, review, [{
@@ -106,7 +85,4 @@ const result = await client.consolidateProjectReview(comparison, review, [{
 }], { consolidationId: "review-run-1" });
 ```
 
-Reuse the consolidation ID and all write inputs to retry. Each claim is a
-separate idempotent fact write, so a later failure raises
-`PartialConsolidationError` with the committed prefix. It is not an atomic
-batch and does not prove semantic truth.
+Reuse the consolidation ID and all write inputs to retry. Each claim is a separate idempotent fact write, so a later failure raises `PartialConsolidationError` with the committed prefix. It is not an atomic batch and does not prove semantic truth.

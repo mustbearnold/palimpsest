@@ -29,7 +29,9 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     if not isinstance(bundles, Mapping) or isinstance(bundles, (str, bytes)):
-        raise ValueError("bundles must be a mapping of project IDs to retrieval responses")
+        raise ValueError(
+            "bundles must be a mapping of project IDs to retrieval responses"
+        )
     normalized_bundles: dict[str, Any] = {}
     for raw_project_id, bundle in bundles.items():
         project_id = _project_id(raw_project_id)
@@ -59,10 +61,14 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(f"retrieval bundle for {project_id} must be an object")
         items = bundle.get("items", [])
         if not isinstance(items, list):
-            raise ValueError(f"retrieval bundle for {project_id} must contain an items array")
+            raise ValueError(
+                f"retrieval bundle for {project_id} must contain an items array"
+            )
         for item_index, item in enumerate(items):
             if not isinstance(item, Mapping):
-                raise ValueError(f"retrieval item {item_index} for {project_id} must be an object")
+                raise ValueError(
+                    f"retrieval item {item_index} for {project_id} must be an object"
+                )
             key = item.get("key")
             if isinstance(key, str) and key.strip():
                 display_key = key.strip()
@@ -134,7 +140,8 @@ def compare_project_bundles(bundles: Mapping[str, Any]) -> dict[str, Any]:
             group["classification"] == "exact_match" for group in result_groups
         ),
         "same_key_different_value_groups": sum(
-            group["classification"] == "same_key_different_value" for group in result_groups
+            group["classification"] == "same_key_different_value"
+            for group in result_groups
         ),
         "project_specific_groups": sum(
             group["classification"] == "project_specific" for group in result_groups
@@ -239,7 +246,9 @@ def _collect_project_context(context: dict[str, Any], item: Mapping[str, Any]) -
         context["sessions"].add(session_id)
 
 
-def _serialize_project_context(contexts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+def _serialize_project_context(
+    contexts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
     return {
         project_id: {
             "project_roots": sorted(context["project_roots"]),

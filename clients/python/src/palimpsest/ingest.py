@@ -105,7 +105,9 @@ def discover_local_sources(
     notice a provider when it is started after the watcher.
     """
 
-    home_path = Path(home).expanduser().resolve() if home is not None else Path.home().resolve()
+    home_path = (
+        Path(home).expanduser().resolve() if home is not None else Path.home().resolve()
+    )
     candidates = (
         ("codex", codex_sessions or home_path / ".codex" / "sessions"),
         ("claude", claude_projects or home_path / ".claude" / "projects"),
@@ -157,8 +159,7 @@ class IngestionError(RuntimeError):
 
 
 class _RememberClient(Protocol):
-    def remember(self, content: str, **kwargs: Any) -> Any:
-        ...
+    def remember(self, content: str, **kwargs: Any) -> Any: ...
 
 
 class IngestionRunner:
@@ -195,7 +196,9 @@ class IngestionRunner:
         self.state_path = Path(state_path).expanduser().resolve()
         self.backfill = backfill
         self.project_root = (
-            str(Path(project_root).expanduser().resolve()) if project_root is not None else None
+            str(Path(project_root).expanduser().resolve())
+            if project_root is not None
+            else None
         )
         self.namespace_prefix = namespace_prefix.strip()
         self.sensitivity = sensitivity.strip()
@@ -247,9 +250,14 @@ class IngestionRunner:
             return
 
         for path in files:
-            cursor = files_state.setdefault(str(path), {"inode": None, "offset": 0, "line": 0})
+            cursor = files_state.setdefault(
+                str(path), {"inode": None, "offset": 0, "line": 0}
+            )
             stat = path.stat()
-            if cursor.get("inode") != stat.st_ino or int(cursor.get("offset", 0)) > stat.st_size:
+            if (
+                cursor.get("inode") != stat.st_ino
+                or int(cursor.get("offset", 0)) > stat.st_size
+            ):
                 cursor.update({"inode": stat.st_ino, "offset": 0, "line": 0})
             session_meta = _codex_session_meta(path) if source.kind == "codex" else {}
             for line_number, end_offset, record in _read_jsonl(path, cursor):
@@ -262,7 +270,9 @@ class IngestionRunner:
                         session_meta=session_meta,
                     )
                     if source.kind == "codex"
-                    else parse_claude_record(record, line_number=line_number, source_path=str(path))
+                    else parse_claude_record(
+                        record, line_number=line_number, source_path=str(path)
+                    )
                 )
                 if event is None or not self._project_allowed(event):
                     cursor["line"] = line_number
@@ -285,7 +295,11 @@ class IngestionRunner:
     ) -> None:
         connection = _open_hermes(source.path)
         try:
-            max_id = int(connection.execute("SELECT COALESCE(MAX(id), 0) FROM messages").fetchone()[0])
+            max_id = int(
+                connection.execute(
+                    "SELECT COALESCE(MAX(id), 0) FROM messages"
+                ).fetchone()[0]
+            )
             if not source_state.get("initialized") and not self.backfill:
                 source_state.update({"initialized": True, "last_id": max_id})
                 counters["baselined"] += 1
@@ -329,7 +343,9 @@ class IngestionRunner:
             source_type=f"{event.source}.session",
             source_uri=f"agent-session://{event.source}/{event.session_id}",
             external_id=f"{event.source}:{event.event_id}",
-            namespace=project_namespace(event.project.project_id, self.namespace_prefix),
+            namespace=project_namespace(
+                event.project.project_id, self.namespace_prefix
+            ),
             sensitivity=self.sensitivity,
             retention_policy_id=self.retention_policy_id,
             observed_at=event.observed_at,
@@ -407,7 +423,8 @@ def parse_claude_record(
     supplied_id = _text_value(record.get("uuid"))
     return SessionEvent(
         source="claude",
-        event_id=supplied_id or _event_id("claude", session_id, line_number, role, content),
+        event_id=supplied_id
+        or _event_id("claude", session_id, line_number, role, content),
         session_id=session_id,
         role=role,
         content=content,
@@ -416,7 +433,9 @@ def parse_claude_record(
     )
 
 
-def parse_hermes_row(row: Mapping[str, Any], *, source_path: str) -> SessionEvent | None:
+def parse_hermes_row(
+    row: Mapping[str, Any], *, source_path: str
+) -> SessionEvent | None:
     """Parse one Hermes ``state.db`` message row without tool content."""
 
     role = row.get("role")
@@ -428,7 +447,7 @@ def parse_hermes_row(row: Mapping[str, Any], *, source_path: str) -> SessionEven
         try:
             import json
 
-            content = json.loads(content[len("\x00json:"):])
+            content = json.loads(content[len("\x00json:") :])
         except (TypeError, ValueError):
             return None
     text = _text_content(content)
@@ -523,12 +542,18 @@ def _unix_timestamp(value: Any) -> str | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return _timestamp(value)
     try:
-        return datetime.fromtimestamp(value, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+        return (
+            datetime.fromtimestamp(value, tz=timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
     except (OverflowError, OSError, ValueError):
         return None
 
 
-def _event_id(source: str, session_id: str, line_number: int, role: str, content: str) -> str:
+def _event_id(
+    source: str, session_id: str, line_number: int, role: str, content: str
+) -> str:
     material = f"{source}\x1f{session_id}\x1f{line_number}\x1f{role}\x1f{content}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
 
@@ -540,7 +565,9 @@ def _source_key(source: SourceSpec) -> str:
 def _jsonl_files(path: Path) -> list[Path]:
     if path.is_file():
         return [path]
-    return sorted(candidate for candidate in path.rglob("*.jsonl") if candidate.is_file())
+    return sorted(
+        candidate for candidate in path.rglob("*.jsonl") if candidate.is_file()
+    )
 
 
 def _complete_jsonl_cursor(path: Path) -> tuple[int, int]:
@@ -621,14 +648,20 @@ def _load_state(path: Path) -> dict[str, Any]:
             state = json.load(handle)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise IngestionError("ingestion cursor state is unreadable") from exc
-    if not isinstance(state, dict) or state.get("version") != 1 or not isinstance(state.get("sources"), dict):
+    if (
+        not isinstance(state, dict)
+        or state.get("version") != 1
+        or not isinstance(state.get("sources"), dict)
+    ):
         raise IngestionError("ingestion cursor state has an unsupported schema")
     return state
 
 
 def _save_state(path: Path, state: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
     try:
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -659,7 +692,9 @@ def _open_hermes(path: Path) -> sqlite3.Connection:
         connection.execute("PRAGMA query_only = ON")
         tables = {
             row[0]
-            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
         }
         if not {"messages", "sessions"}.issubset(tables):
             raise IngestionError("Hermes state database schema is unsupported")
@@ -676,15 +711,15 @@ def _open_hermes(path: Path) -> sqlite3.Connection:
 
 def _hermes_query(connection: sqlite3.Connection) -> str:
     session_columns = {
-        row[1]
-        for row in connection.execute("PRAGMA table_info(sessions)")
+        row[1] for row in connection.execute("PRAGMA table_info(sessions)")
     }
     message_columns = {
-        row[1]
-        for row in connection.execute("PRAGMA table_info(messages)")
+        row[1] for row in connection.execute("PRAGMA table_info(messages)")
     }
     message_required = {"id", "session_id", "role", "content", "timestamp"}
-    if not {"id"}.issubset(session_columns) or not message_required.issubset(message_columns):
+    if not {"id"}.issubset(session_columns) or not message_required.issubset(
+        message_columns
+    ):
         raise IngestionError("Hermes sessions schema is unsupported")
     optional = {
         name: f"s.{name}" if name in session_columns else f"NULL AS {name}"

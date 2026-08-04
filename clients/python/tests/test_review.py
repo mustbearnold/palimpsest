@@ -42,7 +42,11 @@ def comparison_result() -> dict[str, object]:
         },
     }
     comparison = compare_project_bundles(bundles)
-    return {"profile": comparison["profile"], "bundles": bundles, "comparison": comparison}
+    return {
+        "profile": comparison["profile"],
+        "bundles": bundles,
+        "comparison": comparison,
+    }
 
 
 def review_payload() -> dict[str, object]:
@@ -94,13 +98,17 @@ class ProjectReviewTests(unittest.TestCase):
         self.assertFalse(result["contract_validation"]["semantic_truth_proven"])
         self.assertFalse(result["durable_write"])
         self.assertEqual(result["claims"][0]["evidence"][0]["key"], "release-target")
-        self.assertEqual(result["claims"][0]["evidence"][1]["evidence_episode_ids"], ["episode-b"])
+        self.assertEqual(
+            result["claims"][0]["evidence"][1]["evidence_episode_ids"], ["episode-b"]
+        )
 
     def test_review_rejects_an_ungrounded_citation(self) -> None:
         review = review_payload()
         review["claims"][0]["evidence"][1]["revision_id"] = "revision-not-returned"
 
-        with self.assertRaisesRegex(ValueError, "does not identify a returned retrieval item"):
+        with self.assertRaisesRegex(
+            ValueError, "does not identify a returned retrieval item"
+        ):
             validate_project_review(comparison_result(), review)
 
     def test_review_rejects_a_comparison_not_matching_its_bundles(self) -> None:
@@ -119,10 +127,14 @@ class ProjectReviewTests(unittest.TestCase):
         result["comparison"] = compare_project_bundles(result["bundles"])
         review = review_payload()
 
-        with self.assertRaisesRegex(ValueError, "requires at least two distinct cited values"):
+        with self.assertRaisesRegex(
+            ValueError, "requires at least two distinct cited values"
+        ):
             validate_project_review(result, review)
 
-    def test_consolidation_plan_derives_episode_lineage_and_stable_retry_key(self) -> None:
+    def test_consolidation_plan_derives_episode_lineage_and_stable_retry_key(
+        self,
+    ) -> None:
         validated = validate_project_review(comparison_result(), review_payload())
 
         plan = prepare_project_consolidation(
@@ -132,7 +144,9 @@ class ProjectReviewTests(unittest.TestCase):
                     "claim_id": "claim-release-target",
                     "namespace": "shared",
                     "key": "release-target-difference",
-                    "value": {"content": "The projects target different release channels."},
+                    "value": {
+                        "content": "The projects target different release channels."
+                    },
                     "observed_at": "2026-08-03T00:00:00Z",
                     "valid_time": {"from": "2026-08-03T00:00:00Z"},
                     "write_policy": {"id": "project-consolidation", "version": "1"},
@@ -144,10 +158,14 @@ class ProjectReviewTests(unittest.TestCase):
             consolidation_id="review-run-1",
         )
 
-        self.assertEqual(plan["profile"], "project-comparison-governed-consolidation-v1")
+        self.assertEqual(
+            plan["profile"], "project-comparison-governed-consolidation-v1"
+        )
         self.assertEqual(plan["claim_ids"], ["claim-release-target"])
         self.assertEqual(plan["source_episode_ids"], ["episode-a", "episode-b"])
-        self.assertEqual(plan["writes"][0]["evidence_episode_ids"], ["episode-a", "episode-b"])
+        self.assertEqual(
+            plan["writes"][0]["evidence_episode_ids"], ["episode-a", "episode-b"]
+        )
         self.assertEqual(plan["writes"][0]["classification"], "semantic_conflict")
         repeat = prepare_project_consolidation(
             validated,
@@ -156,7 +174,9 @@ class ProjectReviewTests(unittest.TestCase):
                     "claim_id": "claim-release-target",
                     "namespace": "shared",
                     "key": "release-target-difference",
-                    "value": {"content": "The projects target different release channels."},
+                    "value": {
+                        "content": "The projects target different release channels."
+                    },
                     "observed_at": "2026-08-03T00:00:00Z",
                     "valid_time": {"from": "2026-08-03T00:00:00Z"},
                     "write_policy": {"id": "project-consolidation", "version": "1"},
@@ -167,11 +187,19 @@ class ProjectReviewTests(unittest.TestCase):
             ],
             consolidation_id="review-run-1",
         )
-        self.assertEqual(plan["writes"][0]["idempotency_key"], repeat["writes"][0]["idempotency_key"])
-        self.assertTrue(plan["writes"][0]["idempotency_key"].startswith("palimpsest-consolidation-v1:"))
+        self.assertEqual(
+            plan["writes"][0]["idempotency_key"], repeat["writes"][0]["idempotency_key"]
+        )
+        self.assertTrue(
+            plan["writes"][0]["idempotency_key"].startswith(
+                "palimpsest-consolidation-v1:"
+            )
+        )
         self.assertLessEqual(len(plan["writes"][0]["idempotency_key"]), 255)
 
-    def test_consolidation_plan_rejects_insufficient_evidence_and_caller_lineage(self) -> None:
+    def test_consolidation_plan_rejects_insufficient_evidence_and_caller_lineage(
+        self,
+    ) -> None:
         validated = validate_project_review(comparison_result(), review_payload())
         validated["claims"][0]["classification"] = "insufficient_evidence"
         write = {
@@ -189,7 +217,9 @@ class ProjectReviewTests(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(ValueError, "insufficient_evidence"):
-            prepare_project_consolidation(validated, [write], consolidation_id="review-run-1")
+            prepare_project_consolidation(
+                validated, [write], consolidation_id="review-run-1"
+            )
 
         valid_write = dict(write)
         valid_write.pop("evidence_episode_ids")

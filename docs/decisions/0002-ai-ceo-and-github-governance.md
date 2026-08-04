@@ -6,32 +6,17 @@ Date: 2026-07-28
 
 ## Context
 
-The founder wants the project to develop autonomously while remaining safe,
-auditable, and recognizably expert in public GitHub. Unlimited agent authority
-would allow the system to weaken its own controls or create external commitments
-the founder did not authorize.
+The founder wants the project to develop autonomously while remaining safe, auditable, and recognizably expert in public GitHub. Unlimited agent authority would allow the system to weaken its own controls or create external commitments the founder did not authorize.
 
 ## Decision
 
-The human founder retains constitutional authority. The AI agent acts as
-operating CEO inside `AGENTS.md`. GitHub Issues define work and
-dependency-aware `ready-for-agent` issues define the autonomy frontier. The
-original delivery gate used pull requests plus required checks and independent
-two-axis review. ADR-0009 supersedes that delivery mechanism with direct,
-linear commits on `main` while retaining the issue frontier, executable checks,
-and independent review for the risk and release classes that require it.
+The human founder retains constitutional authority. The AI agent acts as operating CEO inside `AGENTS.md`. GitHub Issues define work and dependency-aware `ready-for-agent` issues define the autonomy frontier. The original delivery gate used pull requests plus required checks and independent two-axis review. ADR-0009 supersedes that delivery mechanism with direct, linear commits on `main` while retaining the issue frontier, executable checks, and independent review for the risk and release classes that require it.
 
-The CEO may merge low-risk, fully specified work after gates pass. Governance,
-credentials, spending, legal terms, destructive production operations, first
-production deployment, major releases, and every security-sensitive or high-risk
-release remain human-controlled. Independent review is still mandatory for those
-releases and does not replace founder approval.
+The CEO may merge low-risk, fully specified work after gates pass. Governance, credentials, spending, legal terms, destructive production operations, first production deployment, major releases, and every security-sensitive or high-risk release remain human-controlled. Independent review is still mandatory for those releases and does not replace founder approval.
 
 ## Consequences
 
-- Autonomous work can proceed without repeated approval for ordinary reversible
-  engineering actions.
+- Autonomous work can proceed without repeated approval for ordinary reversible engineering actions.
 - Every material decision and implementation has a durable public trail.
-- A running agent or scheduled job is still required; governance documentation
-  does not itself create a daemon.
+- A running agent or scheduled job is still required; governance documentation does not itself create a daemon.
 - The CEO cannot expand its own authority or call self-review independent.

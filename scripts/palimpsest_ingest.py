@@ -54,11 +54,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also check the exact current-user Codex, Claude, and Hermes locations",
     )
-    parser.add_argument("--base-url", default=os.environ.get("PALIMPSEST_INGEST_BASE_URL", "http://127.0.0.1:8080"))
-    parser.add_argument("--bearer-token", default=os.environ.get("PALIMPSEST_INGEST_BEARER_TOKEN"))
-    parser.add_argument("--tenant-id", default=os.environ.get("PALIMPSEST_INGEST_TENANT_ID", LOCAL_DEFAULT_TENANT))
-    parser.add_argument("--subject-id", default=os.environ.get("PALIMPSEST_INGEST_SUBJECT_ID", LOCAL_DEFAULT_SUBJECT))
-    parser.add_argument("--case-id", default=os.environ.get("PALIMPSEST_INGEST_CASE_ID", LOCAL_DEFAULT_CASE))
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("PALIMPSEST_INGEST_BASE_URL", "http://127.0.0.1:8080"),
+    )
+    parser.add_argument(
+        "--bearer-token", default=os.environ.get("PALIMPSEST_INGEST_BEARER_TOKEN")
+    )
+    parser.add_argument(
+        "--tenant-id",
+        default=os.environ.get("PALIMPSEST_INGEST_TENANT_ID", LOCAL_DEFAULT_TENANT),
+    )
+    parser.add_argument(
+        "--subject-id",
+        default=os.environ.get("PALIMPSEST_INGEST_SUBJECT_ID", LOCAL_DEFAULT_SUBJECT),
+    )
+    parser.add_argument(
+        "--case-id",
+        default=os.environ.get("PALIMPSEST_INGEST_CASE_ID", LOCAL_DEFAULT_CASE),
+    )
     parser.add_argument(
         "--state-path",
         default=os.environ.get(
@@ -66,15 +80,29 @@ def build_parser() -> argparse.ArgumentParser:
             str(Path.home() / ".local/state/palimpsest/ingest-state.json"),
         ),
     )
-    parser.add_argument("--project-root", default=os.environ.get("PALIMPSEST_INGEST_PROJECT_ROOT"))
-    parser.add_argument("--codex-sessions", default=os.environ.get("PALIMPSEST_INGEST_CODEX_SESSIONS"))
-    parser.add_argument("--claude-projects", default=os.environ.get("PALIMPSEST_INGEST_CLAUDE_PROJECTS"))
-    parser.add_argument("--hermes-state-db", default=os.environ.get("PALIMPSEST_INGEST_HERMES_STATE_DB"))
+    parser.add_argument(
+        "--project-root", default=os.environ.get("PALIMPSEST_INGEST_PROJECT_ROOT")
+    )
+    parser.add_argument(
+        "--codex-sessions", default=os.environ.get("PALIMPSEST_INGEST_CODEX_SESSIONS")
+    )
+    parser.add_argument(
+        "--claude-projects", default=os.environ.get("PALIMPSEST_INGEST_CLAUDE_PROJECTS")
+    )
+    parser.add_argument(
+        "--hermes-state-db", default=os.environ.get("PALIMPSEST_INGEST_HERMES_STATE_DB")
+    )
     parser.add_argument("--namespace-prefix", default="agent_session")
     parser.add_argument("--sensitivity", default="internal")
     parser.add_argument("--retention-policy-id", default="standard")
-    parser.add_argument("--backfill", action="store_true", help="ingest existing source history on the first pass")
-    parser.add_argument("--interval-seconds", type=float, default=5.0, help="watch polling interval")
+    parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="ingest existing source history on the first pass",
+    )
+    parser.add_argument(
+        "--interval-seconds", type=float, default=5.0, help="watch polling interval"
+    )
     return parser
 
 
@@ -88,7 +116,9 @@ def _source_specs(values: list[str]) -> list[SourceSpec]:
     return specs
 
 
-def _sources(arguments: argparse.Namespace, *, allow_empty: bool = False) -> list[SourceSpec]:
+def _sources(
+    arguments: argparse.Namespace, *, allow_empty: bool = False
+) -> list[SourceSpec]:
     specs = _source_specs(arguments.source)
     if arguments.discover:
         specs.extend(
@@ -114,12 +144,21 @@ def _sources(arguments: argparse.Namespace, *, allow_empty: bool = False) -> lis
 def _client(arguments: argparse.Namespace) -> PalimpsestClient:
     base_url = arguments.base_url.rstrip("/")
     parsed = urlparse(base_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
-        raise ValueError("--base-url must be an HTTP(S) URL without a query or fragment")
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(
+            "--base-url must be an HTTP(S) URL without a query or fragment"
+        )
     bearer_token = arguments.bearer_token
     if not bearer_token:
         if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-            raise ValueError("--bearer-token or PALIMPSEST_INGEST_BEARER_TOKEN is required for a non-local URL")
+            raise ValueError(
+                "--bearer-token or PALIMPSEST_INGEST_BEARER_TOKEN is required for a non-local URL"
+            )
         bearer_token = LOCAL_DEFAULT_TOKEN
     return PalimpsestClient(
         base_url=base_url,
@@ -170,7 +209,22 @@ def main(argv: list[str] | None = None) -> int:
             )
             _run_once(arguments, runner)
         else:
-            print(json.dumps({"report": {"seen": 0, "ingested": 0, "skipped": 0, "baselined": 0, "project_ids": []}, "sources": []}, sort_keys=True), flush=True)
+            print(
+                json.dumps(
+                    {
+                        "report": {
+                            "seen": 0,
+                            "ingested": 0,
+                            "skipped": 0,
+                            "baselined": 0,
+                            "project_ids": [],
+                        },
+                        "sources": [],
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
         time.sleep(arguments.interval_seconds)
 
 

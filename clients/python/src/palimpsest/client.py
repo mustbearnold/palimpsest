@@ -73,7 +73,9 @@ class PalimpsestHttpError(PalimpsestError):
         self.headers = dict(headers)
         problem_type = problem.get("type") if isinstance(problem, dict) else None
         label = f" ({problem_type})" if isinstance(problem_type, str) else ""
-        super().__init__(f"Palimpsest returned HTTP {status_code}{label} for {method} {path}")
+        super().__init__(
+            f"Palimpsest returned HTTP {status_code}{label} for {method} {path}"
+        )
 
 
 class PartialRememberError(PalimpsestError):
@@ -83,7 +85,9 @@ class PartialRememberError(PalimpsestError):
         self.episode = episode
         self.cause = cause
         episode_id = episode.get("episode_id", "unknown")
-        super().__init__(f"episode {episode_id} was saved, but fact promotion failed: {cause}")
+        super().__init__(
+            f"episode {episode_id} was saved, but fact promotion failed: {cause}"
+        )
 
 
 class PartialConsolidationError(PalimpsestError):
@@ -180,15 +184,21 @@ class PalimpsestClient:
     ) -> None:
         self.base_url = _base_url(base_url)
         if not isinstance(bearer_token, str) or not bearer_token.strip():
-            raise PalimpsestConfigurationError("bearer_token must be a non-empty string")
+            raise PalimpsestConfigurationError(
+                "bearer_token must be a non-empty string"
+            )
         self.bearer_token = bearer_token
         self.tenant_id = _uuid_string(tenant_id, "tenant_id")
         self.subject_id = _uuid_string(subject_id, "subject_id")
         self.case_id = None if case_id is None else _uuid_string(case_id, "case_id")
-        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
+        if isinstance(timeout_seconds, bool) or not isinstance(
+            timeout_seconds, (int, float)
+        ):
             raise PalimpsestConfigurationError("timeout_seconds must be a number")
         if timeout_seconds <= 0:
-            raise PalimpsestConfigurationError("timeout_seconds must be greater than zero")
+            raise PalimpsestConfigurationError(
+                "timeout_seconds must be greater than zero"
+            )
         self.timeout_seconds = float(timeout_seconds)
 
     def append_episode(
@@ -209,7 +219,9 @@ class PalimpsestClient:
             "observed_at": _non_empty_text(observed_at, "observed_at"),
             "provenance": dict(provenance),
             "sensitivity": _non_empty_text(sensitivity, "sensitivity"),
-            "retention_policy_id": _non_empty_text(retention_policy_id, "retention_policy_id"),
+            "retention_policy_id": _non_empty_text(
+                retention_policy_id, "retention_policy_id"
+            ),
             "payload": payload,
         }
         return self._json_request(
@@ -242,11 +254,16 @@ class PalimpsestClient:
             "value": _non_null(value, "value"),
             "observed_at": _non_empty_text(observed_at, "observed_at"),
             "valid_time": dict(valid_time),
-            "evidence_episode_ids": [_uuid_string(value, "evidence_episode_id") for value in evidence_episode_ids],
+            "evidence_episode_ids": [
+                _uuid_string(value, "evidence_episode_id")
+                for value in evidence_episode_ids
+            ],
             "write_policy": dict(write_policy),
             "confidence": _confidence(confidence),
             "sensitivity": _non_empty_text(sensitivity, "sensitivity"),
-            "retention_policy_id": _non_empty_text(retention_policy_id, "retention_policy_id"),
+            "retention_policy_id": _non_empty_text(
+                retention_policy_id, "retention_policy_id"
+            ),
         }
         return self._json_request(
             "POST",
@@ -259,11 +276,15 @@ class PalimpsestClient:
         return self.get_fact_response(fact_id).data
 
     def get_fact_response(self, fact_id: str) -> PalimpsestResponse:
-        return self._json_response("GET", f"{self._scope_path()}/facts/{_uuid_string(fact_id, 'fact_id')}")
+        return self._json_response(
+            "GET", f"{self._scope_path()}/facts/{_uuid_string(fact_id, 'fact_id')}"
+        )
 
     get_current_fact = get_fact
 
-    def get_fact_as_of(self, fact_id: str, *, valid_at: str, recorded_at: str) -> JsonObject:
+    def get_fact_as_of(
+        self, fact_id: str, *, valid_at: str, recorded_at: str
+    ) -> JsonObject:
         query = parse.urlencode(
             {
                 "valid_at": _non_empty_text(valid_at, "valid_at"),
@@ -276,7 +297,9 @@ class PalimpsestClient:
     def get_checkpoint(self, agent_id: str, thread_id: str) -> JsonObject:
         return self.get_checkpoint_response(agent_id, thread_id).data
 
-    def get_checkpoint_response(self, agent_id: str, thread_id: str) -> PalimpsestResponse:
+    def get_checkpoint_response(
+        self, agent_id: str, thread_id: str
+    ) -> PalimpsestResponse:
         path = self._checkpoint_path(agent_id, thread_id)
         return self._json_response("GET", path)
 
@@ -331,11 +354,19 @@ class PalimpsestClient:
         idempotency_key: str | None = None,
     ) -> PalimpsestResponse:
         if (if_match is None) == (if_none_match is None):
-            raise PalimpsestConfigurationError("supply exactly one of if_match or if_none_match")
+            raise PalimpsestConfigurationError(
+                "supply exactly one of if_match or if_none_match"
+            )
         if if_none_match is not None and if_none_match != "*":
             raise PalimpsestConfigurationError("if_none_match must be '*'")
-        if isinstance(state_schema_version, bool) or not isinstance(state_schema_version, int) or state_schema_version < 1:
-            raise PalimpsestConfigurationError("state_schema_version must be a positive integer")
+        if (
+            isinstance(state_schema_version, bool)
+            or not isinstance(state_schema_version, int)
+            or state_schema_version < 1
+        ):
+            raise PalimpsestConfigurationError(
+                "state_schema_version must be a positive integer"
+            )
         body = {
             "case_id": self._case(case_id),
             "parent_revision_id": None
@@ -346,7 +377,9 @@ class PalimpsestClient:
             "effect_transitions": [dict(effect) for effect in effect_transitions],
             "provenance": dict(provenance),
             "sensitivity": _non_empty_text(sensitivity, "sensitivity"),
-            "retention_policy_id": _non_empty_text(retention_policy_id, "retention_policy_id"),
+            "retention_policy_id": _non_empty_text(
+                retention_policy_id, "retention_policy_id"
+            ),
         }
         return self._json_response(
             "PUT",
@@ -360,14 +393,18 @@ class PalimpsestClient:
     def start_export(self, *, idempotency_key: str | None = None) -> JsonObject:
         return self.start_export_response(idempotency_key=idempotency_key).data
 
-    def start_export_response(self, *, idempotency_key: str | None = None) -> PalimpsestResponse:
+    def start_export_response(
+        self, *, idempotency_key: str | None = None
+    ) -> PalimpsestResponse:
         return self._json_response(
             "POST",
             f"{self._scope_path()}/exports",
             idempotency_key=_idempotency_key(idempotency_key),
         )
 
-    def get_export(self, export_id: str, *, if_none_match: str | None = None) -> JsonObject:
+    def get_export(
+        self, export_id: str, *, if_none_match: str | None = None
+    ) -> JsonObject:
         return self.get_export_response(export_id, if_none_match=if_none_match).data
 
     def get_export_response(
@@ -390,7 +427,9 @@ class PalimpsestClient:
             "GET",
             f"{self._scope_path()}/exports/{_uuid_string(export_id, 'export_id')}/content",
         )
-        return PalimpsestBinaryResponse(response.body, response.status_code, response.headers)
+        return PalimpsestBinaryResponse(
+            response.body, response.status_code, response.headers
+        )
 
     def supersede_fact(
         self,
@@ -409,15 +448,22 @@ class PalimpsestClient:
         idempotency_key: str | None = None,
     ) -> JsonObject:
         body = {
-            "supersedes_revision_id": _uuid_string(supersedes_revision_id, "supersedes_revision_id"),
+            "supersedes_revision_id": _uuid_string(
+                supersedes_revision_id, "supersedes_revision_id"
+            ),
             "value": _non_null(value, "value"),
             "observed_at": _non_empty_text(observed_at, "observed_at"),
             "valid_time": dict(valid_time),
-            "evidence_episode_ids": [_uuid_string(value, "evidence_episode_id") for value in evidence_episode_ids],
+            "evidence_episode_ids": [
+                _uuid_string(value, "evidence_episode_id")
+                for value in evidence_episode_ids
+            ],
             "write_policy": dict(write_policy),
             "confidence": _confidence(confidence),
             "sensitivity": _non_empty_text(sensitivity, "sensitivity"),
-            "retention_policy_id": _non_empty_text(retention_policy_id, "retention_policy_id"),
+            "retention_policy_id": _non_empty_text(
+                retention_policy_id, "retention_policy_id"
+            ),
         }
         return self._json_request(
             "PUT",
@@ -439,15 +485,25 @@ class PalimpsestClient:
     ) -> JsonObject:
         query = _non_empty_text(query, "query")
         if len(query.encode("utf-8")) > 4096:
-            raise PalimpsestConfigurationError("query must contain at most 4096 UTF-8 bytes")
-        if isinstance(page_size, bool) or not isinstance(page_size, int) or not 1 <= page_size <= 50:
-            raise PalimpsestConfigurationError("page_size must be an integer from 1 to 50")
+            raise PalimpsestConfigurationError(
+                "query must contain at most 4096 UTF-8 bytes"
+            )
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= 50
+        ):
+            raise PalimpsestConfigurationError(
+                "page_size must be an integer from 1 to 50"
+            )
         if perspective is None or perspective == "current":
             normalized_perspective: object = {"kind": "current"}
         elif isinstance(perspective, Mapping):
             normalized_perspective = dict(perspective)
         else:
-            raise PalimpsestConfigurationError("perspective must be 'current' or a mapping")
+            raise PalimpsestConfigurationError(
+                "perspective must be 'current' or a mapping"
+            )
         body: JsonObject = {
             "query": query,
             "perspective": normalized_perspective,
@@ -485,12 +541,16 @@ class PalimpsestClient:
         """
 
         if isinstance(project_ids, (str, bytes)):
-            raise PalimpsestConfigurationError("project_ids must be a non-empty sequence")
+            raise PalimpsestConfigurationError(
+                "project_ids must be a non-empty sequence"
+            )
         ordered_ids: list[str] = []
         namespaces: dict[str, str] = {}
         for project_id in project_ids:
             if not isinstance(project_id, str) or not project_id.strip():
-                raise PalimpsestConfigurationError("project_ids must contain non-empty strings")
+                raise PalimpsestConfigurationError(
+                    "project_ids must contain non-empty strings"
+                )
             project_id = project_id.strip()
             if project_id in namespaces:
                 continue
@@ -501,16 +561,26 @@ class PalimpsestClient:
             ordered_ids.append(project_id)
             namespaces[project_id] = namespace
         if not ordered_ids:
-            raise PalimpsestConfigurationError("project_ids must be a non-empty sequence")
+            raise PalimpsestConfigurationError(
+                "project_ids must be a non-empty sequence"
+            )
         base_filters = dict(filters or {})
         if "namespaces" in base_filters:
-            raise PalimpsestConfigurationError("recall_by_project owns the namespaces filter")
-        base_key = _idempotency_base(idempotency_key_prefix) if idempotency_key_prefix is not None else None
+            raise PalimpsestConfigurationError(
+                "recall_by_project owns the namespaces filter"
+            )
+        base_key = (
+            _idempotency_base(idempotency_key_prefix)
+            if idempotency_key_prefix is not None
+            else None
+        )
         results: dict[str, JsonObject] = {}
         for project_id in ordered_ids:
             idempotency_key = None if base_key is None else f"{base_key}:{project_id}"
             if idempotency_key is not None and len(idempotency_key) > 255:
-                raise PalimpsestConfigurationError("idempotency_key_prefix leaves insufficient room for project IDs")
+                raise PalimpsestConfigurationError(
+                    "idempotency_key_prefix leaves insufficient room for project IDs"
+                )
             project_filters = {**base_filters, "namespaces": [namespaces[project_id]]}
             results[project_id] = self.retrieve(
                 query,
@@ -554,7 +624,9 @@ class PalimpsestClient:
         try:
             comparison = compare_project_bundles(bundles)
         except ValueError as exc:
-            raise PalimpsestProtocolError("retrieval bundles cannot be compared") from exc
+            raise PalimpsestProtocolError(
+                "retrieval bundles cannot be compared"
+            ) from exc
         return {
             "profile": comparison["profile"],
             "query": query,
@@ -638,7 +710,9 @@ class PalimpsestClient:
             "durable_write": True,
         }
 
-    def get_retrieval(self, retrieval_id: str, *, cursor: str | None = None) -> JsonObject:
+    def get_retrieval(
+        self, retrieval_id: str, *, cursor: str | None = None
+    ) -> JsonObject:
         path = f"{self._scope_path()}/retrievals/{_uuid_string(retrieval_id, 'retrieval_id')}"
         if cursor is not None:
             path += f"?{parse.urlencode({'cursor': _non_empty_text(cursor, 'cursor')})}"
@@ -654,8 +728,12 @@ class PalimpsestClient:
 
     delete_subject = forget
 
-    def get_deletion(self, operation_id: str, *, if_none_match: str | None = None) -> JsonObject:
-        return self.get_deletion_response(operation_id, if_none_match=if_none_match).data
+    def get_deletion(
+        self, operation_id: str, *, if_none_match: str | None = None
+    ) -> JsonObject:
+        return self.get_deletion_response(
+            operation_id, if_none_match=if_none_match
+        ).data
 
     def get_deletion_response(
         self, operation_id: str, *, if_none_match: str | None = None
@@ -679,7 +757,9 @@ class PalimpsestClient:
         """Poll a deletion with conditional requests until it reaches a terminal state."""
 
         timeout_seconds = _positive_number(timeout_seconds, "timeout_seconds")
-        poll_interval_seconds = _positive_number(poll_interval_seconds, "poll_interval_seconds")
+        poll_interval_seconds = _positive_number(
+            poll_interval_seconds, "poll_interval_seconds"
+        )
         deadline = time.monotonic() + timeout_seconds
         etag: str | None = None
         latest: JsonObject | None = None
@@ -688,7 +768,11 @@ class PalimpsestClient:
             if response.status_code != 304:
                 latest = response.data
                 etag = response.etag
-            if latest is not None and latest.get("lifecycle_state") in {"completed", "failed", "expired"}:
+            if latest is not None and latest.get("lifecycle_state") in {
+                "completed",
+                "failed",
+                "expired",
+            }:
                 return latest
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -716,7 +800,9 @@ class PalimpsestClient:
     ) -> JsonObject:
         content = _non_empty_text(content, "content")
         if len(content.encode("utf-8")) > 65_536:
-            raise PalimpsestConfigurationError("content must contain at most 65536 UTF-8 bytes")
+            raise PalimpsestConfigurationError(
+                "content must contain at most 65536 UTF-8 bytes"
+            )
         key = _non_empty_text(key, "key")
         observed_at = observed_at or _utc_now()
         episode_payload = {"content": content, "metadata": dict(metadata or {})}
@@ -738,7 +824,9 @@ class PalimpsestClient:
         )
         episode_id = episode.get("episode_id")
         if not isinstance(episode_id, str) or not episode_id:
-            raise PalimpsestProtocolError("Palimpsest created an episode without returning its identifier")
+            raise PalimpsestProtocolError(
+                "Palimpsest created an episode without returning its identifier"
+            )
         try:
             fact = self.create_fact(
                 namespace=namespace,
@@ -823,7 +911,9 @@ class PalimpsestClient:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise PalimpsestProtocolError("Palimpsest returned invalid JSON") from exc
         if not isinstance(decoded, dict):
-            raise PalimpsestProtocolError("Palimpsest returned a non-object JSON response")
+            raise PalimpsestProtocolError(
+                "Palimpsest returned a non-object JSON response"
+            )
         return PalimpsestResponse(decoded, response.status_code, response.headers)
 
     def _request(
@@ -842,7 +932,9 @@ class PalimpsestClient:
             "Authorization": f"Bearer {self.bearer_token}",
         }
         if body is not None:
-            encoded_body = json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            encoded_body = json.dumps(
+                body, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
             headers["Content-Type"] = "application/json"
         if idempotency_key is not None:
             headers["Idempotency-Key"] = _idempotency_key(idempotency_key)
@@ -854,8 +946,12 @@ class PalimpsestClient:
             f"{self.base_url}{path}", data=encoded_body, headers=headers, method=method
         )
         try:
-            with _HTTP_OPENER.open(http_request, timeout=self.timeout_seconds) as response:
-                return _HttpResponse(response.status, dict(response.headers.items()), response.read())
+            with _HTTP_OPENER.open(
+                http_request, timeout=self.timeout_seconds
+            ) as response:
+                return _HttpResponse(
+                    response.status, dict(response.headers.items()), response.read()
+                )
         except error.HTTPError as exc:
             response_body = exc.read()
             headers = dict(exc.headers.items())
@@ -866,10 +962,14 @@ class PalimpsestClient:
                 problem = json.loads(response_body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 problem = None
-            raise PalimpsestHttpError(exc.code, method, path, problem, headers) from None
+            raise PalimpsestHttpError(
+                exc.code, method, path, problem, headers
+            ) from None
         except (error.URLError, TimeoutError) as exc:
             reason = getattr(exc, "reason", str(exc))
-            raise PalimpsestTransportError(f"Palimpsest is unavailable: {reason}") from None
+            raise PalimpsestTransportError(
+                f"Palimpsest is unavailable: {reason}"
+            ) from None
 
 
 def _base_url(value: str) -> str:
@@ -879,7 +979,9 @@ def _base_url(value: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise PalimpsestConfigurationError("base_url must be an HTTP(S) URL")
     if parsed.query or parsed.fragment or parsed.username or parsed.password:
-        raise PalimpsestConfigurationError("base_url must not contain credentials, a query, or a fragment")
+        raise PalimpsestConfigurationError(
+            "base_url must not contain credentials, a query, or a fragment"
+        )
     return value.rstrip("/")
 
 
@@ -905,7 +1007,11 @@ def _non_null(value: Any, name: str) -> Any:
 
 
 def _confidence(value: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0 <= value <= 1
+    ):
         raise PalimpsestConfigurationError("confidence must be a number from 0 to 1")
     return float(value)
 
@@ -920,16 +1026,28 @@ def _idempotency_key(value: str | None) -> str:
     if value is None:
         return f"palimpsest-python-{uuid.uuid4()}"
     if not isinstance(value, str) or not value.strip() or len(value) > 255:
-        raise PalimpsestConfigurationError("idempotency_key must contain 1 to 255 characters")
+        raise PalimpsestConfigurationError(
+            "idempotency_key must contain 1 to 255 characters"
+        )
     return value
 
 
 def _idempotency_base(value: str | None) -> str:
-    base = _idempotency_key(value) if value is not None else f"palimpsest-python-{uuid.uuid4()}"
+    base = (
+        _idempotency_key(value)
+        if value is not None
+        else f"palimpsest-python-{uuid.uuid4()}"
+    )
     if len(base) > 243:
-        raise PalimpsestConfigurationError("idempotency_key must leave room for the operation suffix")
+        raise PalimpsestConfigurationError(
+            "idempotency_key must leave room for the operation suffix"
+        )
     return base
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )

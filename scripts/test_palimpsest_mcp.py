@@ -40,7 +40,11 @@ def make_comparison_result() -> dict[str, object]:
         },
     }
     comparison = compare_project_bundles(bundles)
-    return {"profile": comparison["profile"], "bundles": bundles, "comparison": comparison}
+    return {
+        "profile": comparison["profile"],
+        "bundles": bundles,
+        "comparison": comparison,
+    }
 
 
 def make_review_payload() -> dict[str, object]:
@@ -52,7 +56,11 @@ def make_review_payload() -> dict[str, object]:
             "model_revision": "2026-08-03",
             "prompt_sha256": "a" * 64,
         },
-        "review_policy": {"id": "project-review-v1", "version": "1", "sha256": "b" * 64},
+        "review_policy": {
+            "id": "project-review-v1",
+            "version": "1",
+            "sha256": "b" * 64,
+        },
         "claims": [
             {
                 "claim_id": "claim-release-target",
@@ -85,18 +93,27 @@ class FakeClient:
         self.project_retrievals: list[tuple[str, list[str], int]] = []
         self.project_comparisons: list[tuple[str, list[str], int]] = []
         self.project_reviews: list[tuple[dict[str, object], dict[str, object]]] = []
-        self.project_consolidations: list[tuple[dict[str, object], dict[str, object], list[dict[str, object]], str]] = []
+        self.project_consolidations: list[
+            tuple[dict[str, object], dict[str, object], list[dict[str, object]], str]
+        ] = []
         self.memories: list[dict[str, object]] = []
 
     def retrieve(self, query: str, page_size: int) -> dict[str, object]:
         self.retrievals.append((query, page_size))
         return {"status": "results", "items": [{"value": query}]}
 
-    def recall_by_project(self, query: str, project_ids: list[str], page_size: int) -> dict[str, object]:
+    def recall_by_project(
+        self, query: str, project_ids: list[str], page_size: int
+    ) -> dict[str, object]:
         self.project_retrievals.append((query, project_ids, page_size))
-        return {project_id: {"status": "results", "project_id": project_id} for project_id in project_ids}
+        return {
+            project_id: {"status": "results", "project_id": project_id}
+            for project_id in project_ids
+        }
 
-    def compare_by_project(self, query: str, project_ids: list[str], page_size: int) -> dict[str, object]:
+    def compare_by_project(
+        self, query: str, project_ids: list[str], page_size: int
+    ) -> dict[str, object]:
         self.project_comparisons.append((query, project_ids, page_size))
         return {"profile": "project-comparison-structural-v1", "projects": project_ids}
 
@@ -113,8 +130,13 @@ class FakeClient:
         writes: list[dict[str, object]],
         consolidation_id: str,
     ) -> dict[str, object]:
-        self.project_consolidations.append((comparison_result, review, writes, consolidation_id))
-        return {"profile": "project-comparison-governed-consolidation-v1", "durable_write": True}
+        self.project_consolidations.append(
+            (comparison_result, review, writes, consolidation_id)
+        )
+        return {
+            "profile": "project-comparison-governed-consolidation-v1",
+            "durable_write": True,
+        }
 
     def remember(self, **kwargs: object) -> dict[str, object]:
         self.memories.append(kwargs)
@@ -127,11 +149,13 @@ class McpAdapterTests(unittest.TestCase):
 
     def test_initialize_and_tool_listing(self) -> None:
         initialize = palimpsest_mcp.handle_message(
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, self.client
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            self.client,
         )
         self.assertEqual(initialize["result"]["protocolVersion"], "2025-11-25")
         listing = palimpsest_mcp.handle_message(
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}, self.client
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            self.client,
         )
         self.assertEqual(
             [tool["name"] for tool in listing["result"]["tools"]],
@@ -151,7 +175,10 @@ class McpAdapterTests(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/call",
-                "params": {"name": "palimpsest_retrieve", "arguments": {"query": "  launch plan ", "page_size": 7}},
+                "params": {
+                    "name": "palimpsest_retrieve",
+                    "arguments": {"query": "  launch plan ", "page_size": 7},
+                },
             },
             self.client,
         )
@@ -166,14 +193,19 @@ class McpAdapterTests(unittest.TestCase):
                 "method": "tools/call",
                 "params": {
                     "name": "palimpsest_remember",
-                    "arguments": {"content": "The release target is v1.", "metadata": {"source": "user"}},
+                    "arguments": {
+                        "content": "The release target is v1.",
+                        "metadata": {"source": "user"},
+                    },
                 },
             },
             self.client,
         )
         self.assertNotIn("isError", response["result"])
         self.assertEqual(len(self.client.memories), 1)
-        self.assertEqual(self.client.memories[0]["content"], "The release target is v1.")
+        self.assertEqual(
+            self.client.memories[0]["content"], "The release target is v1."
+        )
         self.assertEqual(self.client.memories[0]["namespace"], "codex")
 
     def test_recall_by_project_returns_separate_bundles(self) -> None:
@@ -194,7 +226,10 @@ class McpAdapterTests(unittest.TestCase):
             self.client,
         )
         self.assertNotIn("isError", response["result"])
-        self.assertEqual(self.client.project_retrievals, [("release decision", ["project-a", "project-b"], 7)])
+        self.assertEqual(
+            self.client.project_retrievals,
+            [("release decision", ["project-a", "project-b"], 7)],
+        )
         rendered = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(sorted(rendered), ["project-a", "project-b"])
 
@@ -206,7 +241,10 @@ class McpAdapterTests(unittest.TestCase):
                 "method": "tools/call",
                 "params": {
                     "name": "palimpsest_recall_by_project",
-                    "arguments": {"query": "release", "project_ids": ["project-a", "project-a"]},
+                    "arguments": {
+                        "query": "release",
+                        "project_ids": ["project-a", "project-a"],
+                    },
                 },
             },
             self.client,
@@ -249,7 +287,10 @@ class McpAdapterTests(unittest.TestCase):
                 "method": "tools/call",
                 "params": {
                     "name": "palimpsest_validate_project_review",
-                    "arguments": {"comparison_result": comparison_result, "review": review},
+                    "arguments": {
+                        "comparison_result": comparison_result,
+                        "review": review,
+                    },
                 },
             },
             self.client,

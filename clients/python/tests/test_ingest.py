@@ -35,7 +35,9 @@ class IngestionBoundaryTests(unittest.TestCase):
             (home / ".hermes").mkdir()
             (home / ".hermes" / "state.db").write_bytes(b"sqlite placeholder")
             (home / "unrelated" / "nested").mkdir(parents=True)
-            (home / "unrelated" / "nested" / "secret.jsonl").write_text("{}\n", encoding="utf-8")
+            (home / "unrelated" / "nested" / "secret.jsonl").write_text(
+                "{}\n", encoding="utf-8"
+            )
 
             sources = discover_local_sources(home=home)
 
@@ -64,7 +66,9 @@ class IngestionBoundaryTests(unittest.TestCase):
             external.mkdir(parents=True)
             home.mkdir()
             (home / ".codex").mkdir()
-            (home / ".codex" / "sessions").symlink_to(external, target_is_directory=True)
+            (home / ".codex" / "sessions").symlink_to(
+                external, target_is_directory=True
+            )
 
             self.assertEqual(discover_local_sources(home=home), ())
 
@@ -73,13 +77,18 @@ class IngestionBoundaryTests(unittest.TestCase):
         second = ProjectIdentity.from_context("/tmp/project-b", branch="main")
 
         self.assertNotEqual(first.project_id, second.project_id)
-        self.assertEqual(first.project_id, ProjectIdentity.from_context("/tmp/project-a", branch="dev").project_id)
+        self.assertEqual(
+            first.project_id,
+            ProjectIdentity.from_context("/tmp/project-a", branch="dev").project_id,
+        )
         self.assertEqual(first.branch, "main")
         self.assertEqual(
             project_namespace(first.project_id),
             f"agent_session:{first.project_id}",
         )
-        self.assertNotIn("ghp_example_secret", redact_sensitive_text("token=ghp_example_secret"))
+        self.assertNotIn(
+            "ghp_example_secret", redact_sensitive_text("token=ghp_example_secret")
+        )
         self.assertIn("[REDACTED]", redact_sensitive_text("token=ghp_example_secret"))
 
     def test_codex_and_claude_text_events_preserve_role_and_project_scope(self) -> None:
@@ -106,7 +115,10 @@ class IngestionBoundaryTests(unittest.TestCase):
         self.assertEqual(codex.source, "codex")
         self.assertEqual(codex.role, "user")
         self.assertNotIn("ghp_example_secret", codex.content)
-        self.assertEqual(codex.project.project_id, ProjectIdentity.from_context("/tmp/project-a").project_id)
+        self.assertEqual(
+            codex.project.project_id,
+            ProjectIdentity.from_context("/tmp/project-a").project_id,
+        )
 
         claude_record = {
             "type": "assistant",
@@ -138,7 +150,10 @@ class IngestionBoundaryTests(unittest.TestCase):
 
         self.assertIsNone(
             parse_codex_record(
-                {"type": "event_msg", "payload": {"type": "agent_reasoning", "message": "skip"}},
+                {
+                    "type": "event_msg",
+                    "payload": {"type": "agent_reasoning", "message": "skip"},
+                },
                 line_number=9,
                 source_path="/tmp/codex/session-a.jsonl",
                 session_meta={},
@@ -148,7 +163,10 @@ class IngestionBoundaryTests(unittest.TestCase):
             parse_claude_record(
                 {
                     **claude_record,
-                    "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "rg"}]},
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "name": "rg"}],
+                    },
                 },
                 line_number=10,
                 source_path="/tmp/claude/project-a.jsonl",
@@ -161,7 +179,8 @@ class IngestionBoundaryTests(unittest.TestCase):
                 "id": 42,
                 "session_id": "hermes-session-a",
                 "role": "user",
-                "content": '\x00json:' + json.dumps([{"type": "text", "text": "Project B note"}]),
+                "content": "\x00json:"
+                + json.dumps([{"type": "text", "text": "Project B note"}]),
                 "timestamp": 1_754_209_446.0,
                 "cwd": "/tmp/project-b",
                 "git_branch": "feature-x",
@@ -175,22 +194,35 @@ class IngestionBoundaryTests(unittest.TestCase):
         self.assertEqual(event.event_id, "42")
         self.assertEqual(event.role, "user")
         self.assertEqual(event.content, "Project B note")
-        self.assertEqual(event.project.project_id, ProjectIdentity.from_context("/tmp/project-b").project_id)
+        self.assertEqual(
+            event.project.project_id,
+            ProjectIdentity.from_context("/tmp/project-b").project_id,
+        )
         self.assertIsNone(
             parse_hermes_row(
-                {"id": 43, "session_id": "hermes-session-a", "role": "tool", "content": "skip"},
+                {
+                    "id": 43,
+                    "session_id": "hermes-session-a",
+                    "role": "tool",
+                    "content": "skip",
+                },
                 source_path="/tmp/hermes/state.db",
             )
         )
 
-    def test_runner_deduplicates_and_keeps_projects_in_separate_namespaces(self) -> None:
+    def test_runner_deduplicates_and_keeps_projects_in_separate_namespaces(
+        self,
+    ) -> None:
         class FakeClient:
             def __init__(self) -> None:
                 self.calls = []
 
             def remember(self, content: str, **kwargs: object) -> dict[str, object]:
                 self.calls.append((content, kwargs))
-                return {"episode": {"episode_id": "episode"}, "fact": {"fact_id": "fact"}}
+                return {
+                    "episode": {"episode_id": "episode"},
+                    "fact": {"fact_id": "fact"},
+                }
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -201,28 +233,40 @@ class IngestionBoundaryTests(unittest.TestCase):
             codex_path.parent.mkdir()
             claude_path.parent.mkdir()
             codex_path.write_text(
-                json.dumps({
-                    "type": "session_meta",
-                    "payload": {"session_id": "codex-a", "cwd": str(root / "project-a")},
-                })
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "session_id": "codex-a",
+                            "cwd": str(root / "project-a"),
+                        },
+                    }
+                )
                 + "\n"
-                + json.dumps({
-                    "type": "event_msg",
-                    "timestamp": "2026-08-03T03:04:05Z",
-                    "payload": {"type": "user_message", "message": "Project A decision"},
-                })
+                + json.dumps(
+                    {
+                        "type": "event_msg",
+                        "timestamp": "2026-08-03T03:04:05Z",
+                        "payload": {
+                            "type": "user_message",
+                            "message": "Project A decision",
+                        },
+                    }
+                )
                 + "\n",
                 encoding="utf-8",
             )
             claude_path.write_text(
-                json.dumps({
-                    "type": "user",
-                    "sessionId": "claude-b",
-                    "cwd": str(root / "project-b"),
-                    "timestamp": "2026-08-03T03:04:06Z",
-                    "uuid": "claude-b-message",
-                    "message": {"role": "user", "content": "Project B decision"},
-                })
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": "claude-b",
+                        "cwd": str(root / "project-b"),
+                        "timestamp": "2026-08-03T03:04:06Z",
+                        "uuid": "claude-b-message",
+                        "message": {"role": "user", "content": "Project B decision"},
+                    }
+                )
                 + "\n",
                 encoding="utf-8",
             )
@@ -240,8 +284,15 @@ class IngestionBoundaryTests(unittest.TestCase):
             first = runner.run_once()
             self.assertEqual(first.ingested, 2)
             self.assertEqual(len(client.calls), 2)
-            self.assertNotEqual(client.calls[0][1]["namespace"], client.calls[1][1]["namespace"])
-            self.assertTrue(all(call[1]["metadata"]["project_id"].startswith("project-") for call in client.calls))
+            self.assertNotEqual(
+                client.calls[0][1]["namespace"], client.calls[1][1]["namespace"]
+            )
+            self.assertTrue(
+                all(
+                    call[1]["metadata"]["project_id"].startswith("project-")
+                    for call in client.calls
+                )
+            )
 
             second = runner.run_once()
             self.assertEqual(second.ingested, 0)
@@ -249,11 +300,16 @@ class IngestionBoundaryTests(unittest.TestCase):
 
             with codex_path.open("a", encoding="utf-8") as handle:
                 handle.write(
-                    json.dumps({
-                        "type": "event_msg",
-                        "timestamp": "2026-08-03T03:04:07Z",
-                        "payload": {"type": "agent_message", "message": "Project A follow-up"},
-                    })
+                    json.dumps(
+                        {
+                            "type": "event_msg",
+                            "timestamp": "2026-08-03T03:04:07Z",
+                            "payload": {
+                                "type": "agent_message",
+                                "message": "Project A follow-up",
+                            },
+                        }
+                    )
                     + "\n"
                 )
             third = runner.run_once()
@@ -267,7 +323,10 @@ class IngestionBoundaryTests(unittest.TestCase):
 
             def remember(self, content: str, **kwargs: object) -> dict[str, object]:
                 self.calls.append((content, kwargs))
-                return {"episode": {"episode_id": "episode"}, "fact": {"fact_id": "fact"}}
+                return {
+                    "episode": {"episode_id": "episode"},
+                    "fact": {"fact_id": "fact"},
+                }
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -300,7 +359,12 @@ class IngestionBoundaryTests(unittest.TestCase):
             )
             connection.execute(
                 "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-                ("hermes-a", "tool", "tool output must not be ingested", 1_754_209_447.0),
+                (
+                    "hermes-a",
+                    "tool",
+                    "tool output must not be ingested",
+                    1_754_209_447.0,
+                ),
             )
             connection.commit()
             connection.close()
@@ -337,17 +401,25 @@ class IngestionBoundaryTests(unittest.TestCase):
 
             def remember(self, content: str, **kwargs: object) -> dict[str, object]:
                 self.calls.append((content, kwargs))
-                return {"episode": {"episode_id": "episode"}, "fact": {"fact_id": "fact"}}
+                return {
+                    "episode": {"episode_id": "episode"},
+                    "fact": {"fact_id": "fact"},
+                }
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             path = root / "session.jsonl"
             path.write_text(
-                json.dumps({
-                    "type": "event_msg",
-                    "timestamp": "2026-08-03T03:04:05Z",
-                    "payload": {"type": "user_message", "message": "old transcript"},
-                })
+                json.dumps(
+                    {
+                        "type": "event_msg",
+                        "timestamp": "2026-08-03T03:04:05Z",
+                        "payload": {
+                            "type": "user_message",
+                            "message": "old transcript",
+                        },
+                    }
+                )
                 + "\n",
                 encoding="utf-8",
             )
@@ -364,37 +436,51 @@ class IngestionBoundaryTests(unittest.TestCase):
 
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(
-                    json.dumps({
-                        "type": "event_msg",
-                        "timestamp": "2026-08-03T03:04:06Z",
-                        "payload": {"type": "user_message", "message": "new transcript"},
-                    })
+                    json.dumps(
+                        {
+                            "type": "event_msg",
+                            "timestamp": "2026-08-03T03:04:06Z",
+                            "payload": {
+                                "type": "user_message",
+                                "message": "new transcript",
+                            },
+                        }
+                    )
                     + "\n"
                 )
             report = runner.run_once()
             self.assertEqual(report.ingested, 1)
             self.assertEqual(client.calls[0][0], "new transcript")
 
-    def test_incomplete_jsonl_record_is_retried_when_the_writer_finishes_it(self) -> None:
+    def test_incomplete_jsonl_record_is_retried_when_the_writer_finishes_it(
+        self,
+    ) -> None:
         class FakeClient:
             def __init__(self) -> None:
                 self.calls = []
 
             def remember(self, content: str, **kwargs: object) -> dict[str, object]:
                 self.calls.append((content, kwargs))
-                return {"episode": {"episode_id": "episode"}, "fact": {"fact_id": "fact"}}
+                return {
+                    "episode": {"episode_id": "episode"},
+                    "fact": {"fact_id": "fact"},
+                }
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             path = root / "session.jsonl"
-            record = json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-08-03T03:04:05Z",
-                "payload": {"type": "user_message", "message": "event after flush"},
-            })
+            record = json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-08-03T03:04:05Z",
+                    "payload": {"type": "user_message", "message": "event after flush"},
+                }
+            )
             path.write_text(record, encoding="utf-8")
             client = FakeClient()
-            runner = IngestionRunner(client, [SourceSpec("codex", path)], state_path=root / "state.json")
+            runner = IngestionRunner(
+                client, [SourceSpec("codex", path)], state_path=root / "state.json"
+            )
             runner.run_once()
             with path.open("a", encoding="utf-8") as handle:
                 handle.write("\n")

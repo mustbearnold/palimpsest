@@ -51,34 +51,59 @@ class AdapterConfig:
 
     @classmethod
     def from_environment(cls) -> AdapterConfig:
-        base_url = os.environ.get("PALIMPSEST_MCP_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+        base_url = os.environ.get(
+            "PALIMPSEST_MCP_BASE_URL", "http://127.0.0.1:8080"
+        ).rstrip("/")
         parsed = parse.urlparse(base_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
-            raise AdapterError("PALIMPSEST_MCP_BASE_URL must be an HTTP(S) URL without a query or fragment")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise AdapterError(
+                "PALIMPSEST_MCP_BASE_URL must be an HTTP(S) URL without a query or fragment"
+            )
 
         bearer_token = os.environ.get("PALIMPSEST_BEARER_TOKEN")
         if not bearer_token:
             if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-                raise AdapterError("PALIMPSEST_BEARER_TOKEN is required for a non-local Palimpsest URL")
+                raise AdapterError(
+                    "PALIMPSEST_BEARER_TOKEN is required for a non-local Palimpsest URL"
+                )
             bearer_token = LOCAL_DEFAULT_TOKEN
 
         tenant_id = os.environ.get("PALIMPSEST_TENANT_ID", LOCAL_DEFAULT_TENANT)
         subject_id = os.environ.get("PALIMPSEST_SUBJECT_ID", LOCAL_DEFAULT_SUBJECT)
         case_id = os.environ.get("PALIMPSEST_CASE_ID", LOCAL_DEFAULT_CASE)
-        for name, value in (("tenant", tenant_id), ("subject", subject_id), ("case", case_id)):
+        for name, value in (
+            ("tenant", tenant_id),
+            ("subject", subject_id),
+            ("case", case_id),
+        ):
             try:
                 uuid.UUID(value)
             except ValueError as exc:
-                raise AdapterError(f"PALIMPSEST_{name.upper()}_ID must be a UUID") from exc
+                raise AdapterError(
+                    f"PALIMPSEST_{name.upper()}_ID must be a UUID"
+                ) from exc
 
         try:
-            timeout_seconds = float(os.environ.get("PALIMPSEST_MCP_TIMEOUT_SECONDS", "30"))
+            timeout_seconds = float(
+                os.environ.get("PALIMPSEST_MCP_TIMEOUT_SECONDS", "30")
+            )
         except ValueError as exc:
-            raise AdapterError("PALIMPSEST_MCP_TIMEOUT_SECONDS must be a number") from exc
+            raise AdapterError(
+                "PALIMPSEST_MCP_TIMEOUT_SECONDS must be a number"
+            ) from exc
         if timeout_seconds <= 0:
-            raise AdapterError("PALIMPSEST_MCP_TIMEOUT_SECONDS must be greater than zero")
+            raise AdapterError(
+                "PALIMPSEST_MCP_TIMEOUT_SECONDS must be greater than zero"
+            )
 
-        return cls(base_url, bearer_token, tenant_id, subject_id, case_id, timeout_seconds)
+        return cls(
+            base_url, bearer_token, tenant_id, subject_id, case_id, timeout_seconds
+        )
 
 
 class PalimpsestClient:
@@ -107,7 +132,9 @@ class PalimpsestClient:
         self, query: str, project_ids: list[str], page_size: int
     ) -> dict[str, Any]:
         try:
-            return self._client.recall_by_project(query, project_ids, page_size=page_size)
+            return self._client.recall_by_project(
+                query, project_ids, page_size=page_size
+            )
         except PalimpsestError as exc:
             raise AdapterError(str(exc)) from None
 
@@ -115,7 +142,9 @@ class PalimpsestClient:
         self, query: str, project_ids: list[str], page_size: int
     ) -> dict[str, Any]:
         try:
-            return self._client.compare_by_project(query, project_ids, page_size=page_size)
+            return self._client.compare_by_project(
+                query, project_ids, page_size=page_size
+            )
         except PalimpsestError as exc:
             raise AdapterError(str(exc)) from None
 
@@ -151,7 +180,9 @@ class PalimpsestClient:
             raise AdapterError(str(exc)) from None
 
 
-def _string_argument(arguments: dict[str, Any], name: str, *, required: bool = False, default: str = "") -> str:
+def _string_argument(
+    arguments: dict[str, Any], name: str, *, required: bool = False, default: str = ""
+) -> str:
     value = arguments.get(name, default)
     if not isinstance(value, str) or (required and not value.strip()):
         requirement = "a non-empty string" if required else "a string"
@@ -159,15 +190,25 @@ def _string_argument(arguments: dict[str, Any], name: str, *, required: bool = F
     return value.strip() if required else value
 
 
-def _integer_argument(arguments: dict[str, Any], name: str, default: int, minimum: int, maximum: int) -> int:
+def _integer_argument(
+    arguments: dict[str, Any], name: str, default: int, minimum: int, maximum: int
+) -> int:
     value = arguments.get(name, default)
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise AdapterError(f"{name} must be an integer from {minimum} to {maximum}")
     return value
 
 
 def _tool_result(value: Any) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": json.dumps(value, indent=2, sort_keys=True)}]}
+    return {
+        "content": [
+            {"type": "text", "text": json.dumps(value, indent=2, sort_keys=True)}
+        ]
+    }
 
 
 def _tool_error(message: str) -> dict[str, Any]:
@@ -176,8 +217,14 @@ def _tool_error(message: str) -> dict[str, Any]:
 
 def _project_ids_argument(arguments: dict[str, Any]) -> list[str]:
     project_ids = arguments.get("project_ids")
-    if not isinstance(project_ids, list) or len(project_ids) < 2 or len(project_ids) > 20:
-        raise AdapterError("project_ids must be an array containing 2 to 20 project IDs")
+    if (
+        not isinstance(project_ids, list)
+        or len(project_ids) < 2
+        or len(project_ids) > 20
+    ):
+        raise AdapterError(
+            "project_ids must be an array containing 2 to 20 project IDs"
+        )
     normalized_project_ids: list[str] = []
     for project_id in project_ids:
         if not isinstance(project_id, str) or not project_id.strip():
@@ -207,7 +254,12 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "required": ["query"],
                 "properties": {
                     "query": {"type": "string", "minLength": 1, "maxLength": 4096},
-                    "page_size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
+                    },
                 },
             },
         },
@@ -231,7 +283,12 @@ def _tool_definitions() -> list[dict[str, Any]]:
                         "maxItems": 20,
                         "items": {"type": "string", "minLength": 1, "maxLength": 255},
                     },
-                    "page_size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
+                    },
                 },
             },
         },
@@ -256,7 +313,12 @@ def _tool_definitions() -> list[dict[str, Any]]:
                         "maxItems": 20,
                         "items": {"type": "string", "minLength": 1, "maxLength": 255},
                     },
-                    "page_size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
+                    },
                 },
             },
         },
@@ -273,7 +335,10 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "additionalProperties": False,
                 "required": ["comparison_result", "review"],
                 "properties": {
-                    "comparison_result": {"type": "object", "additionalProperties": True},
+                    "comparison_result": {
+                        "type": "object",
+                        "additionalProperties": True,
+                    },
                     "review": {"type": "object", "additionalProperties": True},
                 },
             },
@@ -290,11 +355,23 @@ def _tool_definitions() -> list[dict[str, Any]]:
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["comparison_result", "review", "writes", "consolidation_id"],
+                "required": [
+                    "comparison_result",
+                    "review",
+                    "writes",
+                    "consolidation_id",
+                ],
                 "properties": {
-                    "comparison_result": {"type": "object", "additionalProperties": True},
+                    "comparison_result": {
+                        "type": "object",
+                        "additionalProperties": True,
+                    },
                     "review": {"type": "object", "additionalProperties": True},
-                    "consolidation_id": {"type": "string", "minLength": 1, "maxLength": 255},
+                    "consolidation_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                    },
                     "writes": {
                         "type": "array",
                         "minItems": 1,
@@ -315,16 +392,50 @@ def _tool_definitions() -> list[dict[str, Any]]:
                                 "retention_policy_id",
                             ],
                             "properties": {
-                                "claim_id": {"type": "string", "minLength": 1, "maxLength": 128},
-                                "namespace": {"type": "string", "minLength": 1, "maxLength": 255},
-                                "key": {"type": "string", "minLength": 1, "maxLength": 512},
+                                "claim_id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128,
+                                },
+                                "namespace": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 255,
+                                },
+                                "key": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 512,
+                                },
                                 "value": {},
-                                "observed_at": {"type": "string", "minLength": 1, "maxLength": 255},
-                                "valid_time": {"type": "object", "additionalProperties": True},
-                                "write_policy": {"type": "object", "additionalProperties": True},
-                                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                                "sensitivity": {"type": "string", "minLength": 1, "maxLength": 255},
-                                "retention_policy_id": {"type": "string", "minLength": 1, "maxLength": 255},
+                                "observed_at": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 255,
+                                },
+                                "valid_time": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                },
+                                "write_policy": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                },
+                                "sensitivity": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 255,
+                                },
+                                "retention_policy_id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 255,
+                                },
                             },
                         },
                     },
@@ -344,16 +455,50 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "required": ["content"],
                 "properties": {
                     "content": {"type": "string", "minLength": 1, "maxLength": 65536},
-                    "metadata": {"type": "object", "additionalProperties": True, "default": {}},
-                    "kind": {"type": "string", "minLength": 1, "maxLength": 255, "default": "codex_memory"},
-                    "source_type": {"type": "string", "minLength": 1, "maxLength": 255, "default": "codex.mcp"},
+                    "metadata": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "default": {},
+                    },
+                    "kind": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "default": "codex_memory",
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "default": "codex.mcp",
+                    },
                     "source_uri": {"type": ["string", "null"], "default": None},
                     "external_id": {"type": ["string", "null"], "default": None},
-                    "sensitivity": {"type": "string", "minLength": 1, "maxLength": 255, "default": "internal"},
-                    "retention_policy_id": {"type": "string", "minLength": 1, "maxLength": 255, "default": "standard"},
-                    "namespace": {"type": "string", "minLength": 1, "maxLength": 255, "default": "codex"},
+                    "sensitivity": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "default": "internal",
+                    },
+                    "retention_policy_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "default": "standard",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "default": "codex",
+                    },
                     "key": {"type": "string", "minLength": 1, "maxLength": 512},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 1,
+                    },
                 },
             },
         },
@@ -377,7 +522,9 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
                 raise AdapterError("query must contain at most 4096 UTF-8 bytes")
             normalized_project_ids = _project_ids_argument(arguments)
             page_size = _integer_argument(arguments, "page_size", 10, 1, 50)
-            return _tool_result(client.recall_by_project(query, normalized_project_ids, page_size))
+            return _tool_result(
+                client.recall_by_project(query, normalized_project_ids, page_size)
+            )
 
         if name == "palimpsest_compare_by_project":
             query = _string_argument(arguments, "query", required=True)
@@ -385,7 +532,9 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
                 raise AdapterError("query must contain at most 4096 UTF-8 bytes")
             normalized_project_ids = _project_ids_argument(arguments)
             page_size = _integer_argument(arguments, "page_size", 10, 1, 50)
-            return _tool_result(client.compare_by_project(query, normalized_project_ids, page_size))
+            return _tool_result(
+                client.compare_by_project(query, normalized_project_ids, page_size)
+            )
 
         if name == "palimpsest_validate_project_review":
             comparison_result = arguments.get("comparison_result")
@@ -394,7 +543,9 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
                 raise AdapterError("comparison_result must be an object")
             if not isinstance(review, dict):
                 raise AdapterError("review must be an object")
-            return _tool_result(client.validate_project_review(comparison_result, review))
+            return _tool_result(
+                client.validate_project_review(comparison_result, review)
+            )
 
         if name == "palimpsest_consolidate_project_review":
             comparison_result = arguments.get("comparison_result")
@@ -408,7 +559,9 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
                 raise AdapterError("writes must be a non-empty array")
             if not all(isinstance(write, dict) for write in writes):
                 raise AdapterError("writes must contain objects")
-            consolidation_id = _string_argument(arguments, "consolidation_id", required=True)
+            consolidation_id = _string_argument(
+                arguments, "consolidation_id", required=True
+            )
             return _tool_result(
                 client.consolidate_project_review(
                     comparison_result,
@@ -426,17 +579,27 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
             if not isinstance(metadata, dict):
                 raise AdapterError("metadata must be an object")
             confidence = arguments.get("confidence", 1.0)
-            if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
+            if (
+                isinstance(confidence, bool)
+                or not isinstance(confidence, (int, float))
+                or not 0 <= confidence <= 1
+            ):
                 raise AdapterError("confidence must be a number from 0 to 1")
             key = _string_argument(arguments, "key", default=f"memory-{uuid.uuid4()}")
             result = client.remember(
                 content=content,
                 kind=_string_argument(arguments, "kind", default="codex_memory"),
-                source_type=_string_argument(arguments, "source_type", default="codex.mcp"),
+                source_type=_string_argument(
+                    arguments, "source_type", default="codex.mcp"
+                ),
                 source_uri=arguments.get("source_uri"),
                 external_id=arguments.get("external_id"),
-                sensitivity=_string_argument(arguments, "sensitivity", default="internal"),
-                retention_policy_id=_string_argument(arguments, "retention_policy_id", default="standard"),
+                sensitivity=_string_argument(
+                    arguments, "sensitivity", default="internal"
+                ),
+                retention_policy_id=_string_argument(
+                    arguments, "retention_policy_id", default="standard"
+                ),
                 namespace=_string_argument(arguments, "namespace", default="codex"),
                 key=key,
                 confidence=float(confidence),
@@ -454,7 +617,11 @@ def _response(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
-    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {"code": code, "message": message},
+    }
 
 
 def handle_message(message: Any, client: PalimpsestClient) -> dict[str, Any] | None:
@@ -469,9 +636,13 @@ def handle_message(message: Any, client: PalimpsestClient) -> dict[str, Any] | N
         return None if is_notification else _response(request_id, {})
     if method == "initialize":
         params = message.get("params")
-        requested_protocol = params.get("protocolVersion") if isinstance(params, dict) else None
+        requested_protocol = (
+            params.get("protocolVersion") if isinstance(params, dict) else None
+        )
         selected_protocol = (
-            requested_protocol if requested_protocol in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
+            requested_protocol
+            if requested_protocol in SUPPORTED_PROTOCOL_VERSIONS
+            else PROTOCOL_VERSION
         )
         result = {
             "protocolVersion": selected_protocol,
@@ -484,18 +655,30 @@ def handle_message(message: Any, client: PalimpsestClient) -> dict[str, Any] | N
         }
         return None if is_notification else _response(request_id, result)
     if method == "tools/list":
-        return None if is_notification else _response(request_id, {"tools": _tool_definitions()})
+        return (
+            None
+            if is_notification
+            else _response(request_id, {"tools": _tool_definitions()})
+        )
     if method == "tools/call":
         params = message.get("params")
         if not isinstance(params, dict):
             result = _tool_error("tools/call params must be an object")
         else:
-            result = _call_tool(client, params.get("name", ""), params.get("arguments", {}))
+            result = _call_tool(
+                client, params.get("name", ""), params.get("arguments", {})
+            )
         return None if is_notification else _response(request_id, result)
-    return None if is_notification else _error_response(request_id, -32601, f"method not found: {method}")
+    return (
+        None
+        if is_notification
+        else _error_response(request_id, -32601, f"method not found: {method}")
+    )
 
 
-def serve(input_stream: TextIO, output_stream: TextIO, client: PalimpsestClient) -> None:
+def serve(
+    input_stream: TextIO, output_stream: TextIO, client: PalimpsestClient
+) -> None:
     for line in input_stream:
         if not line.strip():
             continue
@@ -505,7 +688,9 @@ def serve(input_stream: TextIO, output_stream: TextIO, client: PalimpsestClient)
         except json.JSONDecodeError:
             response = _error_response(None, -32700, "invalid JSON")
         if response is not None:
-            output_stream.write(json.dumps(response, separators=(",", ":"), ensure_ascii=False) + "\n")
+            output_stream.write(
+                json.dumps(response, separators=(",", ":"), ensure_ascii=False) + "\n"
+            )
             output_stream.flush()
 
 

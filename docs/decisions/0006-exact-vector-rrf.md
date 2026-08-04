@@ -6,153 +6,37 @@ Date: 2026-07-29
 
 ## Context
 
-ADR-0005 established an authorization-first lexical receipt whose durable
-manifest contains identifiers, fixed-point scores, and digests rather than
-private memory content. Palimpsest now needs semantic candidates without making
-an embedding provider, a raw vector, or an approximate index part of canonical
-memory. The change must preserve existing lexical policies and receipts while
-supporting independently rebuildable projections and deterministic fusion.
+ADR-0005 established an authorization-first lexical receipt whose durable manifest contains identifiers, fixed-point scores, and digests rather than private memory content. Palimpsest now needs semantic candidates without making an embedding provider, a raw vector, or an approximate index part of canonical memory. The change must preserve existing lexical policies and receipts while supporting independently rebuildable projections and deterministic fusion.
 
-Embedding generation is external I/O. Running it inside a canonical-memory or
-receipt transaction would couple provider latency and failure to durable writes,
-and a PostgreSQL serialization retry could repeat billable or nondeterministic
-provider work. A provider response can also be malformed, reordered, stale, or
-bound to a different document revision. These failure modes require a narrow
-validated seam before pgvector receives any value.
+Embedding generation is external I/O. Running it inside a canonical-memory or receipt transaction would couple provider latency and failure to durable writes, and a PostgreSQL serialization retry could repeat billable or nondeterministic provider work. A provider response can also be malformed, reordered, stale, or bound to a different document revision. These failure modes require a narrow validated seam before pgvector receives any value.
 
 ## Decision
 
-The existing pre-release `lexical_retrieval_policies` registry is renamed to
-`retrieval_policies`. Its immutable `retrieval-lexical-v1` row, digest, foreign
-keys, existing receipts, and default behavior are preserved. A policy declares
-either lexical or hybrid mode. A hybrid policy additionally binds immutable
-embedding and document-projection profile identities and digests. Policy JSON
-pins the exact, lexical, vector, and manifest limits; cosine distance; numeric
-quantization and score scales; equal channel weights; reciprocal-rank-fusion
-`k = 60`; rounding; exact precedence; and every channel and final tie break.
-Callers select only a policy ID and cannot supply vectors, providers, models,
-weights, limits, or rank controls.
+The existing pre-release `lexical_retrieval_policies` registry is renamed to `retrieval_policies`. Its immutable `retrieval-lexical-v1` row, digest, foreign keys, existing receipts, and default behavior are preserved. A policy declares either lexical or hybrid mode. A hybrid policy additionally binds immutable embedding and document-projection profile identities and digests. Policy JSON pins the exact, lexical, vector, and manifest limits; cosine distance; numeric quantization and score scales; equal channel weights; reciprocal-rank-fusion `k = 60`; rounding; exact precedence; and every channel and final tie break. Callers select only a policy ID and cannot supply vectors, providers, models, weights, limits, or rank controls.
 
-Embedding profiles pin provider, model, immutable model revision, dimensions,
-unit-L2 normalization and tolerance, cosine distance, float32 values, input
-serialization, query and document task modes, provider-contract schema version,
-profile schema version, JSON document, and digest. `latest`, `current`, and
-`stable` are not valid model revisions. Document-projection profiles bind one
-embedding profile to one lexical source-projection schema and pin the provider
-input serialization, input schema version, JSON document, schema version, and
-digest. Both registries are append-only and readable by runtime roles; only
-migration authority registers profiles or policies.
-Registration is a future versioned schema-owner operation, not runtime DML.
-This ADR does not claim that the development server already owns a separately
-credentialed migrator connection; deployment role separation remains an
-operations and security release-gate outcome.
+Embedding profiles pin provider, model, immutable model revision, dimensions, unit-L2 normalization and tolerance, cosine distance, float32 values, input serialization, query and document task modes, provider-contract schema version, profile schema version, JSON document, and digest. `latest`, `current`, and `stable` are not valid model revisions. Document-projection profiles bind one embedding profile to one lexical source-projection schema and pin the provider input serialization, input schema version, JSON document, schema version, and digest. Both registries are append-only and readable by runtime roles; only migration authority registers profiles or policies. Registration is a future versioned schema-owner operation, not runtime DML. This ADR does not claim that the development server already owns a separately credentialed migrator connection; deployment role separation remains an operations and security release-gate outcome.
 
-No production embedding profile or hybrid policy is seeded by this migration.
-The main server therefore keeps lexical retrieval as its default and reports a
-generic retryable unavailable response to an explicit hybrid request until a
-separate provider, privacy, egress, credential, and operations decision
-registers a production profile. PostgreSQL conformance may register a test-only
-4D deterministic profile and `retrieval-hybrid-v1` policy using migration
-authority. That fixture is mechanics and isolation evidence, not a production
-provider or semantic-quality claim.
+No production embedding profile or hybrid policy is seeded by this migration. The main server therefore keeps lexical retrieval as its default and reports a generic retryable unavailable response to an explicit hybrid request until a separate provider, privacy, egress, credential, and operations decision registers a production profile. PostgreSQL conformance may register a test-only 4D deterministic profile and `retrieval-hybrid-v1` policy using migration authority. That fixture is mechanics and isolation evidence, not a production provider or semantic-quality claim.
 
-Retrieval evaluation may also register the test-only
-`retrieval-exact-vector-v1` ablation policy against that same fixture profile.
-It retains the exact-identity and exact-cosine channels while setting the
-lexical candidate limit to zero. The policy is accepted at the HTTP seam only
-to execute attributable black-box conformance baselines; it is not seeded by
-production migrations and remains unavailable without migration-authority
-fixture registration.
+Retrieval evaluation may also register the test-only `retrieval-exact-vector-v1` ablation policy against that same fixture profile. It retains the exact-identity and exact-cosine channels while setting the lexical candidate limit to zero. The policy is accepted at the HTTP seam only to execute attributable black-box conformance baselines; it is not seeded by production migrations and remains unavailable without migration-authority fixture registration.
 
-Embedding projections are derived rows keyed by fact revision plus immutable
-embedding and document-projection profiles. The typmod-less `vector` column lets
-future profiles use different dimensions without rewriting a global
-`vector(N)` column. Each row duplicates profile dimension, normalization,
-tolerance, and metric under composite foreign keys. A validation trigger rejects
-dimension mismatches, nonfinite or zero norm, out-of-tolerance normalization,
-vector-digest mismatches, invalid state combinations, mutable lineage, and
-malformed digests with generic errors. Ready, pending, and failed rows record
-source-content, source-projection, provider-input, profile, and vector digests;
-queued, started, generated, and status-change times; stable redacted failure
-codes; and a generation schema version. Raw provider responses are never
-persisted.
+Embedding projections are derived rows keyed by fact revision plus immutable embedding and document-projection profiles. The typmod-less `vector` column lets future profiles use different dimensions without rewriting a global `vector(N)` column. Each row duplicates profile dimension, normalization, tolerance, and metric under composite foreign keys. A validation trigger rejects dimension mismatches, nonfinite or zero norm, out-of-tolerance normalization, vector-digest mismatches, invalid state combinations, mutable lineage, and malformed digests with generic errors. Ready, pending, and failed rows record source-content, source-projection, provider-input, profile, and vector digests; queued, started, generated, and status-change times; stable redacted failure codes; and a generation schema version. Raw provider responses are never persisted.
 
-The projection coordinator is separate from canonical writes and receipt
-creation. For one trusted tenant-and-subject scope at a time, it reconciles
-missing rows through
-`enqueue_missing_fact_revision_embedding_projections`, reads a bounded set of
-pending or stale derived rows, constructs
-the pinned document serialization, and atomically claims each row as
-`generating` with a start timestamp and unique attempt ID. Concurrent workers
-use `FOR UPDATE SKIP LOCKED`; a bounded lease returns abandoned claims to
-`pending`, and completion updates only the matching attempt ID. The coordinator
-calls an `EmbeddingProvider` outside every PostgreSQL transaction, validates
-response cardinality, echoed input digests,
-finite float32 values, exact dimension, nonzero norm, and normalization
-tolerance, then conditionally updates only the unchanged profile and lineage
-row. A completed idempotent receipt replay is resolved before provider I/O. New
-receipt execution embeds the query once, then repeatable-read persistence
-rechecks the reservation, policy, profiles, and projection coverage without
-repeating provider I/O solely because of a serialization retry.
+The projection coordinator is separate from canonical writes and receipt creation. For one trusted tenant-and-subject scope at a time, it reconciles missing rows through `enqueue_missing_fact_revision_embedding_projections`, reads a bounded set of pending or stale derived rows, constructs the pinned document serialization, and atomically claims each row as `generating` with a start timestamp and unique attempt ID. Concurrent workers use `FOR UPDATE SKIP LOCKED`; a bounded lease returns abandoned claims to `pending`, and completion updates only the matching attempt ID. The coordinator calls an `EmbeddingProvider` outside every PostgreSQL transaction, validates response cardinality, echoed input digests, finite float32 values, exact dimension, nonzero norm, and normalization tolerance, then conditionally updates only the unchanged profile and lineage row. A completed idempotent receipt replay is resolved before provider I/O. New receipt execution embeds the query once, then repeatable-read persistence rechecks the reservation, policy, profiles, and projection coverage without repeating provider I/O solely because of a serialization retry.
 
-The search-document insert trigger queues every registered compatible profile.
-Profile registration takes a short write-blocking lock on search documents and
-backfills the existing corpus in the same transaction. Writers that overlap the
-registration resume only after the profile is visible, so an older live server
-cannot create an unqueued document between trigger installation and backfill.
-Derived rows may be updated, deleted, and rebuilt under scoped forced RLS;
-canonical revisions, documents, profiles, and policy digests remain their
-authority.
+The search-document insert trigger queues every registered compatible profile. Profile registration takes a short write-blocking lock on search documents and backfills the existing corpus in the same transaction. Writers that overlap the registration resume only after the profile is visible, so an older live server cannot create an unqueued document between trigger installation and backfill. Derived rows may be updated, deleted, and rebuilt under scoped forced RLS; canonical revisions, documents, profiles, and policy digests remain their authority.
 
-`retrieval_ready_fact_revision_embeddings` is the sole internal vector read
-seam. It is a security-barrier, security-invoker view that exposes only ready
-rows whose source revision, lexical projection, dimensions, and lineage still
-match. It does not choose a temporal revision or grant sensitivity access.
-Receipt creation must use one SQL statement that first materializes the
-effective bitemporal revision, then applies trusted tenant, subject, exact
-filters, current sensitivity, lifecycle, and retention authorization, and only
-then joins authorized revision IDs to verified lexical and vector projections.
-Any authorized-effective row with incomplete or stale required projection
-coverage fails generically and retryably before candidates or a receipt are
-persisted. Hybrid policy never falls back to lexical ranking.
+`retrieval_ready_fact_revision_embeddings` is the sole internal vector read seam. It is a security-barrier, security-invoker view that exposes only ready rows whose source revision, lexical projection, dimensions, and lineage still match. It does not choose a temporal revision or grant sensitivity access. Receipt creation must use one SQL statement that first materializes the effective bitemporal revision, then applies trusted tenant, subject, exact filters, current sensitivity, lifecycle, and retention authorization, and only then joins authorized revision IDs to verified lexical and vector projections. Any authorized-effective row with incomplete or stale required projection coverage fails generically and retryably before candidates or a receipt are persisted. Hybrid policy never falls back to lexical ranking.
 
-Exact identity, lexical, and exact-cosine vector channels are ranked
-independently from the same authorized relation. Cosine ordering uses
-`embedding <=> query`, ascending distance, then stable revision ID. Exact tiers
-remain explanatory while a separate sequential exact rank participates in RRF.
-Each channel contributes its policy weight divided by `k + rank`, rounded to
-the policy scale; absent channels contribute zero. Those fixed-scale
-contributions are summed exactly and ranked using
-the policy's exact precedence and complete tie-break sequence. Receipts add the
-query embedding lineage and profile plan. Manifest items add exact/vector
-ranks, distance, similarity, per-channel contributions, fused score, and
-profile, projection, input, and vector digests. Neither surface stores a raw
-query vector, document vector, provider response, or serialized response body.
-Every replay still reauthorizes canonical content through the ADR-0005 manifest
-view.
+Exact identity, lexical, and exact-cosine vector channels are ranked independently from the same authorized relation. Cosine ordering uses `embedding <=> query`, ascending distance, then stable revision ID. Exact tiers remain explanatory while a separate sequential exact rank participates in RRF. Each channel contributes its policy weight divided by `k + rank`, rounded to the policy scale; absent channels contribute zero. Those fixed-scale contributions are summed exactly and ranked using the policy's exact precedence and complete tie-break sequence. Receipts add the query embedding lineage and profile plan. Manifest items add exact/vector ranks, distance, similarity, per-channel contributions, fused score, and profile, projection, input, and vector digests. Neither surface stores a raw query vector, document vector, provider response, or serialized response body. Every replay still reauthorizes canonical content through the ADR-0005 manifest view.
 
-No HNSW, IVFFlat, halfvec, or other approximate-nearest-neighbor index is
-created. Exact pgvector search is the reference behavior. Any future ANN index
-is a separately versioned, rebuildable projection with its own recall, latency,
-isolation, restore, and failure gates; it never replaces or mutates exact truth.
+No HNSW, IVFFlat, halfvec, or other approximate-nearest-neighbor index is created. Exact pgvector search is the reference behavior. Any future ANN index is a separately versioned, rebuildable projection with its own recall, latency, isolation, restore, and failure gates; it never replaces or mutates exact truth.
 
 ## Consequences
 
-- Existing lexical calls and receipts remain valid without provider I/O or
-  embedding lineage.
-- Provider and projection complexity stays behind a small application seam;
-  PostgreSQL remains responsible for exact authorization, lineage enforcement,
-  distance calculation, deterministic fusion persistence, and RLS.
-- Profile registration briefly blocks search-document writes so it can close
-  the live-write/backfill gap. This is acceptable for an infrequent,
-  migration-authority operation and must be measured before production use.
-- Typmod-less vectors trade a table-level compile-time dimension for per-row
-  composite-FK and trigger enforcement, allowing profile evolution without a
-  global vector-column rewrite.
-- A missing, pending, failed, stale, wrong-profile, wrong-dimension, or
-  hash-mismatched required projection produces the same retryable unavailable
-  behavior and persists no partial receipt.
-- The conformance gate must prove deterministic 4D RRF order, forbidden-trap
-  isolation, replay and rebuild determinism, generic stale/unavailable/dimension
-  failures, NOBYPASSRLS scope isolation, raw-vector redaction, and zero ANN
-  indexes on PostgreSQL 18 with pgvector 0.8.5.
+- Existing lexical calls and receipts remain valid without provider I/O or embedding lineage.
+- Provider and projection complexity stays behind a small application seam; PostgreSQL remains responsible for exact authorization, lineage enforcement, distance calculation, deterministic fusion persistence, and RLS.
+- Profile registration briefly blocks search-document writes so it can close the live-write/backfill gap. This is acceptable for an infrequent, migration-authority operation and must be measured before production use.
+- Typmod-less vectors trade a table-level compile-time dimension for per-row composite-FK and trigger enforcement, allowing profile evolution without a global vector-column rewrite.
+- A missing, pending, failed, stale, wrong-profile, wrong-dimension, or hash-mismatched required projection produces the same retryable unavailable behavior and persists no partial receipt.
+- The conformance gate must prove deterministic 4D RRF order, forbidden-trap isolation, replay and rebuild determinism, generic stale/unavailable/dimension failures, NOBYPASSRLS scope isolation, raw-vector redaction, and zero ANN indexes on PostgreSQL 18 with pgvector 0.8.5.

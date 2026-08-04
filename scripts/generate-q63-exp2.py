@@ -76,9 +76,7 @@ def generate(mpfr: ctypes.CDLL) -> list[int]:
     try:
         constants = []
         for bit in range(1, Q63_BITS + 1):
-            mpfr.mpfr_set_si(
-                ctypes.byref(exponent), -1, ROUND_TO_NEAREST_TIES_EVEN
-            )
+            mpfr.mpfr_set_si(ctypes.byref(exponent), -1, ROUND_TO_NEAREST_TIES_EVEN)
             mpfr.mpfr_div_2ui(
                 ctypes.byref(exponent),
                 ctypes.byref(exponent),
@@ -106,7 +104,10 @@ def generate(mpfr: ctypes.CDLL) -> list[int]:
 
 
 def canonical_payload(constants: list[int]) -> bytes:
-    rows = ["q63-exp2-v1", *(f"{index}={value}" for index, value in enumerate(constants, 1))]
+    rows = [
+        "q63-exp2-v1",
+        *(f"{index}={value}" for index, value in enumerate(constants, 1)),
+    ]
     return ("\n".join(rows) + "\n").encode("ascii")
 
 

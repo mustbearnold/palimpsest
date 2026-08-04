@@ -44,12 +44,12 @@ paths:
       description: Returns success while the HTTP process is alive. It requires no authentication and contains no memory data.
       security: []
       responses:
-        '200':
+        "200":
           description: Process is alive
           headers:
             Cache-Control:
-              $ref: '#/components/headers/NoStore'
-        '404':
+              $ref: "#/components/headers/NoStore"
+        "404":
           description: The requested probe path was not found
 
   /readyz:
@@ -60,15 +60,15 @@ paths:
       description: Returns success only when the service can query the exact successful SQLx migration set shipped by this binary. It requires no authentication and contains no memory data.
       security: []
       responses:
-        '200':
+        "200":
           description: Service is ready to serve the versioned API
           headers:
             Cache-Control:
-              $ref: '#/components/headers/NoStore'
-        '404':
+              $ref: "#/components/headers/NoStore"
+        "404":
           description: The requested probe path was not found
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/episodes:
     post:
@@ -81,51 +81,51 @@ paths:
         retry with the same idempotency key and fingerprint replays the original
         `201` response. The service exposes no episode update operation.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AppendEpisodeRequest'
+              $ref: "#/components/schemas/AppendEpisodeRequest"
       responses:
-        '201':
+        "201":
           description: Episode appended, or original successful response replayed
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Episode'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/Episode"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/episodes/{episode_id}:
     get:
@@ -137,33 +137,33 @@ paths:
         tenant and subject scope. An absent or hidden episode returns the same
         redacted `404` response.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/EpisodeId'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/EpisodeId"
       responses:
-        '200':
+        "200":
           description: Authorized immutable episode
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Episode'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/Episode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint:
     get:
@@ -179,34 +179,34 @@ paths:
         This operation exposes only the logical checkpoint head. `/v1` does not
         expose revision history, deltas, workflow execution, or provider calls.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/AgentId'
-        - $ref: '#/components/parameters/ThreadId'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/AgentId"
+        - $ref: "#/components/parameters/ThreadId"
       responses:
-        '200':
+        "200":
           description: Current authorized checkpoint head
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Checkpoint'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/Checkpoint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     put:
       tags: [Checkpoints]
       operationId: putCheckpoint
@@ -233,76 +233,76 @@ paths:
         original precondition is now stale. A different request with the same
         idempotency key never mutates state.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/AgentId'
-        - $ref: '#/components/parameters/ThreadId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/CheckpointIfMatch'
-        - $ref: '#/components/parameters/CheckpointIfNoneMatch'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/AgentId"
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CheckpointIfMatch"
+        - $ref: "#/components/parameters/CheckpointIfNoneMatch"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PutCheckpointRequest'
+              $ref: "#/components/schemas/PutCheckpointRequest"
       responses:
-        '200':
+        "200":
           description: Existing checkpoint advanced, or original advance replayed
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Checkpoint'
-        '201':
+                $ref: "#/components/schemas/Checkpoint"
+        "201":
           description: Initial checkpoint created, or original creation replayed
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Checkpoint'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/CheckpointConflict'
-        '412':
-          $ref: '#/components/responses/CheckpointPreconditionFailed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '428':
-          $ref: '#/components/responses/CheckpointPreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/Checkpoint"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/CheckpointConflict"
+        "412":
+          $ref: "#/components/responses/CheckpointPreconditionFailed"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "428":
+          $ref: "#/components/responses/CheckpointPreconditionRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/facts:
     post:
@@ -315,51 +315,51 @@ paths:
         `fact-key-conflict`; callers must fetch the existing fact and explicitly
         supersede its head instead.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateFactRequest'
+              $ref: "#/components/schemas/CreateFactRequest"
       responses:
-        '201':
+        "201":
           description: Logical fact and first revision created
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FactView'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/FactView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/facts/{fact_id}:
     get:
@@ -373,33 +373,33 @@ paths:
         revision returns `200` with `revision: null`; an absent or hidden lineage
         returns `404`.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/FactId'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/FactId"
       responses:
-        '200':
+        "200":
           description: Current fact view, which may contain no applicable revision
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FactView'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/FactView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     put:
       tags: [Facts]
       operationId: supersedeFact
@@ -415,55 +415,55 @@ paths:
         is evaluated, so it replays the original success rather than returning
         `412`.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/FactId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/IfMatch'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/FactId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SupersedeFactRequest'
+              $ref: "#/components/schemas/SupersedeFactRequest"
       responses:
-        '200':
+        "200":
           description: Superseding revision appended, or original success replayed
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FactView'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '412':
-          $ref: '#/components/responses/PreconditionFailed'
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '428':
-          $ref: '#/components/responses/PreconditionRequired'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/FactView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/facts/{fact_id}/as-of:
     get:
@@ -477,37 +477,37 @@ paths:
         hides an ancestor only where their valid intervals overlap. A known
         lineage with no applicable revision returns `revision: null`.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/FactId'
-        - $ref: '#/components/parameters/ValidAt'
-        - $ref: '#/components/parameters/RecordedAt'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/FactId"
+        - $ref: "#/components/parameters/ValidAt"
+        - $ref: "#/components/parameters/RecordedAt"
       responses:
-        '200':
+        "200":
           description: Fact view at the requested temporal coordinates
           headers:
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FactView'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/FactView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/retrievals:
     post:
@@ -547,45 +547,45 @@ paths:
         digest. It does not store query text, memory values,
         credentials, or other raw private content.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateRetrievalRequest'
+              $ref: "#/components/schemas/CreateRetrievalRequest"
       responses:
-        '201':
+        "201":
           description: |
             Retrieval receipt created, or the authorized view of the original
             completed receipt replayed
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RetrievalReceipt'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '413':
-          $ref: '#/components/responses/RetrievalPayloadTooLarge'
-        '422':
-          $ref: '#/components/responses/RetrievalUnprocessableEntity'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/RetrievalReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/RetrievalPayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/RetrievalUnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/retrievals/{retrieval_id}:
     get:
@@ -605,32 +605,32 @@ paths:
         Invalid, cross-receipt, and cross-scope cursors return the same redacted
         `404` response as an absent or hidden receipt.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/RetrievalId'
-        - $ref: '#/components/parameters/RetrievalCursor'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/RetrievalId"
+        - $ref: "#/components/parameters/RetrievalCursor"
       responses:
-        '200':
+        "200":
           description: Currently authorized page of the durable retrieval receipt
           headers:
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RetrievalReceipt'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/RetrievalUnprocessableEntity'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/RetrievalReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/RetrievalUnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/exports:
     post:
@@ -643,39 +643,39 @@ paths:
         package is materialized asynchronously and is not a legal-rights
         determination.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       responses:
-        '202':
+        "202":
           description: Export operation committed and queued
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExportOperation'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/ExportOperation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/exports/{export_id}:
     get:
@@ -683,9 +683,9 @@ paths:
       operationId: getExport
       summary: Poll an authorized export operation
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/ExportId'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/ExportId"
         - name: If-None-Match
           in: header
           required: false
@@ -693,41 +693,41 @@ paths:
             type: string
           description: Strong export status ETag for conditional polling
       responses:
-        '200':
+        "200":
           description: Authorized export status
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExportOperation'
-        '303':
+                $ref: "#/components/schemas/ExportOperation"
+        "303":
           description: Export is ready; follow Location to the content resource
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
-        '304':
+              $ref: "#/components/headers/PrivateNoStore"
+        "304":
           description: Authorized export status has not changed
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+              $ref: "#/components/headers/PrivateNoStore"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/exports/{export_id}/content:
     get:
@@ -735,39 +735,39 @@ paths:
       operationId: downloadExport
       summary: Download an authorized ready export package
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/ExportId'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/ExportId"
       responses:
-        '200':
+        "200":
           description: Deterministic canonical-history ZIP package
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/zip:
               schema:
                 type: string
                 format: binary
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '410':
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
           description: Authorized export package expired or was revoked
           headers:
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/Problem'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/Problem"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/deletions:
     post:
@@ -781,43 +781,43 @@ paths:
         records a content-free tombstone. The request cannot widen authority or
         assert a legal profile.
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateDeletionRequest'
+              $ref: "#/components/schemas/CreateDeletionRequest"
       responses:
-        '202':
+        "202":
           description: Deletion operation committed and queued
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
-              $ref: '#/components/headers/IdempotencyReplayed'
+              $ref: "#/components/headers/IdempotencyReplayed"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeletionOperationAccepted'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+                $ref: "#/components/schemas/DeletionOperationAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/tenants/{tenant_id}/subjects/{subject_id}/deletions/{operation_id}:
     get:
@@ -825,8 +825,8 @@ paths:
       operationId: getDeletion
       summary: Read an authorized deletion operation
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/SubjectId'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
         - name: operation_id
           in: path
           required: true
@@ -840,32 +840,32 @@ paths:
             type: string
           description: Strong deletion status ETag for conditional polling
       responses:
-        '200':
+        "200":
           description: Authorized deletion status or content-free tombstone
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
+              $ref: "#/components/headers/PrivateNoStore"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeletionOperation'
-        '304':
+                $ref: "#/components/schemas/DeletionOperation"
+        "304":
           description: Authorized deletion status has not changed
           headers:
             ETag:
-              $ref: '#/components/headers/ETag'
+              $ref: "#/components/headers/ETag"
             Cache-Control:
-              $ref: '#/components/headers/PrivateNoStore'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+              $ref: "#/components/headers/PrivateNoStore"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
 components:
   securitySchemes:
@@ -1001,14 +1001,14 @@ components:
         operation's required exclusive-header choice.
       schema:
         type: string
-        const: '*'
+        const: "*"
     ValidAt:
       name: valid_at
       in: query
       required: true
       description: Source-domain instant whose applicable fact value is requested
       schema:
-        $ref: '#/components/schemas/UtcDateTime'
+        $ref: "#/components/schemas/UtcDateTime"
     RecordedAt:
       name: recorded_at
       in: query
@@ -1017,7 +1017,7 @@ components:
         Knowledge cutoff. A value later than the server request snapshot returns
         the stable `future-recorded-time` problem.
       schema:
-        $ref: '#/components/schemas/UtcDateTime'
+        $ref: "#/components/schemas/UtcDateTime"
 
   headers:
     Location:
@@ -1083,10 +1083,10 @@ components:
           maxLength: 255
           description: Open namespaced source classification; not a closed enum
         source_uri:
-          type: [string, 'null']
+          type: [string, "null"]
           format: uri-reference
         external_id:
-          type: [string, 'null']
+          type: [string, "null"]
           maxLength: 1024
 
     PutCheckpointRequest:
@@ -1113,7 +1113,7 @@ components:
           oneOf:
             - type: string
               format: uuid
-            - type: 'null'
+            - type: "null"
         state:
           description: |
             Complete resumable thread state, including JSON `null`. This is not
@@ -1132,15 +1132,15 @@ components:
             successful result. Palimpsest never performs the provider call.
           items:
             oneOf:
-              - $ref: '#/components/schemas/PrepareEffectTransition'
-              - $ref: '#/components/schemas/CompleteEffectTransition'
+              - $ref: "#/components/schemas/PrepareEffectTransition"
+              - $ref: "#/components/schemas/CompleteEffectTransition"
             discriminator:
               propertyName: type
               mapping:
-                prepare: '#/components/schemas/PrepareEffectTransition'
-                complete: '#/components/schemas/CompleteEffectTransition'
+                prepare: "#/components/schemas/PrepareEffectTransition"
+                complete: "#/components/schemas/CompleteEffectTransition"
         provenance:
-          $ref: '#/components/schemas/Provenance'
+          $ref: "#/components/schemas/Provenance"
         sensitivity:
           type: string
           minLength: 1
@@ -1202,7 +1202,7 @@ components:
           format: uuid
           description: Existing prepared effect in this exact checkpoint scope
         receipt:
-          $ref: '#/components/schemas/EffectReceipt'
+          $ref: "#/components/schemas/EffectReceipt"
 
     EffectReceipt:
       type: object
@@ -1212,14 +1212,14 @@ components:
         - outcome_sha256
       properties:
         observed_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         external_reference:
-          type: [string, 'null']
+          type: [string, "null"]
           maxLength: 1024
           description: Provider reference used for reconciliation when available
         outcome_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
 
     CheckpointEffect:
       type: object
@@ -1254,15 +1254,15 @@ components:
           type: string
           enum: [prepared, completed]
         prepared_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         completed_at:
           oneOf:
-            - $ref: '#/components/schemas/UtcDateTime'
-            - type: 'null'
+            - $ref: "#/components/schemas/UtcDateTime"
+            - type: "null"
         receipt:
           oneOf:
-            - $ref: '#/components/schemas/EffectReceipt'
-            - type: 'null'
+            - $ref: "#/components/schemas/EffectReceipt"
+            - type: "null"
 
     Checkpoint:
       type: object
@@ -1322,9 +1322,9 @@ components:
           oneOf:
             - type: string
               format: uuid
-            - type: 'null'
+            - type: "null"
         recorded_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         state:
           description: Complete resumable state for the current revision
         state_schema_version:
@@ -1332,16 +1332,16 @@ components:
           minimum: 1
         state_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
         effects:
           type: array
           description: |
             Cumulative prepared and completed effects for the live checkpoint
             scope, ordered by preparation time and effect identifier.
           items:
-            $ref: '#/components/schemas/CheckpointEffect'
+            $ref: "#/components/schemas/CheckpointEffect"
         provenance:
-          $ref: '#/components/schemas/Provenance'
+          $ref: "#/components/schemas/Provenance"
         sensitivity:
           type: string
           minLength: 1
@@ -1349,7 +1349,7 @@ components:
           type: string
           minLength: 1
         expires_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
           description: Server-computed expiry; callers cannot supply or extend it
         writer_principal_id:
           type: string
@@ -1380,9 +1380,9 @@ components:
           maxLength: 255
           description: Open namespaced episode kind; not a closed enum
         observed_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         provenance:
-          $ref: '#/components/schemas/Provenance'
+          $ref: "#/components/schemas/Provenance"
         sensitivity:
           type: string
           minLength: 1
@@ -1433,11 +1433,11 @@ components:
           type: string
           minLength: 1
         observed_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         recorded_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         provenance:
-          $ref: '#/components/schemas/Provenance'
+          $ref: "#/components/schemas/Provenance"
         sensitivity:
           type: string
           minLength: 1
@@ -1455,7 +1455,7 @@ components:
           minimum: 1
         payload_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
 
     ValidTime:
       type: object
@@ -1464,9 +1464,9 @@ components:
         - from
       properties:
         from:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         until:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
       description: |
         Half-open interval `[from, until)`. Omitted `until` means unbounded.
         When present, `until` must be strictly later than `from`.
@@ -1515,22 +1515,22 @@ components:
           type: string
           const: as_of
         valid_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         recorded_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
       description: |
         Select revisions effective at `valid_at` and already known at
         `recorded_at`. A future recorded-time coordinate is rejected.
 
     RetrievalPerspective:
       oneOf:
-        - $ref: '#/components/schemas/CurrentRetrievalPerspective'
-        - $ref: '#/components/schemas/AsOfRetrievalPerspective'
+        - $ref: "#/components/schemas/CurrentRetrievalPerspective"
+        - $ref: "#/components/schemas/AsOfRetrievalPerspective"
       discriminator:
         propertyName: kind
         mapping:
-          current: '#/components/schemas/CurrentRetrievalPerspective'
-          as_of: '#/components/schemas/AsOfRetrievalPerspective'
+          current: "#/components/schemas/CurrentRetrievalPerspective"
+          as_of: "#/components/schemas/AsOfRetrievalPerspective"
 
     RetrievalFilters:
       type: object
@@ -1597,7 +1597,7 @@ components:
             models, weights, limits, or ranking controls. Only the query digest,
             never the raw query or vector, is retained in the durable receipt.
         perspective:
-          $ref: '#/components/schemas/RetrievalPerspective'
+          $ref: "#/components/schemas/RetrievalPerspective"
         page_size:
           type: integer
           minimum: 1
@@ -1619,7 +1619,7 @@ components:
             trusted recency, confidence, and importance factors. Callers cannot
             supply factor metadata or ranking controls.
         filters:
-          $ref: '#/components/schemas/RetrievalFilters'
+          $ref: "#/components/schemas/RetrievalFilters"
       description: |
         The compact serialized JSON body is bounded independently of schema
         limits. Requests over that service limit receive `413`.
@@ -1647,7 +1647,7 @@ components:
           maxLength: 255
         digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: SHA-256 digest of the immutable retrieval policy
 
     RetrievalScore:
@@ -1706,19 +1706,19 @@ components:
           description: Immutable embedding-profile version; never a floating alias
         profile_digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: SHA-256 digest of the complete immutable embedding profile
         projection_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: SHA-256 digest binding the rebuildable projection contract
         input_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: SHA-256 digest of the projected canonical document input
         vector_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: |
             SHA-256 digest of the validated vector representation. The raw
             vector is never present in a receipt, item, error, or log payload.
@@ -1735,7 +1735,7 @@ components:
           const: authorized
         scope_digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: |
             Digest of the trusted principal, tenant, subject, and current
             sensitivity allowlist; it contains no raw grants or hidden candidate
@@ -1764,7 +1764,7 @@ components:
           maxLength: 255
         profile_digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
         projection_profile_id:
           type: string
           minLength: 1
@@ -1775,14 +1775,14 @@ components:
           maxLength: 255
         projection_profile_digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
         input_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: SHA-256 digest of the exact query input sent to the provider
         vector_sha256:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
           description: |
             SHA-256 digest of the validated query vector representation. The
             raw query vector is never stored in or returned with the receipt.
@@ -1827,7 +1827,7 @@ components:
             Canonical value rehydrated only after current authorization. It is
             not stored in the receipt manifest.
           not:
-            type: 'null'
+            type: "null"
         evidence_episode_ids:
           type: array
           minItems: 1
@@ -1847,9 +1847,9 @@ components:
             components affect only revisions that already passed bitemporal and
             authorization eligibility.
           items:
-            $ref: '#/components/schemas/RetrievalScore'
+            $ref: "#/components/schemas/RetrievalScore"
         embedding:
-          $ref: '#/components/schemas/RetrievalEmbeddingLineage'
+          $ref: "#/components/schemas/RetrievalEmbeddingLineage"
           description: |
             Optional rebuildable embedding lineage. It is present for items
             ranked by an embedding-backed policy and omitted for lexical-only
@@ -1889,21 +1889,21 @@ components:
             `abstained` means no currently authorized item satisfied the query
             and policy; `items` is then empty.
         evaluated_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         valid_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         recorded_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         policy:
-          $ref: '#/components/schemas/RetrievalPolicy'
+          $ref: "#/components/schemas/RetrievalPolicy"
         authorization:
-          $ref: '#/components/schemas/RetrievalAuthorizationReceipt'
+          $ref: "#/components/schemas/RetrievalAuthorizationReceipt"
         document_schema_version:
           type: integer
           minimum: 1
           description: Schema version of the rebuildable search projection
         query_embedding:
-          $ref: '#/components/schemas/RetrievalQueryEmbeddingLineage'
+          $ref: "#/components/schemas/RetrievalQueryEmbeddingLineage"
           description: |
             Optional immutable query embedding and profile-plan lineage. It is
             present for hybrid receipts and omitted for lexical-only receipts.
@@ -1911,7 +1911,7 @@ components:
           type: array
           maxItems: 50
           items:
-            $ref: '#/components/schemas/RetrievalItem'
+            $ref: "#/components/schemas/RetrievalItem"
         next_cursor:
           description: |
             Opaque next-page cursor, or `null` when the currently authorized
@@ -1920,7 +1920,7 @@ components:
             - type: string
               minLength: 1
               maxLength: 2048
-            - type: 'null'
+            - type: "null"
 
     CreateFactRequest:
       type: object
@@ -1954,11 +1954,11 @@ components:
         value:
           description: Any non-null JSON fact value
           not:
-            type: 'null'
+            type: "null"
         observed_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         valid_time:
-          $ref: '#/components/schemas/ValidTime'
+          $ref: "#/components/schemas/ValidTime"
         evidence_episode_ids:
           type: array
           minItems: 1
@@ -1967,7 +1967,7 @@ components:
             type: string
             format: uuid
         write_policy:
-          $ref: '#/components/schemas/WritePolicy'
+          $ref: "#/components/schemas/WritePolicy"
         confidence:
           type: number
           minimum: 0
@@ -2002,11 +2002,11 @@ components:
         value:
           description: Any non-null JSON fact value
           not:
-            type: 'null'
+            type: "null"
         observed_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         valid_time:
-          $ref: '#/components/schemas/ValidTime'
+          $ref: "#/components/schemas/ValidTime"
         evidence_episode_ids:
           type: array
           minItems: 1
@@ -2015,7 +2015,7 @@ components:
             type: string
             format: uuid
         write_policy:
-          $ref: '#/components/schemas/WritePolicy'
+          $ref: "#/components/schemas/WritePolicy"
         confidence:
           type: number
           minimum: 0
@@ -2084,13 +2084,13 @@ components:
         value:
           description: Canonical non-null JSON fact value
           not:
-            type: 'null'
+            type: "null"
         observed_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         recorded_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         valid_time:
-          $ref: '#/components/schemas/ValidTime'
+          $ref: "#/components/schemas/ValidTime"
         evidence_episode_ids:
           type: array
           minItems: 1
@@ -2099,7 +2099,7 @@ components:
             type: string
             format: uuid
         write_policy:
-          $ref: '#/components/schemas/WritePolicy'
+          $ref: "#/components/schemas/WritePolicy"
         confidence:
           type: number
           minimum: 0
@@ -2161,15 +2161,15 @@ components:
           format: uuid
           description: Latest accepted lineage head at the recorded-time coordinate
         evaluated_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         valid_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         recorded_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         revision:
           oneOf:
-            - $ref: '#/components/schemas/FactRevision'
-            - type: 'null'
+            - $ref: "#/components/schemas/FactRevision"
+            - type: "null"
 
     CreateDeletionRequest:
       type: object
@@ -2196,7 +2196,7 @@ components:
           enum: [canonical, projections, caches, exports, artifacts]
         target_key_digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
         capability:
           type: string
           enum: [configured, not_configured]
@@ -2212,26 +2212,26 @@ components:
         lease_id:
           type:
             - string
-            - 'null'
+            - "null"
           format: uuid
         lease_expires_at:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
         effect_receipt_sha256:
           type:
             - string
-            - 'null'
-          pattern: '^[0-9a-f]{64}$'
+            - "null"
+          pattern: "^[0-9a-f]{64}$"
         sanitized_error:
           type:
             - string
-            - 'null'
+            - "null"
 
     DeletionOperationAccepted:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationAcceptedCommon'
+        - $ref: "#/components/schemas/DeletionOperationAcceptedCommon"
         - type: object
           required: [lifecycle_state]
           properties:
@@ -2252,35 +2252,35 @@ components:
         targets:
           type: array
           items:
-            $ref: '#/components/schemas/DeletionTarget'
+            $ref: "#/components/schemas/DeletionTarget"
 
     DeletionOperation:
       oneOf:
-        - $ref: '#/components/schemas/DeletionDrainingOperation'
-        - $ref: '#/components/schemas/DeletionFencedOperation'
-        - $ref: '#/components/schemas/DeletionPurgingOperation'
-        - $ref: '#/components/schemas/DeletionRetryWaitOperation'
-        - $ref: '#/components/schemas/DeletionVerifyingOperation'
-        - $ref: '#/components/schemas/DeletionCompletedOperation'
-        - $ref: '#/components/schemas/DeletionFailedOperation'
-        - $ref: '#/components/schemas/DeletionExpiredOperation'
+        - $ref: "#/components/schemas/DeletionDrainingOperation"
+        - $ref: "#/components/schemas/DeletionFencedOperation"
+        - $ref: "#/components/schemas/DeletionPurgingOperation"
+        - $ref: "#/components/schemas/DeletionRetryWaitOperation"
+        - $ref: "#/components/schemas/DeletionVerifyingOperation"
+        - $ref: "#/components/schemas/DeletionCompletedOperation"
+        - $ref: "#/components/schemas/DeletionFailedOperation"
+        - $ref: "#/components/schemas/DeletionExpiredOperation"
       unevaluatedProperties: false
       discriminator:
         propertyName: lifecycle_state
         mapping:
-          draining: '#/components/schemas/DeletionDrainingOperation'
-          fenced: '#/components/schemas/DeletionFencedOperation'
-          purging: '#/components/schemas/DeletionPurgingOperation'
-          retry_wait: '#/components/schemas/DeletionRetryWaitOperation'
-          verifying: '#/components/schemas/DeletionVerifyingOperation'
-          completed: '#/components/schemas/DeletionCompletedOperation'
-          failed: '#/components/schemas/DeletionFailedOperation'
-          expired: '#/components/schemas/DeletionExpiredOperation'
+          draining: "#/components/schemas/DeletionDrainingOperation"
+          fenced: "#/components/schemas/DeletionFencedOperation"
+          purging: "#/components/schemas/DeletionPurgingOperation"
+          retry_wait: "#/components/schemas/DeletionRetryWaitOperation"
+          verifying: "#/components/schemas/DeletionVerifyingOperation"
+          completed: "#/components/schemas/DeletionCompletedOperation"
+          failed: "#/components/schemas/DeletionFailedOperation"
+          expired: "#/components/schemas/DeletionExpiredOperation"
 
     DeletionOutcome:
       oneOf:
-        - $ref: '#/components/schemas/DeletionOutcomeNotConfigured'
-        - $ref: '#/components/schemas/DeletionOutcomeIsolatedUntilExpiry'
+        - $ref: "#/components/schemas/DeletionOutcomeNotConfigured"
+        - $ref: "#/components/schemas/DeletionOutcomeIsolatedUntilExpiry"
 
     DeletionOutcomeNotConfigured:
       type: object
@@ -2310,8 +2310,8 @@ components:
         verification_digest:
           type:
             - string
-            - 'null'
-          pattern: '^[0-9a-f]{64}$'
+            - "null"
+          pattern: "^[0-9a-f]{64}$"
 
     DeletionOutcomeIsolatedUntilExpiry:
       type: object
@@ -2343,11 +2343,12 @@ components:
           minLength: 1
         verification_digest:
           type: string
-          pattern: '^[0-9a-f]{64}$'
+          pattern: "^[0-9a-f]{64}$"
 
     DeletionOperationStatusCommon:
       type: object
-      required: [operation_id, state_version, retry_count, targets, outcome, updated_at]
+      required:
+        [operation_id, state_version, retry_count, targets, outcome, updated_at]
       properties:
         operation_id:
           type: string
@@ -2361,17 +2362,17 @@ components:
         targets:
           type: array
           items:
-            $ref: '#/components/schemas/DeletionTarget'
+            $ref: "#/components/schemas/DeletionTarget"
         outcome:
           oneOf:
-            - $ref: '#/components/schemas/DeletionOutcome'
-            - type: 'null'
+            - $ref: "#/components/schemas/DeletionOutcome"
+            - type: "null"
         updated_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
 
     DeletionDrainingOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
@@ -2382,7 +2383,7 @@ components:
 
     DeletionFencedOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
@@ -2393,7 +2394,7 @@ components:
 
     DeletionPurgingOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
@@ -2404,7 +2405,7 @@ components:
 
     DeletionRetryWaitOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
@@ -2415,7 +2416,7 @@ components:
 
     DeletionVerifyingOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
@@ -2426,19 +2427,19 @@ components:
 
     DeletionCompletedOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: completed }
             failure_reason: { const: null }
             outcome:
-              $ref: '#/components/schemas/DeletionOutcome'
+              $ref: "#/components/schemas/DeletionOutcome"
       unevaluatedProperties: false
 
     DeletionFailedOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
@@ -2447,19 +2448,19 @@ components:
               type: string
               minLength: 1
             outcome:
-              $ref: '#/components/schemas/DeletionOutcome'
+              $ref: "#/components/schemas/DeletionOutcome"
       unevaluatedProperties: false
 
     DeletionExpiredOperation:
       allOf:
-        - $ref: '#/components/schemas/DeletionOperationStatusCommon'
+        - $ref: "#/components/schemas/DeletionOperationStatusCommon"
         - type: object
           required: [lifecycle_state, failure_reason, outcome]
           properties:
             lifecycle_state: { const: expired }
             failure_reason: { const: null }
             outcome:
-              $ref: '#/components/schemas/DeletionOutcome'
+              $ref: "#/components/schemas/DeletionOutcome"
       unevaluatedProperties: false
 
     ExportOperationCommon:
@@ -2483,15 +2484,16 @@ components:
           minimum: 1
           description: Monotonic status representation version used for ETags
         created_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
         expires_at:
-          $ref: '#/components/schemas/UtcDateTime'
+          $ref: "#/components/schemas/UtcDateTime"
 
     ExportQueuedOperation:
       allOf:
-        - $ref: '#/components/schemas/ExportOperationCommon'
+        - $ref: "#/components/schemas/ExportOperationCommon"
         - type: object
-          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          required:
+            [state, content_sha256, size_bytes, record_count, failure_code]
           properties:
             state:
               const: queued
@@ -2507,9 +2509,10 @@ components:
 
     ExportMaterializingOperation:
       allOf:
-        - $ref: '#/components/schemas/ExportOperationCommon'
+        - $ref: "#/components/schemas/ExportOperationCommon"
         - type: object
-          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          required:
+            [state, content_sha256, size_bytes, record_count, failure_code]
           properties:
             state:
               const: materializing
@@ -2525,15 +2528,16 @@ components:
 
     ExportReadyOperation:
       allOf:
-        - $ref: '#/components/schemas/ExportOperationCommon'
+        - $ref: "#/components/schemas/ExportOperationCommon"
         - type: object
-          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          required:
+            [state, content_sha256, size_bytes, record_count, failure_code]
           properties:
             state:
               const: ready
             content_sha256:
               type: string
-              pattern: '^[0-9a-f]{64}$'
+              pattern: "^[0-9a-f]{64}$"
             size_bytes:
               type: integer
               minimum: 0
@@ -2546,9 +2550,10 @@ components:
 
     ExportFailedOperation:
       allOf:
-        - $ref: '#/components/schemas/ExportOperationCommon'
+        - $ref: "#/components/schemas/ExportOperationCommon"
         - type: object
-          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          required:
+            [state, content_sha256, size_bytes, record_count, failure_code]
           properties:
             state:
               const: failed
@@ -2560,14 +2565,15 @@ components:
               const: null
             failure_code:
               type: string
-              pattern: '^[a-z][a-z0-9_]{0,63}$'
+              pattern: "^[a-z][a-z0-9_]{0,63}$"
       unevaluatedProperties: false
 
     ExportRevokedOperation:
       allOf:
-        - $ref: '#/components/schemas/ExportOperationCommon'
+        - $ref: "#/components/schemas/ExportOperationCommon"
         - type: object
-          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          required:
+            [state, content_sha256, size_bytes, record_count, failure_code]
           properties:
             state:
               const: revoked
@@ -2583,9 +2589,10 @@ components:
 
     ExportExpiredOperation:
       allOf:
-        - $ref: '#/components/schemas/ExportOperationCommon'
+        - $ref: "#/components/schemas/ExportOperationCommon"
         - type: object
-          required: [state, content_sha256, size_bytes, record_count, failure_code]
+          required:
+            [state, content_sha256, size_bytes, record_count, failure_code]
           properties:
             state:
               const: expired
@@ -2601,22 +2608,22 @@ components:
 
     ExportOperation:
       oneOf:
-        - $ref: '#/components/schemas/ExportQueuedOperation'
-        - $ref: '#/components/schemas/ExportMaterializingOperation'
-        - $ref: '#/components/schemas/ExportReadyOperation'
-        - $ref: '#/components/schemas/ExportFailedOperation'
-        - $ref: '#/components/schemas/ExportRevokedOperation'
-        - $ref: '#/components/schemas/ExportExpiredOperation'
+        - $ref: "#/components/schemas/ExportQueuedOperation"
+        - $ref: "#/components/schemas/ExportMaterializingOperation"
+        - $ref: "#/components/schemas/ExportReadyOperation"
+        - $ref: "#/components/schemas/ExportFailedOperation"
+        - $ref: "#/components/schemas/ExportRevokedOperation"
+        - $ref: "#/components/schemas/ExportExpiredOperation"
       unevaluatedProperties: false
       discriminator:
         propertyName: state
         mapping:
-          queued: '#/components/schemas/ExportQueuedOperation'
-          materializing: '#/components/schemas/ExportMaterializingOperation'
-          ready: '#/components/schemas/ExportReadyOperation'
-          failed: '#/components/schemas/ExportFailedOperation'
-          revoked: '#/components/schemas/ExportRevokedOperation'
-          expired: '#/components/schemas/ExportExpiredOperation'
+          queued: "#/components/schemas/ExportQueuedOperation"
+          materializing: "#/components/schemas/ExportMaterializingOperation"
+          ready: "#/components/schemas/ExportReadyOperation"
+          failed: "#/components/schemas/ExportFailedOperation"
+          revoked: "#/components/schemas/ExportRevokedOperation"
+          expired: "#/components/schemas/ExportExpiredOperation"
 
     ValidationError:
       type: object
@@ -2687,7 +2694,7 @@ components:
         errors:
           type: array
           items:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ValidationError"
 
   responses:
     BadRequest:
@@ -2696,42 +2703,42 @@ components:
         `invalid-request`, `idempotency-key-required`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     Unauthorized:
       description: Missing, invalid, expired, or inapplicable bearer credential
       headers:
         WWW-Authenticate:
-          $ref: '#/components/headers/WwwAuthenticate'
+          $ref: "#/components/headers/WwwAuthenticate"
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     Forbidden:
       description: Authenticated principal lacks the operation grant in a known scope
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     NotFound:
       description: |
         Resource is absent or hidden by tenant, subject, sensitivity, deletion,
         retention, or authorization policy. These cases are indistinguishable.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     Conflict:
       description: |
         No mutation was committed. Stable types: `fact-key-conflict`,
@@ -2739,13 +2746,13 @@ components:
         `idempotency-in-progress`. The in-progress form includes `Retry-After`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
         Retry-After:
-          $ref: '#/components/headers/RetryAfter'
+          $ref: "#/components/headers/RetryAfter"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     CheckpointConflict:
       description: |
         No mutation was committed. Stable types are
@@ -2758,22 +2765,22 @@ components:
         form includes `Retry-After`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
         Retry-After:
-          $ref: '#/components/headers/RetryAfter'
+          $ref: "#/components/headers/RetryAfter"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     PreconditionFailed:
       description: Strong `If-Match` validator is stale; stable type `stale-fact`
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     CheckpointPreconditionFailed:
       description: |
         The initialization assertion or strong checkpoint validator is stale;
@@ -2782,20 +2789,20 @@ components:
         idempotency completion was committed.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     UnsupportedMediaType:
       description: Request media type is unsupported
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     UnprocessableEntity:
       description: |
         Syntactically valid request violates domain semantics. Stable types:
@@ -2803,53 +2810,53 @@ components:
         `write-policy-rejected`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     PreconditionRequired:
       description: Supersession omitted required `If-Match`
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     CheckpointPreconditionRequired:
       description: |
         Checkpoint mutation omitted both `If-None-Match: *` and one strong
         `If-Match`; stable type `checkpoint-precondition-required`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     PayloadTooLarge:
       description: |
         The bounded inline checkpoint state or effect transition batch exceeds
         the supported limit; stable type `checkpoint-too-large`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     RetrievalPayloadTooLarge:
       description: |
         The bounded retrieval query, filter set, or serialized request body
         exceeds the supported limit; stable type `retrieval-request-too-large`.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     RetrievalUnprocessableEntity:
       description: |
         Syntactically valid retrieval input violates supported request or
@@ -2859,39 +2866,39 @@ components:
         `resource-not-found` response instead.
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     TooManyRequests:
       description: Request rate or bounded resource limit exceeded
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
         Retry-After:
-          $ref: '#/components/headers/RetryAfter'
+          $ref: "#/components/headers/RetryAfter"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     InternalServerError:
       description: Redacted internal failure; no private memory or internals are exposed
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     ServiceUnavailable:
       description: Dependency or service temporarily unavailable
       headers:
         Cache-Control:
-          $ref: '#/components/headers/PrivateNoStore'
+          $ref: "#/components/headers/PrivateNoStore"
         Retry-After:
-          $ref: '#/components/headers/RetryAfter'
+          $ref: "#/components/headers/RetryAfter"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"

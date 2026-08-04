@@ -46,10 +46,19 @@ def prepare_project_consolidation(
     if validated_review.get("profile") != PROJECT_REVIEW_PROFILE:
         raise ValueError("validated_review must come from the semantic review profile")
     contract_validation = validated_review.get("contract_validation")
-    if not isinstance(contract_validation, Mapping) or contract_validation.get("passed") is not True:
+    if (
+        not isinstance(contract_validation, Mapping)
+        or contract_validation.get("passed") is not True
+    ):
         raise ValueError("validated_review must have passed contract validation")
-    normalized_consolidation_id = _bounded_text(consolidation_id, "consolidation_id", 255)
-    if not isinstance(writes, Sequence) or isinstance(writes, (str, bytes)) or not writes:
+    normalized_consolidation_id = _bounded_text(
+        consolidation_id, "consolidation_id", 255
+    )
+    if (
+        not isinstance(writes, Sequence)
+        or isinstance(writes, (str, bytes))
+        or not writes
+    ):
         raise ValueError("writes must be a non-empty array")
     if len(writes) > _MAX_CLAIMS:
         raise ValueError(f"writes must contain at most {_MAX_CLAIMS} entries")
@@ -61,7 +70,9 @@ def prepare_project_consolidation(
     for claim in raw_claims:
         if not isinstance(claim, Mapping):
             raise ValueError("validated_review claims must be objects")
-        claim_id = _bounded_text(claim.get("claim_id"), "validated_review claim_id", 128)
+        claim_id = _bounded_text(
+            claim.get("claim_id"), "validated_review claim_id", 128
+        )
         if claim_id in claims:
             raise ValueError(f"validated_review claim ID is duplicated: {claim_id}")
         claims[claim_id] = claim
@@ -72,31 +83,55 @@ def prepare_project_consolidation(
     for write_index, raw_write in enumerate(writes):
         if not isinstance(raw_write, Mapping):
             raise ValueError(f"writes[{write_index}] must be an object")
-        claim_id = _bounded_text(raw_write.get("claim_id"), f"writes[{write_index}].claim_id", 128)
+        claim_id = _bounded_text(
+            raw_write.get("claim_id"), f"writes[{write_index}].claim_id", 128
+        )
         if claim_id in claim_ids:
             raise ValueError(f"writes claim ID is duplicated: {claim_id}")
         claim_ids.add(claim_id)
         claim = claims.get(claim_id)
         if claim is None:
-            raise ValueError(f"writes[{write_index}] references an unknown claim: {claim_id}")
+            raise ValueError(
+                f"writes[{write_index}] references an unknown claim: {claim_id}"
+            )
         classification = _bounded_text(
-            claim.get("classification"), f"validated_review.claims[{claim_id}].classification", 64
+            claim.get("classification"),
+            f"validated_review.claims[{claim_id}].classification",
+            64,
         )
         if classification == "insufficient_evidence":
-            raise ValueError(f"claim {claim_id} has insufficient_evidence and cannot be consolidated")
+            raise ValueError(
+                f"claim {claim_id} has insufficient_evidence and cannot be consolidated"
+            )
         if "evidence_episode_ids" in raw_write:
-            raise ValueError("evidence_episode_ids are derived from the validated claim")
+            raise ValueError(
+                "evidence_episode_ids are derived from the validated claim"
+            )
         if "idempotency_key" in raw_write:
-            raise ValueError("idempotency_key is derived from consolidation_id and claim_id")
+            raise ValueError(
+                "idempotency_key is derived from consolidation_id and claim_id"
+            )
 
         evidence_episode_ids = _claim_episode_ids(claim, claim_id)
         source_episode_ids.update(evidence_episode_ids)
-        observed_at = _bounded_text(raw_write.get("observed_at"), f"writes[{write_index}].observed_at", 255)
-        valid_time = _mapping(raw_write.get("valid_time"), f"writes[{write_index}].valid_time")
-        write_policy = _write_policy(raw_write.get("write_policy"), f"writes[{write_index}].write_policy")
+        observed_at = _bounded_text(
+            raw_write.get("observed_at"), f"writes[{write_index}].observed_at", 255
+        )
+        valid_time = _mapping(
+            raw_write.get("valid_time"), f"writes[{write_index}].valid_time"
+        )
+        write_policy = _write_policy(
+            raw_write.get("write_policy"), f"writes[{write_index}].write_policy"
+        )
         confidence = raw_write.get("confidence")
-        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
-            raise ValueError(f"writes[{write_index}].confidence must be a number from 0 to 1")
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0 <= confidence <= 1
+        ):
+            raise ValueError(
+                f"writes[{write_index}].confidence must be a number from 0 to 1"
+            )
         if raw_write.get("value") is None:
             raise ValueError(f"writes[{write_index}].value must not be null")
         normalized_writes.append(
@@ -104,10 +139,16 @@ def prepare_project_consolidation(
                 "claim_id": claim_id,
                 "classification": classification,
                 "claim_summary": _bounded_text(
-                    claim.get("summary"), f"validated_review.claims[{claim_id}].summary", 2000
+                    claim.get("summary"),
+                    f"validated_review.claims[{claim_id}].summary",
+                    2000,
                 ),
-                "namespace": _bounded_text(raw_write.get("namespace"), f"writes[{write_index}].namespace", 255),
-                "key": _bounded_text(raw_write.get("key"), f"writes[{write_index}].key", 512),
+                "namespace": _bounded_text(
+                    raw_write.get("namespace"), f"writes[{write_index}].namespace", 255
+                ),
+                "key": _bounded_text(
+                    raw_write.get("key"), f"writes[{write_index}].key", 512
+                ),
                 "value": raw_write["value"],
                 "observed_at": observed_at,
                 "valid_time": valid_time,
@@ -115,10 +156,14 @@ def prepare_project_consolidation(
                 "write_policy": write_policy,
                 "confidence": float(confidence),
                 "sensitivity": _bounded_text(
-                    raw_write.get("sensitivity"), f"writes[{write_index}].sensitivity", 255
+                    raw_write.get("sensitivity"),
+                    f"writes[{write_index}].sensitivity",
+                    255,
                 ),
                 "retention_policy_id": _bounded_text(
-                    raw_write.get("retention_policy_id"), f"writes[{write_index}].retention_policy_id", 255
+                    raw_write.get("retention_policy_id"),
+                    f"writes[{write_index}].retention_policy_id",
+                    255,
                 ),
                 "idempotency_key": _consolidation_idempotency_key(
                     normalized_consolidation_id, claim_id
@@ -145,7 +190,9 @@ def _claim_episode_ids(claim: Mapping[str, Any], claim_id: str) -> list[str]:
     episode_ids: set[str] = set()
     for evidence_index, citation in enumerate(raw_evidence):
         if not isinstance(citation, Mapping):
-            raise ValueError(f"validated_review claim {claim_id} evidence must be objects")
+            raise ValueError(
+                f"validated_review claim {claim_id} evidence must be objects"
+            )
         raw_episode_ids = citation.get("evidence_episode_ids")
         if not isinstance(raw_episode_ids, list) or not raw_episode_ids:
             raise ValueError(
@@ -160,7 +207,9 @@ def _claim_episode_ids(claim: Mapping[str, Any], claim_id: str) -> list[str]:
                 )
             )
     if not episode_ids:
-        raise ValueError(f"validated_review claim {claim_id} has no evidence episode IDs")
+        raise ValueError(
+            f"validated_review claim {claim_id} has no evidence episode IDs"
+        )
     return sorted(episode_ids)
 
 
@@ -178,7 +227,9 @@ def _write_policy(value: Any, name: str) -> dict[str, Any]:
 
 
 def _consolidation_idempotency_key(consolidation_id: str, claim_id: str) -> str:
-    digest = hashlib.sha256(f"{consolidation_id}\x00{claim_id}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(
+        f"{consolidation_id}\x00{claim_id}".encode("utf-8")
+    ).hexdigest()
     return f"palimpsest-consolidation-v1:{digest}"
 
 
@@ -200,8 +251,12 @@ def validate_project_review(
     project_set = set(projects)
     if set(bundles) != project_set:
         raise ValueError("comparison bundles and projects must name the same projects")
-    reviewer = _attribution(review, "reviewer", ("principal_id", "provider", "model", "model_revision"))
-    prompt_sha256 = _digest(review.get("reviewer", {}).get("prompt_sha256"), "reviewer.prompt_sha256")
+    reviewer = _attribution(
+        review, "reviewer", ("principal_id", "provider", "model", "model_revision")
+    )
+    prompt_sha256 = _digest(
+        review.get("reviewer", {}).get("prompt_sha256"), "reviewer.prompt_sha256"
+    )
     reviewer["prompt_sha256"] = prompt_sha256
     review_policy = _attribution(review, "review_policy", ("id", "version"))
     review_policy["sha256"] = _digest(
@@ -222,7 +277,9 @@ def validate_project_review(
     for claim_index, raw_claim in enumerate(raw_claims):
         if not isinstance(raw_claim, Mapping):
             raise ValueError(f"review claim {claim_index} must be an object")
-        claim_id = _bounded_text(raw_claim.get("claim_id"), f"claims[{claim_index}].claim_id", 128)
+        claim_id = _bounded_text(
+            raw_claim.get("claim_id"), f"claims[{claim_index}].claim_id", 128
+        )
         if claim_id in claim_ids:
             raise ValueError(f"review claim ID is duplicated: {claim_id}")
         claim_ids.add(claim_id)
@@ -231,20 +288,32 @@ def validate_project_review(
         )
         if classification not in _ALLOWED_CLASSIFICATIONS:
             allowed = ", ".join(sorted(_ALLOWED_CLASSIFICATIONS))
-            raise ValueError(f"claims[{claim_index}].classification must be one of: {allowed}")
-        summary = _bounded_text(raw_claim.get("summary"), f"claims[{claim_index}].summary", 2000)
+            raise ValueError(
+                f"claims[{claim_index}].classification must be one of: {allowed}"
+            )
+        summary = _bounded_text(
+            raw_claim.get("summary"), f"claims[{claim_index}].summary", 2000
+        )
         claim_projects = _string_list(raw_claim, "projects", minimum=2)
         if not set(claim_projects).issubset(project_set):
-            raise ValueError(f"claims[{claim_index}].projects contains an unknown project")
+            raise ValueError(
+                f"claims[{claim_index}].projects contains an unknown project"
+            )
         confidence = raw_claim.get("confidence")
         if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
-            raise ValueError(f"claims[{claim_index}].confidence must be a number from 0 to 1")
+            raise ValueError(
+                f"claims[{claim_index}].confidence must be a number from 0 to 1"
+            )
         if not 0 <= confidence <= 1:
-            raise ValueError(f"claims[{claim_index}].confidence must be a number from 0 to 1")
+            raise ValueError(
+                f"claims[{claim_index}].confidence must be a number from 0 to 1"
+            )
 
         raw_evidence = raw_claim.get("evidence")
         if not isinstance(raw_evidence, list) or not raw_evidence:
-            raise ValueError(f"claims[{claim_index}].evidence must be a non-empty array")
+            raise ValueError(
+                f"claims[{claim_index}].evidence must be a non-empty array"
+            )
         if len(raw_evidence) > _MAX_EVIDENCE_PER_CLAIM:
             raise ValueError(
                 f"claims[{claim_index}].evidence must contain at most {_MAX_EVIDENCE_PER_CLAIM} items"
@@ -255,14 +324,18 @@ def validate_project_review(
         evidence: list[dict[str, Any]] = []
         for evidence_index, raw_citation in enumerate(raw_evidence):
             if not isinstance(raw_citation, Mapping):
-                raise ValueError(f"claims[{claim_index}].evidence[{evidence_index}] must be an object")
+                raise ValueError(
+                    f"claims[{claim_index}].evidence[{evidence_index}] must be an object"
+                )
             project_id = _bounded_text(
                 raw_citation.get("project_id"),
                 f"claims[{claim_index}].evidence[{evidence_index}].project_id",
                 255,
             )
             if project_id not in claim_projects:
-                raise ValueError(f"claims[{claim_index}] cites evidence outside its projects")
+                raise ValueError(
+                    f"claims[{claim_index}] cites evidence outside its projects"
+                )
             fact_id = _bounded_text(
                 raw_citation.get("fact_id"),
                 f"claims[{claim_index}].evidence[{evidence_index}].fact_id",
@@ -293,7 +366,9 @@ def validate_project_review(
                 for value in item.get("evidence_episode_ids", [])
                 if isinstance(value, str) and value.strip()
             }
-            if not returned_episode_ids or not set(episode_ids).issubset(returned_episode_ids):
+            if not returned_episode_ids or not set(episode_ids).issubset(
+                returned_episode_ids
+            ):
                 raise ValueError(
                     f"claims[{claim_index}] evidence episode citation is not present on the returned item"
                 )
@@ -342,7 +417,9 @@ def validate_project_review(
         "claims": claims,
         "contract_validation": {
             "passed": True,
-            "evidence_citations_checked": sum(len(claim["evidence"]) for claim in claims),
+            "evidence_citations_checked": sum(
+                len(claim["evidence"]) for claim in claims
+            ),
             "semantic_truth_proven": False,
         },
         "durable_write": False,
@@ -360,17 +437,25 @@ def _comparison_parts(
     if not isinstance(comparison_result, Mapping):
         raise ValueError("comparison_result must be an object")
     if comparison_result.get("profile") != _STRUCTURAL_COMPARISON_PROFILE:
-        raise ValueError("comparison_result must come from the structural comparison profile")
+        raise ValueError(
+            "comparison_result must come from the structural comparison profile"
+        )
     bundles = comparison_result.get("bundles")
     comparison = comparison_result.get("comparison")
     if not isinstance(bundles, Mapping) or not isinstance(comparison, Mapping):
-        raise ValueError("comparison_result must contain bundles and comparison objects")
+        raise ValueError(
+            "comparison_result must contain bundles and comparison objects"
+        )
     if comparison.get("profile") != _STRUCTURAL_COMPARISON_PROFILE:
-        raise ValueError("comparison_result must come from the structural comparison profile")
+        raise ValueError(
+            "comparison_result must come from the structural comparison profile"
+        )
     try:
         expected_comparison = compare_project_bundles(bundles)
     except ValueError as exc:
-        raise ValueError("comparison_result bundles are not a valid structural comparison") from exc
+        raise ValueError(
+            "comparison_result bundles are not a valid structural comparison"
+        ) from exc
     if expected_comparison != comparison:
         raise ValueError("comparison_result comparison does not match its bundles")
     return bundles, comparison
@@ -383,17 +468,23 @@ def _returned_items(
     for project_id in sorted(project_ids):
         bundle = bundles.get(project_id)
         if not isinstance(bundle, Mapping) or not isinstance(bundle.get("items"), list):
-            raise ValueError(f"retrieval bundle for {project_id} must contain an items array")
+            raise ValueError(
+                f"retrieval bundle for {project_id} must contain an items array"
+            )
         for item in bundle["items"]:
             if not isinstance(item, Mapping):
-                raise ValueError(f"retrieval bundle for {project_id} contains a non-object item")
+                raise ValueError(
+                    f"retrieval bundle for {project_id} contains a non-object item"
+                )
             fact_id = _optional_text(item.get("fact_id"))
             revision_id = _optional_text(item.get("revision_id"))
             if fact_id is None or revision_id is None:
                 continue
             key = (project_id, fact_id, revision_id)
             if key in items_by_ref:
-                raise ValueError("comparison bundles contain duplicate fact/revision references")
+                raise ValueError(
+                    "comparison bundles contain duplicate fact/revision references"
+                )
             items_by_ref[key] = item
     return items_by_ref
 
@@ -410,7 +501,9 @@ def _comparison_item_digests(
             raise ValueError(f"comparison group {group_index} must be an object")
         items_by_project = group.get("items_by_project")
         if not isinstance(items_by_project, Mapping):
-            raise ValueError(f"comparison group {group_index} must contain items_by_project")
+            raise ValueError(
+                f"comparison group {group_index} must contain items_by_project"
+            )
         for raw_project_id, raw_items in items_by_project.items():
             project_id = _bounded_text(
                 raw_project_id,
@@ -418,7 +511,9 @@ def _comparison_item_digests(
                 255,
             )
             if not isinstance(raw_items, list):
-                raise ValueError(f"comparison group {group_index} items must be an array")
+                raise ValueError(
+                    f"comparison group {group_index} items must be an array"
+                )
             for item_index, raw_item in enumerate(raw_items):
                 if not isinstance(raw_item, Mapping):
                     raise ValueError(
@@ -435,7 +530,9 @@ def _comparison_item_digests(
                 key = (project_id, fact_id, revision_id)
                 previous = digests.get(key)
                 if previous is not None and previous != value_sha256:
-                    raise ValueError("comparison contains conflicting value digests for an item")
+                    raise ValueError(
+                        "comparison contains conflicting value digests for an item"
+                    )
                 digests[key] = value_sha256
     return digests
 
@@ -446,7 +543,10 @@ def _attribution(
     value = parent.get(name)
     if not isinstance(value, Mapping):
         raise ValueError(f"review.{name} must be an object")
-    return {field: _bounded_text(value.get(field), f"review.{name}.{field}", 255) for field in fields}
+    return {
+        field: _bounded_text(value.get(field), f"review.{name}.{field}", 255)
+        for field in fields
+    }
 
 
 def _string_list(
@@ -460,7 +560,10 @@ def _string_list(
     label = f"{path}.{name}" if path else f"review.{name}"
     if not isinstance(value, list) or len(value) < minimum:
         raise ValueError(f"{label} must contain at least {minimum} strings")
-    result = [_bounded_text(item, f"{label}[{index}]", 255) for index, item in enumerate(value)]
+    result = [
+        _bounded_text(item, f"{label}[{index}]", 255)
+        for index, item in enumerate(value)
+    ]
     if len(set(result)) != len(result):
         raise ValueError(f"{label} must not contain duplicates")
     return result

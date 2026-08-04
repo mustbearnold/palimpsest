@@ -3,31 +3,31 @@ set -euo pipefail
 shopt -s extglob
 
 if [[ -z "${PALIMPSEST_SCALE_DATABASE_URL:-}" ]]; then
-  echo "PALIMPSEST_SCALE_DATABASE_URL is required" >&2
-  exit 2
+    echo "PALIMPSEST_SCALE_DATABASE_URL is required" >&2
+    exit 2
 fi
 
 scale_revisions="${PALIMPSEST_SCALE_REVISIONS:-100000}"
 scale_queries="${PALIMPSEST_SCALE_QUERIES:-20}"
 
 if [[ "$scale_revisions" != +([0-9]) || "$scale_queries" != +([0-9]) ]]; then
-  echo "PALIMPSEST_SCALE_REVISIONS and PALIMPSEST_SCALE_QUERIES must be decimal integers" >&2
-  exit 2
+    echo "PALIMPSEST_SCALE_REVISIONS and PALIMPSEST_SCALE_QUERIES must be decimal integers" >&2
+    exit 2
 fi
-if (( scale_revisions < 1000 || scale_revisions > 1000000 )); then
-  echo "PALIMPSEST_SCALE_REVISIONS must be between 1000 and 1000000" >&2
-  exit 2
+if ((scale_revisions < 1000 || scale_revisions > 1000000)); then
+    echo "PALIMPSEST_SCALE_REVISIONS must be between 1000 and 1000000" >&2
+    exit 2
 fi
-if (( scale_queries < 5 || scale_queries > 100 )); then
-  echo "PALIMPSEST_SCALE_QUERIES must be between 5 and 100" >&2
-  exit 2
+if ((scale_queries < 5 || scale_queries > 100)); then
+    echo "PALIMPSEST_SCALE_QUERIES must be between 5 and 100" >&2
+    exit 2
 fi
 
 for required_tool in psql sha256sum awk jq; do
-  if ! command -v "$required_tool" >/dev/null 2>&1; then
-    echo "required tool is unavailable: $required_tool" >&2
-    exit 2
-  fi
+    if ! command -v "$required_tool" >/dev/null 2>&1; then
+        echo "required tool is unavailable: $required_tool" >&2
+        exit 2
+    fi
 done
 
 probe_dir="$(mktemp -d)"
@@ -35,7 +35,7 @@ metrics_file="$probe_dir/metrics.txt"
 plan_file="$probe_dir/plan.txt"
 error_file="$probe_dir/error.txt"
 cleanup() {
-  rm -rf -- "$probe_dir"
+    rm -rf -- "$probe_dir"
 }
 trap cleanup EXIT
 chmod 700 "$probe_dir"
@@ -51,7 +51,7 @@ if ! psql \
     --set="scale_queries=$scale_queries" \
     --set="plan_file=$plan_file" \
     >"$metrics_file" \
-    2>"$error_file" <<'SQL'
+    2>"$error_file" <<'SQL'; then
 BEGIN;
 SET LOCAL statement_timeout = '15min';
 SET LOCAL lock_timeout = '15s';
@@ -432,10 +432,9 @@ SELECT count(*) FROM ranked;
 
 ROLLBACK;
 SQL
-then
-  echo "scale probe failed; no synthetic data was retained" >&2
-  sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1<redacted>#g' "$error_file" | tail -20 >&2
-  exit 1
+    echo "scale probe failed; no synthetic data was retained" >&2
+    sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1<redacted>#g' "$error_file" | tail -20 >&2
+    exit 1
 fi
 
 psql_output="$(<"$metrics_file")"
@@ -466,9 +465,9 @@ plan_summary="$(jq -c '
 IFS='|' read -r revision_count requested_queries measured_queries p50_ms p95_ms p99_ms mean_ms max_ms projection_count <<<"$psql_output"
 
 if [[ -z "${projection_count:-}" || "$measured_queries" != "$requested_queries" ]]; then
-  echo "scale probe returned an incomplete measurement" >&2
-  exit 1
+    echo "scale probe returned an incomplete measurement" >&2
+    exit 1
 fi
 
 printf '{"profile":"authorized-lexical-retrieval-scale-v1","revision_count":%s,"projection_count":%s,"query_count":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"mean_ms":%s,"max_ms":%s,"plan_sha256":"%s","plan_summary":%s,"transaction_rolled_back":true}\n' \
-  "$revision_count" "$projection_count" "$measured_queries" "$p50_ms" "$p95_ms" "$p99_ms" "$mean_ms" "$max_ms" "$plan_sha256" "$plan_summary"
+    "$revision_count" "$projection_count" "$measured_queries" "$p50_ms" "$p95_ms" "$p99_ms" "$mean_ms" "$max_ms" "$plan_sha256" "$plan_summary"

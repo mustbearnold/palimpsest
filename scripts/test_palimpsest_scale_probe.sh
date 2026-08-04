@@ -6,10 +6,10 @@ fixture_dir="$repo_root/scripts/test-fixtures/scale-probe"
 
 probe_output="$(
     PATH="$fixture_dir:$PATH" \
-    PALIMPSEST_SCALE_DATABASE_URL='postgresql://scale-probe-fixture' \
-    PALIMPSEST_SCALE_REVISIONS=1000 \
-    PALIMPSEST_SCALE_QUERIES=5 \
-    bash "$repo_root/scripts/palimpsest-scale-probe.sh"
+        PALIMPSEST_SCALE_DATABASE_URL='postgresql://scale-probe-fixture' \
+        PALIMPSEST_SCALE_REVISIONS=1000 \
+        PALIMPSEST_SCALE_QUERIES=5 \
+        bash "$repo_root/scripts/palimpsest-scale-probe.sh"
 )"
 
 PROBE_OUTPUT="$probe_output" python3 - <<'PY'

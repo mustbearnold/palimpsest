@@ -1,13 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN_PATTERN = /[a-z0-9]+/g;
 const LEXICAL_OVERLAP_THRESHOLD = 0.5;
 const LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS = 3;
 const LEXICAL_OVERLAP_MAXIMUM_CANDIDATES = 100;
 const LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET = 20;
 const PROJECT_REVIEW_PROFILE = "project-comparison-semantic-review-v1";
-const PROJECT_CONSOLIDATION_PROFILE = "project-comparison-governed-consolidation-v1";
+const PROJECT_CONSOLIDATION_PROFILE =
+  "project-comparison-governed-consolidation-v1";
 const STRUCTURAL_COMPARISON_PROFILE = "project-comparison-structural-v1";
 const PROJECT_REVIEW_CLASSIFICATIONS = new Set([
   "same_meaning",
@@ -32,10 +34,13 @@ export class PalimpsestTimeoutError extends PalimpsestError {}
 
 export class PalimpsestHttpError extends PalimpsestError {
   constructor(statusCode, method, path, problem, headers) {
-    const type = problem && typeof problem === "object" && typeof problem.type === "string"
-      ? ` (${problem.type})`
-      : "";
-    super(`Palimpsest returned HTTP ${statusCode}${type} for ${method} ${path}`);
+    const type =
+      problem && typeof problem === "object" && typeof problem.type === "string"
+        ? ` (${problem.type})`
+        : "";
+    super(
+      `Palimpsest returned HTTP ${statusCode}${type} for ${method} ${path}`,
+    );
     this.name = "PalimpsestHttpError";
     this.statusCode = statusCode;
     this.method = method;
@@ -47,8 +52,13 @@ export class PalimpsestHttpError extends PalimpsestError {
 
 export class PartialRememberError extends PalimpsestError {
   constructor(episode, cause) {
-    const episodeId = episode && typeof episode === "object" ? episode.episode_id ?? "unknown" : "unknown";
-    super(`episode ${episodeId} was saved, but fact promotion failed: ${cause.message}`);
+    const episodeId =
+      episode && typeof episode === "object"
+        ? (episode.episode_id ?? "unknown")
+        : "unknown";
+    super(
+      `episode ${episodeId} was saved, but fact promotion failed: ${cause.message}`,
+    );
     this.name = "PartialRememberError";
     this.episode = episode;
     this.cause = cause;
@@ -57,8 +67,13 @@ export class PartialRememberError extends PalimpsestError {
 
 export class PartialConsolidationError extends PalimpsestError {
   constructor(consolidationId, completed, failedWrite, cause) {
-    const claimId = failedWrite && typeof failedWrite === "object" ? failedWrite.claim_id ?? "unknown" : "unknown";
-    super(`consolidation ${consolidationId} committed ${completed.length} claim(s), but claim ${claimId} failed: ${cause.message}`);
+    const claimId =
+      failedWrite && typeof failedWrite === "object"
+        ? (failedWrite.claim_id ?? "unknown")
+        : "unknown";
+    super(
+      `consolidation ${consolidationId} committed ${completed.length} claim(s), but claim ${claimId} failed: ${cause.message}`,
+    );
     this.name = "PartialConsolidationError";
     this.consolidationId = consolidationId;
     this.completed = completed;
@@ -69,43 +84,70 @@ export class PartialConsolidationError extends PalimpsestError {
 
 export function compareProjectBundles(bundles) {
   if (!bundles || typeof bundles !== "object" || Array.isArray(bundles)) {
-    throw new PalimpsestConfigurationError("bundles must be an object of project IDs to retrieval responses");
+    throw new PalimpsestConfigurationError(
+      "bundles must be an object of project IDs to retrieval responses",
+    );
   }
-  const projectIds = Object.keys(bundles).map((projectId) => nonEmptyText(projectId, "projectId")).sort();
+  const projectIds = Object.keys(bundles)
+    .map((projectId) => nonEmptyText(projectId, "projectId"))
+    .sort();
   if (projectIds.length < 2 || new Set(projectIds).size !== projectIds.length) {
-    throw new PalimpsestConfigurationError("bundles must contain at least two distinct projects");
+    throw new PalimpsestConfigurationError(
+      "bundles must contain at least two distinct projects",
+    );
   }
 
   const grouped = new Map();
   const textItems = [];
-  const itemCounts = Object.fromEntries(projectIds.map((projectId) => [projectId, 0]));
-  const projectContexts = new Map(projectIds.map((projectId) => [projectId, {
-    projectRoots: new Set(),
-    branches: new Set(),
-    sources: new Set(),
-    roles: new Set(),
-    sessions: new Set(),
-  }]));
+  const itemCounts = Object.fromEntries(
+    projectIds.map((projectId) => [projectId, 0]),
+  );
+  const projectContexts = new Map(
+    projectIds.map((projectId) => [
+      projectId,
+      {
+        projectRoots: new Set(),
+        branches: new Set(),
+        sources: new Set(),
+        roles: new Set(),
+        sessions: new Set(),
+      },
+    ]),
+  );
   for (const projectId of projectIds) {
     const bundle = bundles[projectId];
     if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
-      throw new PalimpsestProtocolError(`retrieval bundle for ${projectId} must be an object`);
+      throw new PalimpsestProtocolError(
+        `retrieval bundle for ${projectId} must be an object`,
+      );
     }
     const items = bundle.items ?? [];
     if (!Array.isArray(items)) {
-      throw new PalimpsestProtocolError(`retrieval bundle for ${projectId} must contain an items array`);
+      throw new PalimpsestProtocolError(
+        `retrieval bundle for ${projectId} must contain an items array`,
+      );
     }
     for (const [itemIndex, item] of items.entries()) {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
-        throw new PalimpsestProtocolError(`retrieval item ${itemIndex} for ${projectId} must be an object`);
+        throw new PalimpsestProtocolError(
+          `retrieval item ${itemIndex} for ${projectId} must be an object`,
+        );
       }
-      const displayKey = typeof item.key === "string" && item.key.trim() ? item.key.trim() : null;
-      const comparisonKey = displayKey === null
-        ? `__unkeyed__:${projectId}:${itemIndex}`
-        : displayKey.toLowerCase();
+      const displayKey =
+        typeof item.key === "string" && item.key.trim()
+          ? item.key.trim()
+          : null;
+      const comparisonKey =
+        displayKey === null
+          ? `__unkeyed__:${projectId}:${itemIndex}`
+          : displayKey.toLowerCase();
       let group = grouped.get(comparisonKey);
       if (!group) {
-        group = { key: displayKey, itemsByProject: new Map(), valueHashes: new Set() };
+        group = {
+          key: displayKey,
+          itemsByProject: new Map(),
+          valueHashes: new Set(),
+        };
         grouped.set(comparisonKey, group);
       }
       if (group.key === null && displayKey !== null) group.key = displayKey;
@@ -118,7 +160,8 @@ export function compareProjectBundles(bundles) {
         key: displayKey,
         value_sha256: valueSha256,
       };
-      if (!group.itemsByProject.has(projectId)) group.itemsByProject.set(projectId, []);
+      if (!group.itemsByProject.has(projectId))
+        group.itemsByProject.set(projectId, []);
       group.itemsByProject.get(projectId).push({
         fact_id: itemRef.fact_id,
         revision_id: itemRef.revision_id,
@@ -127,40 +170,56 @@ export function compareProjectBundles(bundles) {
       });
       group.valueHashes.add(valueSha256);
       collectProjectContext(projectContexts.get(projectId), item);
-      const tokens = new Set(itemContent(item).toLowerCase().match(TOKEN_PATTERN) ?? []);
-      if (tokens.size > 0) textItems.push({ projectId, itemIndex, tokens, ref: itemRef });
+      const tokens = new Set(
+        itemContent(item).toLowerCase().match(TOKEN_PATTERN) ?? [],
+      );
+      if (tokens.size > 0)
+        textItems.push({ projectId, itemIndex, tokens, ref: itemRef });
       itemCounts[projectId] += 1;
     }
   }
 
-  const groups = [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([comparisonKey, group]) => {
-    const projects = [...group.itemsByProject.keys()].sort();
-    const classification = projects.length === 1
-      ? "project_specific"
-      : group.valueHashes.size === 1
-        ? "exact_match"
-        : "same_key_different_value";
-    const itemsByProject = Object.create(null);
-    for (const projectId of projects) itemsByProject[projectId] = group.itemsByProject.get(projectId);
-    return {
-      comparison_key: comparisonKey,
-      key: group.key,
-      classification,
-      projects,
-      items_by_project: itemsByProject,
-    };
-  });
+  const groups = [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([comparisonKey, group]) => {
+      const projects = [...group.itemsByProject.keys()].sort();
+      const classification =
+        projects.length === 1
+          ? "project_specific"
+          : group.valueHashes.size === 1
+            ? "exact_match"
+            : "same_key_different_value";
+      const itemsByProject = Object.create(null);
+      for (const projectId of projects)
+        itemsByProject[projectId] = group.itemsByProject.get(projectId);
+      return {
+        comparison_key: comparisonKey,
+        key: group.key,
+        classification,
+        projects,
+        items_by_project: itemsByProject,
+      };
+    });
   const lexicalReview = buildLexicalReview(textItems);
   const summary = {
     bundle_count: projectIds.length,
-    item_count: Object.values(itemCounts).reduce((total, count) => total + count, 0),
+    item_count: Object.values(itemCounts).reduce(
+      (total, count) => total + count,
+      0,
+    ),
     items_by_project: itemCounts,
     group_count: groups.length,
     lexical_review_candidate_count: lexicalReview.candidates.length,
     lexical_review_truncated: lexicalReview.truncated,
-    exact_match_groups: groups.filter((group) => group.classification === "exact_match").length,
-    same_key_different_value_groups: groups.filter((group) => group.classification === "same_key_different_value").length,
-    project_specific_groups: groups.filter((group) => group.classification === "project_specific").length,
+    exact_match_groups: groups.filter(
+      (group) => group.classification === "exact_match",
+    ).length,
+    same_key_different_value_groups: groups.filter(
+      (group) => group.classification === "same_key_different_value",
+    ).length,
+    project_specific_groups: groups.filter(
+      (group) => group.classification === "project_specific",
+    ).length,
   };
   return {
     profile: "project-comparison-structural-v1",
@@ -171,16 +230,21 @@ export function compareProjectBundles(bundles) {
       same_key_different_value_is_review_candidate: true,
     },
     durable_write: false,
-    project_context: Object.fromEntries(projectIds.map((projectId) => {
-      const context = projectContexts.get(projectId);
-      return [projectId, {
-        project_roots: [...context.projectRoots].sort(),
-        branches: [...context.branches].sort(),
-        sources: [...context.sources].sort(),
-        roles: [...context.roles].sort(),
-        session_count: context.sessions.size,
-      }];
-    })),
+    project_context: Object.fromEntries(
+      projectIds.map((projectId) => {
+        const context = projectContexts.get(projectId);
+        return [
+          projectId,
+          {
+            project_roots: [...context.projectRoots].sort(),
+            branches: [...context.branches].sort(),
+            sources: [...context.sources].sort(),
+            roles: [...context.roles].sort(),
+            session_count: context.sessions.size,
+          },
+        ];
+      }),
+    ),
     lexical_review: lexicalReview,
     summary,
     groups,
@@ -188,41 +252,84 @@ export function compareProjectBundles(bundles) {
 }
 
 export function validateProjectReview(comparisonResult, review) {
-  if (!comparisonResult || typeof comparisonResult !== "object" || Array.isArray(comparisonResult)) {
-    throw new PalimpsestConfigurationError("comparisonResult must be an object");
+  if (
+    !comparisonResult ||
+    typeof comparisonResult !== "object" ||
+    Array.isArray(comparisonResult)
+  ) {
+    throw new PalimpsestConfigurationError(
+      "comparisonResult must be an object",
+    );
   }
   const { bundles, comparison } = comparisonResult;
-  if (!bundles || typeof bundles !== "object" || Array.isArray(bundles)
-    || !comparison || typeof comparison !== "object" || Array.isArray(comparison)) {
-    throw new PalimpsestConfigurationError("comparisonResult must contain bundles and comparison objects");
+  if (
+    !bundles ||
+    typeof bundles !== "object" ||
+    Array.isArray(bundles) ||
+    !comparison ||
+    typeof comparison !== "object" ||
+    Array.isArray(comparison)
+  ) {
+    throw new PalimpsestConfigurationError(
+      "comparisonResult must contain bundles and comparison objects",
+    );
   }
   if (comparison.profile !== STRUCTURAL_COMPARISON_PROFILE) {
-    throw new PalimpsestConfigurationError("comparisonResult must come from the structural comparison profile");
+    throw new PalimpsestConfigurationError(
+      "comparisonResult must come from the structural comparison profile",
+    );
   }
   if (comparisonResult.profile !== STRUCTURAL_COMPARISON_PROFILE) {
-    throw new PalimpsestConfigurationError("comparisonResult must come from the structural comparison profile");
+    throw new PalimpsestConfigurationError(
+      "comparisonResult must come from the structural comparison profile",
+    );
   }
   const expectedComparison = compareProjectBundles(bundles);
   if (stableJson(expectedComparison) !== stableJson(comparison)) {
-    throw new PalimpsestConfigurationError("comparisonResult comparison does not match its bundles");
+    throw new PalimpsestConfigurationError(
+      "comparisonResult comparison does not match its bundles",
+    );
   }
   const projects = reviewStringList(comparison, "projects", 2);
   const projectSet = new Set(projects);
-  if (Object.keys(bundles).length !== projectSet.size || Object.keys(bundles).some((project) => !projectSet.has(project))) {
-    throw new PalimpsestConfigurationError("comparison bundles and projects must name the same projects");
+  if (
+    Object.keys(bundles).length !== projectSet.size ||
+    Object.keys(bundles).some((project) => !projectSet.has(project))
+  ) {
+    throw new PalimpsestConfigurationError(
+      "comparison bundles and projects must name the same projects",
+    );
   }
-  const reviewer = reviewAttribution(review, "reviewer", ["principal_id", "provider", "model", "model_revision"]);
-  reviewer.prompt_sha256 = reviewDigest(review?.reviewer?.prompt_sha256, "reviewer.prompt_sha256");
-  const reviewPolicy = reviewAttribution(review, "review_policy", ["id", "version"]);
-  reviewPolicy.sha256 = reviewDigest(review?.review_policy?.sha256, "review_policy.sha256");
+  const reviewer = reviewAttribution(review, "reviewer", [
+    "principal_id",
+    "provider",
+    "model",
+    "model_revision",
+  ]);
+  reviewer.prompt_sha256 = reviewDigest(
+    review?.reviewer?.prompt_sha256,
+    "reviewer.prompt_sha256",
+  );
+  const reviewPolicy = reviewAttribution(review, "review_policy", [
+    "id",
+    "version",
+  ]);
+  reviewPolicy.sha256 = reviewDigest(
+    review?.review_policy?.sha256,
+    "review_policy.sha256",
+  );
 
   const comparisonItemDigests = comparisonItemDigestsFor(comparison);
   const itemsByRef = returnedReviewItems(bundles, projectSet);
   if (!Array.isArray(review?.claims) || review.claims.length === 0) {
-    throw new PalimpsestConfigurationError("review.claims must be a non-empty array");
+    throw new PalimpsestConfigurationError(
+      "review.claims must be a non-empty array",
+    );
   }
   if (review.claims.length > PROJECT_REVIEW_MAXIMUM_CLAIMS) {
-    throw new PalimpsestConfigurationError(`review.claims must contain at most ${PROJECT_REVIEW_MAXIMUM_CLAIMS} claims`);
+    throw new PalimpsestConfigurationError(
+      `review.claims must contain at most ${PROJECT_REVIEW_MAXIMUM_CLAIMS} claims`,
+    );
   }
 
   const claims = [];
@@ -230,28 +337,60 @@ export function validateProjectReview(comparisonResult, review) {
   const sourceEpisodeIds = new Set();
   review.claims.forEach((rawClaim, claimIndex) => {
     if (!rawClaim || typeof rawClaim !== "object" || Array.isArray(rawClaim)) {
-      throw new PalimpsestConfigurationError(`review claim ${claimIndex} must be an object`);
+      throw new PalimpsestConfigurationError(
+        `review claim ${claimIndex} must be an object`,
+      );
     }
-    const claimId = reviewBoundedText(rawClaim.claim_id, `claims[${claimIndex}].claim_id`, 128);
-    if (claimIds.has(claimId)) throw new PalimpsestConfigurationError(`review claim ID is duplicated: ${claimId}`);
+    const claimId = reviewBoundedText(
+      rawClaim.claim_id,
+      `claims[${claimIndex}].claim_id`,
+      128,
+    );
+    if (claimIds.has(claimId))
+      throw new PalimpsestConfigurationError(
+        `review claim ID is duplicated: ${claimId}`,
+      );
     claimIds.add(claimId);
-    const classification = reviewBoundedText(rawClaim.classification, `claims[${claimIndex}].classification`, 64);
+    const classification = reviewBoundedText(
+      rawClaim.classification,
+      `claims[${claimIndex}].classification`,
+      64,
+    );
     if (!PROJECT_REVIEW_CLASSIFICATIONS.has(classification)) {
       throw new PalimpsestConfigurationError(
         `claims[${claimIndex}].classification must be one of: ${[...PROJECT_REVIEW_CLASSIFICATIONS].sort().join(", ")}`,
       );
     }
-    const summary = reviewBoundedText(rawClaim.summary, `claims[${claimIndex}].summary`, 2000);
-    const claimProjects = reviewStringList(rawClaim, "projects", 2, `claims[${claimIndex}]`);
+    const summary = reviewBoundedText(
+      rawClaim.summary,
+      `claims[${claimIndex}].summary`,
+      2000,
+    );
+    const claimProjects = reviewStringList(
+      rawClaim,
+      "projects",
+      2,
+      `claims[${claimIndex}]`,
+    );
     if (claimProjects.some((project) => !projectSet.has(project))) {
-      throw new PalimpsestConfigurationError(`claims[${claimIndex}].projects contains an unknown project`);
+      throw new PalimpsestConfigurationError(
+        `claims[${claimIndex}].projects contains an unknown project`,
+      );
     }
-    if (typeof rawClaim.confidence !== "number" || !Number.isFinite(rawClaim.confidence)
-      || rawClaim.confidence < 0 || rawClaim.confidence > 1) {
-      throw new PalimpsestConfigurationError(`claims[${claimIndex}].confidence must be a number from 0 to 1`);
+    if (
+      typeof rawClaim.confidence !== "number" ||
+      !Number.isFinite(rawClaim.confidence) ||
+      rawClaim.confidence < 0 ||
+      rawClaim.confidence > 1
+    ) {
+      throw new PalimpsestConfigurationError(
+        `claims[${claimIndex}].confidence must be a number from 0 to 1`,
+      );
     }
     if (!Array.isArray(rawClaim.evidence) || rawClaim.evidence.length === 0) {
-      throw new PalimpsestConfigurationError(`claims[${claimIndex}].evidence must be a non-empty array`);
+      throw new PalimpsestConfigurationError(
+        `claims[${claimIndex}].evidence must be a non-empty array`,
+      );
     }
     if (rawClaim.evidence.length > PROJECT_REVIEW_MAXIMUM_EVIDENCE) {
       throw new PalimpsestConfigurationError(
@@ -262,8 +401,14 @@ export function validateProjectReview(comparisonResult, review) {
     const citedValues = new Set();
     const citationKeys = new Set();
     const evidence = rawClaim.evidence.map((rawCitation, evidenceIndex) => {
-      if (!rawCitation || typeof rawCitation !== "object" || Array.isArray(rawCitation)) {
-        throw new PalimpsestConfigurationError(`claims[${claimIndex}].evidence[${evidenceIndex}] must be an object`);
+      if (
+        !rawCitation ||
+        typeof rawCitation !== "object" ||
+        Array.isArray(rawCitation)
+      ) {
+        throw new PalimpsestConfigurationError(
+          `claims[${claimIndex}].evidence[${evidenceIndex}] must be an object`,
+        );
       }
       const projectId = reviewBoundedText(
         rawCitation.project_id,
@@ -271,16 +416,25 @@ export function validateProjectReview(comparisonResult, review) {
         255,
       );
       if (!claimProjects.includes(projectId)) {
-        throw new PalimpsestConfigurationError(`claims[${claimIndex}] cites evidence outside its projects`);
+        throw new PalimpsestConfigurationError(
+          `claims[${claimIndex}] cites evidence outside its projects`,
+        );
       }
-      const factId = reviewBoundedText(rawCitation.fact_id, `claims[${claimIndex}].evidence[${evidenceIndex}].fact_id`, 255);
+      const factId = reviewBoundedText(
+        rawCitation.fact_id,
+        `claims[${claimIndex}].evidence[${evidenceIndex}].fact_id`,
+        255,
+      );
       const revisionId = reviewBoundedText(
         rawCitation.revision_id,
         `claims[${claimIndex}].evidence[${evidenceIndex}].revision_id`,
         255,
       );
       const citationKey = `${projectId}\u0000${factId}\u0000${revisionId}`;
-      if (citationKeys.has(citationKey)) throw new PalimpsestConfigurationError(`claims[${claimIndex}] repeats an evidence citation`);
+      if (citationKeys.has(citationKey))
+        throw new PalimpsestConfigurationError(
+          `claims[${claimIndex}] repeats an evidence citation`,
+        );
       citationKeys.add(citationKey);
       const item = itemsByRef.get(citationKey);
       if (!item) {
@@ -294,10 +448,17 @@ export function validateProjectReview(comparisonResult, review) {
         1,
         `claims[${claimIndex}].evidence[${evidenceIndex}]`,
       );
-      const returnedEpisodeIds = new Set(Array.isArray(item.evidence_episode_ids)
-        ? item.evidence_episode_ids.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
-        : []);
-      if (returnedEpisodeIds.size === 0 || episodeIds.some((episodeId) => !returnedEpisodeIds.has(episodeId))) {
+      const returnedEpisodeIds = new Set(
+        Array.isArray(item.evidence_episode_ids)
+          ? item.evidence_episode_ids
+              .filter((value) => typeof value === "string" && value.trim())
+              .map((value) => value.trim())
+          : [],
+      );
+      if (
+        returnedEpisodeIds.size === 0 ||
+        episodeIds.some((episodeId) => !returnedEpisodeIds.has(episodeId))
+      ) {
         throw new PalimpsestConfigurationError(
           `claims[${claimIndex}] evidence episode citation is not present on the returned item`,
         );
@@ -321,15 +482,27 @@ export function validateProjectReview(comparisonResult, review) {
         evidence_episode_ids: [...new Set(episodeIds)].sort(),
       };
     });
-    if (citedProjects.size !== claimProjects.length || claimProjects.some((project) => !citedProjects.has(project))) {
-      throw new PalimpsestConfigurationError(`claims[${claimIndex}] must cite every named project`);
+    if (
+      citedProjects.size !== claimProjects.length ||
+      claimProjects.some((project) => !citedProjects.has(project))
+    ) {
+      throw new PalimpsestConfigurationError(
+        `claims[${claimIndex}] must cite every named project`,
+      );
     }
     if (classification === "semantic_conflict" && citedValues.size < 2) {
       throw new PalimpsestConfigurationError(
         `claims[${claimIndex}] semantic_conflict requires at least two distinct cited values`,
       );
     }
-    claims.push({ claim_id: claimId, classification, summary, projects: claimProjects, confidence: rawClaim.confidence, evidence });
+    claims.push({
+      claim_id: claimId,
+      classification,
+      summary,
+      projects: claimProjects,
+      confidence: rawClaim.confidence,
+      evidence,
+    });
   });
 
   return {
@@ -341,7 +514,10 @@ export function validateProjectReview(comparisonResult, review) {
     claims,
     contract_validation: {
       passed: true,
-      evidence_citations_checked: claims.reduce((total, claim) => total + claim.evidence.length, 0),
+      evidence_citations_checked: claims.reduce(
+        (total, claim) => total + claim.evidence.length,
+        0,
+      ),
       semantic_truth_proven: false,
     },
     durable_write: false,
@@ -353,34 +529,68 @@ export function validateProjectReview(comparisonResult, review) {
   };
 }
 
-export function prepareProjectConsolidation(validatedReview, writes, { consolidationId } = {}) {
-  if (!validatedReview || typeof validatedReview !== "object" || Array.isArray(validatedReview)) {
+export function prepareProjectConsolidation(
+  validatedReview,
+  writes,
+  { consolidationId } = {},
+) {
+  if (
+    !validatedReview ||
+    typeof validatedReview !== "object" ||
+    Array.isArray(validatedReview)
+  ) {
     throw new PalimpsestConfigurationError("validatedReview must be an object");
   }
   if (validatedReview.profile !== PROJECT_REVIEW_PROFILE) {
-    throw new PalimpsestConfigurationError("validatedReview must come from the semantic review profile");
+    throw new PalimpsestConfigurationError(
+      "validatedReview must come from the semantic review profile",
+    );
   }
-  if (!validatedReview.contract_validation || validatedReview.contract_validation.passed !== true) {
-    throw new PalimpsestConfigurationError("validatedReview must have passed contract validation");
+  if (
+    !validatedReview.contract_validation ||
+    validatedReview.contract_validation.passed !== true
+  ) {
+    throw new PalimpsestConfigurationError(
+      "validatedReview must have passed contract validation",
+    );
   }
-  const normalizedConsolidationId = reviewBoundedText(consolidationId, "consolidationId", 255);
+  const normalizedConsolidationId = reviewBoundedText(
+    consolidationId,
+    "consolidationId",
+    255,
+  );
   if (!Array.isArray(writes) || writes.length === 0) {
     throw new PalimpsestConfigurationError("writes must be a non-empty array");
   }
   if (writes.length > PROJECT_REVIEW_MAXIMUM_CLAIMS) {
-    throw new PalimpsestConfigurationError(`writes must contain at most ${PROJECT_REVIEW_MAXIMUM_CLAIMS} entries`);
+    throw new PalimpsestConfigurationError(
+      `writes must contain at most ${PROJECT_REVIEW_MAXIMUM_CLAIMS} entries`,
+    );
   }
-  if (!Array.isArray(validatedReview.claims) || validatedReview.claims.length === 0) {
-    throw new PalimpsestConfigurationError("validatedReview.claims must be a non-empty array");
+  if (
+    !Array.isArray(validatedReview.claims) ||
+    validatedReview.claims.length === 0
+  ) {
+    throw new PalimpsestConfigurationError(
+      "validatedReview.claims must be a non-empty array",
+    );
   }
   const claims = new Map();
   validatedReview.claims.forEach((claim) => {
     if (!claim || typeof claim !== "object" || Array.isArray(claim)) {
-      throw new PalimpsestConfigurationError("validatedReview claims must be objects");
+      throw new PalimpsestConfigurationError(
+        "validatedReview claims must be objects",
+      );
     }
-    const claimId = reviewBoundedText(claim.claim_id, "validatedReview claim_id", 128);
+    const claimId = reviewBoundedText(
+      claim.claim_id,
+      "validatedReview claim_id",
+      128,
+    );
     if (claims.has(claimId)) {
-      throw new PalimpsestConfigurationError(`validatedReview claim ID is duplicated: ${claimId}`);
+      throw new PalimpsestConfigurationError(
+        `validatedReview claim ID is duplicated: ${claimId}`,
+      );
     }
     claims.set(claimId, claim);
   });
@@ -389,16 +599,26 @@ export function prepareProjectConsolidation(validatedReview, writes, { consolida
   const sourceEpisodeIds = new Set();
   const normalizedWrites = writes.map((rawWrite, writeIndex) => {
     if (!rawWrite || typeof rawWrite !== "object" || Array.isArray(rawWrite)) {
-      throw new PalimpsestConfigurationError(`writes[${writeIndex}] must be an object`);
+      throw new PalimpsestConfigurationError(
+        `writes[${writeIndex}] must be an object`,
+      );
     }
-    const claimId = reviewBoundedText(rawWrite.claim_id, `writes[${writeIndex}].claim_id`, 128);
+    const claimId = reviewBoundedText(
+      rawWrite.claim_id,
+      `writes[${writeIndex}].claim_id`,
+      128,
+    );
     if (selectedClaimIds.has(claimId)) {
-      throw new PalimpsestConfigurationError(`writes claim ID is duplicated: ${claimId}`);
+      throw new PalimpsestConfigurationError(
+        `writes claim ID is duplicated: ${claimId}`,
+      );
     }
     selectedClaimIds.add(claimId);
     const claim = claims.get(claimId);
     if (!claim) {
-      throw new PalimpsestConfigurationError(`writes[${writeIndex}] references an unknown claim: ${claimId}`);
+      throw new PalimpsestConfigurationError(
+        `writes[${writeIndex}] references an unknown claim: ${claimId}`,
+      );
     }
     const classification = reviewBoundedText(
       claim.classification,
@@ -406,18 +626,30 @@ export function prepareProjectConsolidation(validatedReview, writes, { consolida
       64,
     );
     if (classification === "insufficient_evidence") {
-      throw new PalimpsestConfigurationError(`claim ${claimId} has insufficient_evidence and cannot be consolidated`);
+      throw new PalimpsestConfigurationError(
+        `claim ${claimId} has insufficient_evidence and cannot be consolidated`,
+      );
     }
     if (Object.hasOwn(rawWrite, "evidence_episode_ids")) {
-      throw new PalimpsestConfigurationError("evidence_episode_ids are derived from the validated claim");
+      throw new PalimpsestConfigurationError(
+        "evidence_episode_ids are derived from the validated claim",
+      );
     }
     if (Object.hasOwn(rawWrite, "idempotency_key")) {
-      throw new PalimpsestConfigurationError("idempotency_key is derived from consolidationId and claimId");
+      throw new PalimpsestConfigurationError(
+        "idempotency_key is derived from consolidationId and claimId",
+      );
     }
     const evidenceEpisodeIds = claimEpisodeIds(claim, claimId);
     evidenceEpisodeIds.forEach((episodeId) => sourceEpisodeIds.add(episodeId));
-    const validTime = objectCopy(rawWrite.valid_time, `writes[${writeIndex}].valid_time`);
-    const writePolicy = writePolicyCopy(rawWrite.write_policy, `writes[${writeIndex}].write_policy`);
+    const validTime = objectCopy(
+      rawWrite.valid_time,
+      `writes[${writeIndex}].valid_time`,
+    );
+    const writePolicy = writePolicyCopy(
+      rawWrite.write_policy,
+      `writes[${writeIndex}].write_policy`,
+    );
     const confidence = confidenceValue(rawWrite.confidence);
     const value = nonNull(rawWrite.value, `writes[${writeIndex}].value`);
     return {
@@ -428,21 +660,36 @@ export function prepareProjectConsolidation(validatedReview, writes, { consolida
         `validatedReview.claims[${claimId}].summary`,
         2000,
       ),
-      namespace: reviewBoundedText(rawWrite.namespace, `writes[${writeIndex}].namespace`, 255),
+      namespace: reviewBoundedText(
+        rawWrite.namespace,
+        `writes[${writeIndex}].namespace`,
+        255,
+      ),
       key: reviewBoundedText(rawWrite.key, `writes[${writeIndex}].key`, 512),
       value,
-      observed_at: reviewBoundedText(rawWrite.observed_at, `writes[${writeIndex}].observed_at`, 255),
+      observed_at: reviewBoundedText(
+        rawWrite.observed_at,
+        `writes[${writeIndex}].observed_at`,
+        255,
+      ),
       valid_time: validTime,
       evidence_episode_ids: evidenceEpisodeIds,
       write_policy: writePolicy,
       confidence,
-      sensitivity: reviewBoundedText(rawWrite.sensitivity, `writes[${writeIndex}].sensitivity`, 255),
+      sensitivity: reviewBoundedText(
+        rawWrite.sensitivity,
+        `writes[${writeIndex}].sensitivity`,
+        255,
+      ),
       retention_policy_id: reviewBoundedText(
         rawWrite.retention_policy_id,
         `writes[${writeIndex}].retention_policy_id`,
         255,
       ),
-      idempotency_key: consolidationIdempotencyKey(normalizedConsolidationId, claimId),
+      idempotency_key: consolidationIdempotencyKey(
+        normalizedConsolidationId,
+        claimId,
+      ),
     };
   });
 
@@ -460,28 +707,39 @@ export function prepareProjectConsolidation(validatedReview, writes, { consolida
 
 function claimEpisodeIds(claim, claimId) {
   if (!Array.isArray(claim.evidence) || claim.evidence.length === 0) {
-    throw new PalimpsestConfigurationError(`validatedReview claim ${claimId} has no evidence`);
+    throw new PalimpsestConfigurationError(
+      `validatedReview claim ${claimId} has no evidence`,
+    );
   }
   const episodeIds = new Set();
   claim.evidence.forEach((citation, evidenceIndex) => {
     if (!citation || typeof citation !== "object" || Array.isArray(citation)) {
-      throw new PalimpsestConfigurationError(`validatedReview claim ${claimId} evidence must be objects`);
+      throw new PalimpsestConfigurationError(
+        `validatedReview claim ${claimId} evidence must be objects`,
+      );
     }
-    if (!Array.isArray(citation.evidence_episode_ids) || citation.evidence_episode_ids.length === 0) {
+    if (
+      !Array.isArray(citation.evidence_episode_ids) ||
+      citation.evidence_episode_ids.length === 0
+    ) {
       throw new PalimpsestConfigurationError(
         `validatedReview claim ${claimId} evidence[${evidenceIndex}] has no episode IDs`,
       );
     }
     citation.evidence_episode_ids.forEach((episodeId, episodeIndex) => {
-      episodeIds.add(reviewBoundedText(
-        episodeId,
-        `validatedReview claim ${claimId} evidence[${evidenceIndex}].evidence_episode_ids[${episodeIndex}]`,
-        255,
-      ));
+      episodeIds.add(
+        reviewBoundedText(
+          episodeId,
+          `validatedReview claim ${claimId} evidence[${evidenceIndex}].evidence_episode_ids[${episodeIndex}]`,
+          255,
+        ),
+      );
     });
   });
   if (episodeIds.size === 0) {
-    throw new PalimpsestConfigurationError(`validatedReview claim ${claimId} has no evidence episode IDs`);
+    throw new PalimpsestConfigurationError(
+      `validatedReview claim ${claimId} has no evidence episode IDs`,
+    );
   }
   return [...episodeIds].sort();
 }
@@ -501,19 +759,30 @@ function writePolicyCopy(value, name) {
 }
 
 function consolidationIdempotencyKey(consolidationId, claimId) {
-  const digest = createHash("sha256").update(`${consolidationId}\u0000${claimId}`, "utf8").digest("hex");
+  const digest = createHash("sha256")
+    .update(`${consolidationId}\u0000${claimId}`, "utf8")
+    .digest("hex");
   return `palimpsest-consolidation-v1:${digest}`;
 }
 
 export class PalimpsestClient {
-  constructor({ baseUrl, bearerToken, tenantId, subjectId, caseId = null, timeoutMs = 30_000 }) {
+  constructor({
+    baseUrl,
+    bearerToken,
+    tenantId,
+    subjectId,
+    caseId = null,
+    timeoutMs = 30_000,
+  }) {
     this.baseUrl = baseUrlValue(baseUrl);
     this.bearerToken = nonEmptyText(bearerToken, "bearerToken");
     this.tenantId = uuidValue(tenantId, "tenantId");
     this.subjectId = uuidValue(subjectId, "subjectId");
     this.caseId = caseId === null ? null : uuidValue(caseId, "caseId");
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-      throw new PalimpsestConfigurationError("timeoutMs must be greater than zero");
+      throw new PalimpsestConfigurationError(
+        "timeoutMs must be greater than zero",
+      );
     }
     this.timeoutMs = timeoutMs;
   }
@@ -535,7 +804,10 @@ export class PalimpsestClient {
         observed_at: nonEmptyText(observedAt, "observedAt"),
         provenance: { ...provenance },
         sensitivity: nonEmptyText(sensitivity, "sensitivity"),
-        retention_policy_id: nonEmptyText(retentionPolicyId, "retentionPolicyId"),
+        retention_policy_id: nonEmptyText(
+          retentionPolicyId,
+          "retentionPolicyId",
+        ),
         payload,
       },
       idempotencyKey: idempotencyKeyValue(idempotencyKey),
@@ -564,11 +836,16 @@ export class PalimpsestClient {
         value: nonNull(value, "value"),
         observed_at: nonEmptyText(observedAt, "observedAt"),
         valid_time: { ...validTime },
-        evidence_episode_ids: evidenceEpisodeIds.map((id) => uuidValue(id, "evidenceEpisodeId")),
+        evidence_episode_ids: evidenceEpisodeIds.map((id) =>
+          uuidValue(id, "evidenceEpisodeId"),
+        ),
         write_policy: { ...writePolicy },
         confidence: confidenceValue(confidence),
         sensitivity: nonEmptyText(sensitivity, "sensitivity"),
-        retention_policy_id: nonEmptyText(retentionPolicyId, "retentionPolicyId"),
+        retention_policy_id: nonEmptyText(
+          retentionPolicyId,
+          "retentionPolicyId",
+        ),
       },
       idempotencyKey: idempotencyKeyValue(idempotencyKey),
     });
@@ -579,7 +856,10 @@ export class PalimpsestClient {
   }
 
   async getFactResponse(factId) {
-    return this.#jsonResponse("GET", `${this.#scopePath()}/facts/${uuidValue(factId, "factId")}`);
+    return this.#jsonResponse(
+      "GET",
+      `${this.#scopePath()}/facts/${uuidValue(factId, "factId")}`,
+    );
   }
 
   async getFactAsOf(factId, { validAt, recordedAt }) {
@@ -587,60 +867,88 @@ export class PalimpsestClient {
       valid_at: nonEmptyText(validAt, "validAt"),
       recorded_at: nonEmptyText(recordedAt, "recordedAt"),
     });
-    return this.#jsonRequest("GET", `${this.#scopePath()}/facts/${uuidValue(factId, "factId")}/as-of?${query}`);
+    return this.#jsonRequest(
+      "GET",
+      `${this.#scopePath()}/facts/${uuidValue(factId, "factId")}/as-of?${query}`,
+    );
   }
 
-  async supersedeFact(factId, {
-    supersedesRevisionId,
-    value,
-    observedAt,
-    validTime,
-    evidenceEpisodeIds,
-    writePolicy,
-    confidence,
-    sensitivity,
-    retentionPolicyId,
-    ifMatch,
-    idempotencyKey = null,
-  }) {
-    return this.#jsonRequest("PUT", `${this.#scopePath()}/facts/${uuidValue(factId, "factId")}`, {
-      body: {
-        supersedes_revision_id: uuidValue(supersedesRevisionId, "supersedesRevisionId"),
-        value: nonNull(value, "value"),
-        observed_at: nonEmptyText(observedAt, "observedAt"),
-        valid_time: { ...validTime },
-        evidence_episode_ids: evidenceEpisodeIds.map((id) => uuidValue(id, "evidenceEpisodeId")),
-        write_policy: { ...writePolicy },
-        confidence: confidenceValue(confidence),
-        sensitivity: nonEmptyText(sensitivity, "sensitivity"),
-        retention_policy_id: nonEmptyText(retentionPolicyId, "retentionPolicyId"),
+  async supersedeFact(
+    factId,
+    {
+      supersedesRevisionId,
+      value,
+      observedAt,
+      validTime,
+      evidenceEpisodeIds,
+      writePolicy,
+      confidence,
+      sensitivity,
+      retentionPolicyId,
+      ifMatch,
+      idempotencyKey = null,
+    },
+  ) {
+    return this.#jsonRequest(
+      "PUT",
+      `${this.#scopePath()}/facts/${uuidValue(factId, "factId")}`,
+      {
+        body: {
+          supersedes_revision_id: uuidValue(
+            supersedesRevisionId,
+            "supersedesRevisionId",
+          ),
+          value: nonNull(value, "value"),
+          observed_at: nonEmptyText(observedAt, "observedAt"),
+          valid_time: { ...validTime },
+          evidence_episode_ids: evidenceEpisodeIds.map((id) =>
+            uuidValue(id, "evidenceEpisodeId"),
+          ),
+          write_policy: { ...writePolicy },
+          confidence: confidenceValue(confidence),
+          sensitivity: nonEmptyText(sensitivity, "sensitivity"),
+          retention_policy_id: nonEmptyText(
+            retentionPolicyId,
+            "retentionPolicyId",
+          ),
+        },
+        idempotencyKey: idempotencyKeyValue(idempotencyKey),
+        ifMatch: nonEmptyText(ifMatch, "ifMatch"),
       },
-      idempotencyKey: idempotencyKeyValue(idempotencyKey),
-      ifMatch: nonEmptyText(ifMatch, "ifMatch"),
-    });
+    );
   }
 
-  async retrieve(query, {
-    perspective = "current",
-    pageSize = 10,
-    policyId = null,
-    filters = {},
-    idempotencyKey = null,
-  } = {}) {
+  async retrieve(
+    query,
+    {
+      perspective = "current",
+      pageSize = 10,
+      policyId = null,
+      filters = {},
+      idempotencyKey = null,
+    } = {},
+  ) {
     const text = nonEmptyText(query, "query");
     if (new TextEncoder().encode(text).length > 4096) {
-      throw new PalimpsestConfigurationError("query must contain at most 4096 UTF-8 bytes");
+      throw new PalimpsestConfigurationError(
+        "query must contain at most 4096 UTF-8 bytes",
+      );
     }
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
-      throw new PalimpsestConfigurationError("pageSize must be an integer from 1 to 50");
+      throw new PalimpsestConfigurationError(
+        "pageSize must be an integer from 1 to 50",
+      );
     }
-    const normalizedPerspective = perspective === "current"
-      ? { kind: "current" }
-      : perspective && typeof perspective === "object"
-        ? { ...perspective }
-        : (() => {
-            throw new PalimpsestConfigurationError("perspective must be 'current' or an object");
-          })();
+    const normalizedPerspective =
+      perspective === "current"
+        ? { kind: "current" }
+        : perspective && typeof perspective === "object"
+          ? { ...perspective }
+          : (() => {
+              throw new PalimpsestConfigurationError(
+                "perspective must be 'current' or an object",
+              );
+            })();
     const body = {
       query: text,
       perspective: normalizedPerspective,
@@ -658,22 +966,30 @@ export class PalimpsestClient {
     return this.retrieve(query, options);
   }
 
-  async recallByProject(query, projectIds, {
-    perspective = "current",
-    pageSize = 10,
-    policyId = null,
-    filters = {},
-    namespacePrefix = "agent_session",
-    idempotencyKeyPrefix = null,
-  } = {}) {
+  async recallByProject(
+    query,
+    projectIds,
+    {
+      perspective = "current",
+      pageSize = 10,
+      policyId = null,
+      filters = {},
+      namespacePrefix = "agent_session",
+      idempotencyKeyPrefix = null,
+    } = {},
+  ) {
     if (!Array.isArray(projectIds) || projectIds.length === 0) {
-      throw new PalimpsestConfigurationError("projectIds must be a non-empty array");
+      throw new PalimpsestConfigurationError(
+        "projectIds must be a non-empty array",
+      );
     }
     if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
       throw new PalimpsestConfigurationError("filters must be an object");
     }
     if (Object.hasOwn(filters, "namespaces")) {
-      throw new PalimpsestConfigurationError("recallByProject owns the namespaces filter");
+      throw new PalimpsestConfigurationError(
+        "recallByProject owns the namespaces filter",
+      );
     }
     const selected = [];
     const namespaces = new Map();
@@ -683,12 +999,18 @@ export class PalimpsestClient {
       selected.push(normalized);
       namespaces.set(normalized, projectNamespace(normalized, namespacePrefix));
     }
-    const baseKey = idempotencyKeyPrefix === null ? null : idempotencyBase(idempotencyKeyPrefix);
+    const baseKey =
+      idempotencyKeyPrefix === null
+        ? null
+        : idempotencyBase(idempotencyKeyPrefix);
     const results = Object.create(null);
     for (const projectId of selected) {
-      const idempotencyKey = baseKey === null ? null : `${baseKey}:${projectId}`;
+      const idempotencyKey =
+        baseKey === null ? null : `${baseKey}:${projectId}`;
       if (idempotencyKey !== null && idempotencyKey.length > 255) {
-        throw new PalimpsestConfigurationError("idempotencyKeyPrefix leaves insufficient room for project IDs");
+        throw new PalimpsestConfigurationError(
+          "idempotencyKeyPrefix leaves insufficient room for project IDs",
+        );
       }
       results[projectId] = await this.retrieve(query, {
         perspective,
@@ -712,12 +1034,19 @@ export class PalimpsestClient {
     };
   }
 
-  async consolidateProjectReview(comparisonResult, review, writes, { consolidationId } = {}) {
+  async consolidateProjectReview(
+    comparisonResult,
+    review,
+    writes,
+    { consolidationId } = {},
+  ) {
     let validatedReview;
     let plan;
     try {
       validatedReview = validateProjectReview(comparisonResult, review);
-      plan = prepareProjectConsolidation(validatedReview, writes, { consolidationId });
+      plan = prepareProjectConsolidation(validatedReview, writes, {
+        consolidationId,
+      });
     } catch (error) {
       if (error instanceof PalimpsestConfigurationError) throw error;
       throw new PalimpsestConfigurationError(error.message);
@@ -725,7 +1054,9 @@ export class PalimpsestClient {
 
     this.#case(null);
     plan.writes.forEach((plannedWrite) => {
-      plannedWrite.evidence_episode_ids.forEach((episodeId) => uuidValue(episodeId, "evidenceEpisodeId"));
+      plannedWrite.evidence_episode_ids.forEach((episodeId) =>
+        uuidValue(episodeId, "evidenceEpisodeId"),
+      );
     });
 
     const completed = [];
@@ -748,7 +1079,12 @@ export class PalimpsestClient {
       } catch (error) {
         if (error instanceof PalimpsestConfigurationError) throw error;
         if (error instanceof PalimpsestError) {
-          throw new PartialConsolidationError(plan.consolidation_id, completed, plannedWrite, error);
+          throw new PartialConsolidationError(
+            plan.consolidation_id,
+            completed,
+            plannedWrite,
+            error,
+          );
         }
         throw error;
       }
@@ -776,42 +1112,59 @@ export class PalimpsestClient {
 
   async getRetrieval(retrievalId, { cursor = null } = {}) {
     const path = `${this.#scopePath()}/retrievals/${uuidValue(retrievalId, "retrievalId")}`;
-    const suffix = cursor === null ? "" : `?${new URLSearchParams({ cursor: nonEmptyText(cursor, "cursor") })}`;
+    const suffix =
+      cursor === null
+        ? ""
+        : `?${new URLSearchParams({ cursor: nonEmptyText(cursor, "cursor") })}`;
     return this.#jsonRequest("GET", `${path}${suffix}`);
   }
 
-  async saveCheckpointResponse(agentId, threadId, {
-    state,
-    stateSchemaVersion,
-    effectTransitions,
-    provenance,
-    sensitivity,
-    retentionPolicyId,
-    caseId = null,
-    parentRevisionId = null,
-    ifMatch = null,
-    ifNoneMatch = null,
-    idempotencyKey = null,
-  }) {
+  async saveCheckpointResponse(
+    agentId,
+    threadId,
+    {
+      state,
+      stateSchemaVersion,
+      effectTransitions,
+      provenance,
+      sensitivity,
+      retentionPolicyId,
+      caseId = null,
+      parentRevisionId = null,
+      ifMatch = null,
+      ifNoneMatch = null,
+      idempotencyKey = null,
+    },
+  ) {
     if ((ifMatch === null) === (ifNoneMatch === null)) {
-      throw new PalimpsestConfigurationError("supply exactly one of ifMatch or ifNoneMatch");
+      throw new PalimpsestConfigurationError(
+        "supply exactly one of ifMatch or ifNoneMatch",
+      );
     }
     if (ifNoneMatch !== null && ifNoneMatch !== "*") {
       throw new PalimpsestConfigurationError("ifNoneMatch must be '*'");
     }
     if (!Number.isInteger(stateSchemaVersion) || stateSchemaVersion < 1) {
-      throw new PalimpsestConfigurationError("stateSchemaVersion must be a positive integer");
+      throw new PalimpsestConfigurationError(
+        "stateSchemaVersion must be a positive integer",
+      );
     }
     return this.#jsonResponse("PUT", this.#checkpointPath(agentId, threadId), {
       body: {
         case_id: this.#case(caseId),
-        parent_revision_id: parentRevisionId === null ? null : uuidValue(parentRevisionId, "parentRevisionId"),
+        parent_revision_id:
+          parentRevisionId === null
+            ? null
+            : uuidValue(parentRevisionId, "parentRevisionId"),
         state,
         state_schema_version: stateSchemaVersion,
         effect_transitions: effectTransitions.map((effect) => ({ ...effect })),
         provenance: { ...provenance },
         sensitivity: nonEmptyText(sensitivity, "sensitivity"),
-        retention_policy_id: nonEmptyText(retentionPolicyId, "retentionPolicyId"),
+        retention_policy_id: nonEmptyText(
+          retentionPolicyId,
+          "retentionPolicyId",
+        ),
       },
       idempotencyKey: idempotencyKeyValue(idempotencyKey),
       ifMatch,
@@ -842,9 +1195,13 @@ export class PalimpsestClient {
   }
 
   async getExportResponse(exportId, { ifNoneMatch = null } = {}) {
-    return this.#jsonResponse("GET", `${this.#scopePath()}/exports/${uuidValue(exportId, "exportId")}`, {
-      ifNoneMatch,
-    });
+    return this.#jsonResponse(
+      "GET",
+      `${this.#scopePath()}/exports/${uuidValue(exportId, "exportId")}`,
+      {
+        ifNoneMatch,
+      },
+    );
   }
 
   async getExport(exportId, options = {}) {
@@ -852,7 +1209,10 @@ export class PalimpsestClient {
   }
 
   async downloadExportResponse(exportId) {
-    const response = await this.#request("GET", `${this.#scopePath()}/exports/${uuidValue(exportId, "exportId")}/content`);
+    const response = await this.#request(
+      "GET",
+      `${this.#scopePath()}/exports/${uuidValue(exportId, "exportId")}/content`,
+    );
     return {
       content: new Uint8Array(response.body),
       statusCode: response.statusCode,
@@ -878,54 +1238,83 @@ export class PalimpsestClient {
   }
 
   async getDeletionResponse(operationId, { ifNoneMatch = null } = {}) {
-    return this.#jsonResponse("GET", `${this.#scopePath()}/deletions/${uuidValue(operationId, "operationId")}`, {
-      ifNoneMatch,
-    });
+    return this.#jsonResponse(
+      "GET",
+      `${this.#scopePath()}/deletions/${uuidValue(operationId, "operationId")}`,
+      {
+        ifNoneMatch,
+      },
+    );
   }
 
   async getDeletion(operationId, options = {}) {
     return (await this.getDeletionResponse(operationId, options)).data;
   }
 
-  async waitForDeletion(operationId, { timeoutMs = 30_000, pollIntervalMs = 500 } = {}) {
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || !Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
-      throw new PalimpsestConfigurationError("timeoutMs and pollIntervalMs must be greater than zero");
+  async waitForDeletion(
+    operationId,
+    { timeoutMs = 30_000, pollIntervalMs = 500 } = {},
+  ) {
+    if (
+      !Number.isFinite(timeoutMs) ||
+      timeoutMs <= 0 ||
+      !Number.isFinite(pollIntervalMs) ||
+      pollIntervalMs <= 0
+    ) {
+      throw new PalimpsestConfigurationError(
+        "timeoutMs and pollIntervalMs must be greater than zero",
+      );
     }
     const deadline = Date.now() + timeoutMs;
     let etag = null;
     let latest = null;
     while (true) {
-      const response = await this.getDeletionResponse(operationId, { ifNoneMatch: etag });
+      const response = await this.getDeletionResponse(operationId, {
+        ifNoneMatch: etag,
+      });
       if (response.statusCode !== 304) {
         latest = response.data;
         etag = response.etag;
       }
-      if (latest && ["completed", "failed", "expired"].includes(latest.lifecycle_state)) return latest;
+      if (
+        latest &&
+        ["completed", "failed", "expired"].includes(latest.lifecycle_state)
+      )
+        return latest;
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
-        throw new PalimpsestTimeoutError(`deletion ${operationId} did not reach a terminal state within ${timeoutMs} ms`);
+        throw new PalimpsestTimeoutError(
+          `deletion ${operationId} did not reach a terminal state within ${timeoutMs} ms`,
+        );
       }
-      await new Promise((resolve) => setTimeout(resolve, Math.min(pollIntervalMs, remaining)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(pollIntervalMs, remaining)),
+      );
     }
   }
 
-  async remember(content, {
-    key,
-    metadata = {},
-    kind = "typescript_memory",
-    sourceType = "palimpsest.typescript",
-    sourceUri = null,
-    externalId = null,
-    namespace = "typescript",
-    sensitivity = "internal",
-    retentionPolicyId = "standard",
-    confidence = 1,
-    observedAt = new Date().toISOString(),
-    idempotencyKey = null,
-  }) {
+  async remember(
+    content,
+    {
+      key,
+      metadata = {},
+      kind = "typescript_memory",
+      sourceType = "palimpsest.typescript",
+      sourceUri = null,
+      externalId = null,
+      namespace = "typescript",
+      sensitivity = "internal",
+      retentionPolicyId = "standard",
+      confidence = 1,
+      observedAt = new Date().toISOString(),
+      idempotencyKey = null,
+    },
+  ) {
     const text = nonEmptyText(content, "content");
     if (new TextEncoder().encode(text).length > 65_536) {
-      throw new PalimpsestConfigurationError("content must contain at most 65536 UTF-8 bytes");
+      throw new PalimpsestConfigurationError(
+        "content must contain at most 65536 UTF-8 bytes",
+      );
     }
     const memoryKey = nonEmptyText(key, "key");
     const baseKey = idempotencyBase(idempotencyKey);
@@ -933,14 +1322,24 @@ export class PalimpsestClient {
     const episode = await this.appendEpisode({
       kind,
       observedAt,
-      provenance: { source_type: nonEmptyText(sourceType, "sourceType"), source_uri: sourceUri, external_id: externalId },
+      provenance: {
+        source_type: nonEmptyText(sourceType, "sourceType"),
+        source_uri: sourceUri,
+        external_id: externalId,
+      },
       sensitivity,
       retentionPolicyId,
       payload: episodePayload,
       idempotencyKey: `${baseKey}:episode`,
     });
-    if (!episode || typeof episode.episode_id !== "string" || !episode.episode_id) {
-      throw new PalimpsestProtocolError("Palimpsest created an episode without returning its identifier");
+    if (
+      !episode ||
+      typeof episode.episode_id !== "string" ||
+      !episode.episode_id
+    ) {
+      throw new PalimpsestProtocolError(
+        "Palimpsest created an episode without returning its identifier",
+      );
     }
     try {
       const fact = await this.createFact({
@@ -958,7 +1357,8 @@ export class PalimpsestClient {
       });
       return { episode, fact };
     } catch (error) {
-      if (error instanceof PalimpsestError) throw new PartialRememberError(episode, error);
+      if (error instanceof PalimpsestError)
+        throw new PartialRememberError(episode, error);
       throw error;
     }
   }
@@ -968,8 +1368,12 @@ export class PalimpsestClient {
   }
 
   #case(caseId) {
-    const selected = caseId === null ? this.caseId : uuidValue(caseId, "caseId");
-    if (selected === null) throw new PalimpsestConfigurationError("caseId is required for this operation");
+    const selected =
+      caseId === null ? this.caseId : uuidValue(caseId, "caseId");
+    if (selected === null)
+      throw new PalimpsestConfigurationError(
+        "caseId is required for this operation",
+      );
     return selected;
   }
 
@@ -994,15 +1398,28 @@ export class PalimpsestClient {
     try {
       decoded = JSON.parse(new TextDecoder().decode(response.body));
     } catch (error) {
-      throw new PalimpsestProtocolError("Palimpsest returned invalid JSON", { cause: error });
+      throw new PalimpsestProtocolError("Palimpsest returned invalid JSON", {
+        cause: error,
+      });
     }
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-      throw new PalimpsestProtocolError("Palimpsest returned a non-object JSON response");
+      throw new PalimpsestProtocolError(
+        "Palimpsest returned a non-object JSON response",
+      );
     }
     return responseEnvelope(decoded, response);
   }
 
-  async #request(method, path, { body = undefined, idempotencyKey = null, ifMatch = null, ifNoneMatch = null } = {}) {
+  async #request(
+    method,
+    path,
+    {
+      body = undefined,
+      idempotencyKey = null,
+      ifMatch = null,
+      ifNoneMatch = null,
+    } = {},
+  ) {
     const headers = {
       Accept: "application/json",
       Authorization: `Bearer ${this.bearerToken}`,
@@ -1012,7 +1429,8 @@ export class PalimpsestClient {
       headers["Content-Type"] = "application/json";
       encodedBody = JSON.stringify(body);
     }
-    if (idempotencyKey !== null) headers["Idempotency-Key"] = idempotencyKeyValue(idempotencyKey);
+    if (idempotencyKey !== null)
+      headers["Idempotency-Key"] = idempotencyKeyValue(idempotencyKey);
     if (ifMatch !== null) headers["If-Match"] = ifMatch;
     if (ifNoneMatch !== null) headers["If-None-Match"] = ifNoneMatch;
     const controller = new AbortController();
@@ -1028,15 +1446,23 @@ export class PalimpsestClient {
       });
     } catch (error) {
       if (error?.name === "AbortError") {
-        throw new PalimpsestTimeoutError(`Palimpsest request exceeded ${this.timeoutMs} ms`);
+        throw new PalimpsestTimeoutError(
+          `Palimpsest request exceeded ${this.timeoutMs} ms`,
+        );
       }
-      throw new PalimpsestTransportError(`Palimpsest is unavailable: ${error.message}`);
+      throw new PalimpsestTransportError(
+        `Palimpsest is unavailable: ${error.message}`,
+      );
     } finally {
       clearTimeout(timeout);
     }
     const responseHeaders = Object.fromEntries(response.headers.entries());
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
-    const raw = { statusCode: response.status, headers: responseHeaders, body: bodyBytes };
+    const raw = {
+      statusCode: response.status,
+      headers: responseHeaders,
+      body: bodyBytes,
+    };
     if (!response.ok && response.status !== 303 && response.status !== 304) {
       let problem = null;
       try {
@@ -1044,7 +1470,13 @@ export class PalimpsestClient {
       } catch {
         // Preserve the typed HTTP error even when a proxy returns non-JSON.
       }
-      throw new PalimpsestHttpError(response.status, method, path, problem, responseHeaders);
+      throw new PalimpsestHttpError(
+        response.status,
+        method,
+        path,
+        problem,
+        responseHeaders,
+      );
     }
     return raw;
   }
@@ -1073,11 +1505,17 @@ function stableJson(value) {
     if (Number.isInteger(value) && Math.abs(value) < 1e21) return String(value);
     return JSON.stringify(value);
   }
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  if (Array.isArray(value))
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
   if (typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(",")}}`;
   }
-  throw new PalimpsestProtocolError("retrieval item values must be JSON-compatible");
+  throw new PalimpsestProtocolError(
+    "retrieval item values must be JSON-compatible",
+  );
 }
 
 function optionalText(value) {
@@ -1089,31 +1527,48 @@ function reviewAttribution(review, name, fields) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new PalimpsestConfigurationError(`review.${name} must be an object`);
   }
-  return Object.fromEntries(fields.map((field) => [field, reviewBoundedText(value[field], `review.${name}.${field}`, 255)]));
+  return Object.fromEntries(
+    fields.map((field) => [
+      field,
+      reviewBoundedText(value[field], `review.${name}.${field}`, 255),
+    ]),
+  );
 }
 
 function reviewStringList(parent, name, minimum, path = "review") {
   const value = parent?.[name];
   const label = `${path}.${name}`;
   if (!Array.isArray(value) || value.length < minimum) {
-    throw new PalimpsestConfigurationError(`${label} must contain at least ${minimum} strings`);
+    throw new PalimpsestConfigurationError(
+      `${label} must contain at least ${minimum} strings`,
+    );
   }
-  const result = value.map((item, index) => reviewBoundedText(item, `${label}[${index}]`, 255));
-  if (new Set(result).size !== result.length) throw new PalimpsestConfigurationError(`${label} must not contain duplicates`);
+  const result = value.map((item, index) =>
+    reviewBoundedText(item, `${label}[${index}]`, 255),
+  );
+  if (new Set(result).size !== result.length)
+    throw new PalimpsestConfigurationError(
+      `${label} must not contain duplicates`,
+    );
   return result;
 }
 
 function reviewBoundedText(value, name, maximumBytes) {
   const result = nonEmptyText(value, name);
   if (new TextEncoder().encode(result).length > maximumBytes) {
-    throw new PalimpsestConfigurationError(`${name} must contain at most ${maximumBytes} UTF-8 bytes`);
+    throw new PalimpsestConfigurationError(
+      `${name} must contain at most ${maximumBytes} UTF-8 bytes`,
+    );
   }
   return result;
 }
 
 function reviewDigest(value, name) {
   const result = reviewBoundedText(value, name, 64);
-  if (!SHA256_PATTERN.test(result)) throw new PalimpsestConfigurationError(`${name} must be a lowercase SHA-256 digest`);
+  if (!SHA256_PATTERN.test(result))
+    throw new PalimpsestConfigurationError(
+      `${name} must be a lowercase SHA-256 digest`,
+    );
   return result;
 }
 
@@ -1121,18 +1576,30 @@ function returnedReviewItems(bundles, projectSet) {
   const itemsByRef = new Map();
   for (const projectId of [...projectSet].sort()) {
     const bundle = bundles[projectId];
-    if (!bundle || typeof bundle !== "object" || Array.isArray(bundle) || !Array.isArray(bundle.items)) {
-      throw new PalimpsestProtocolError(`retrieval bundle for ${projectId} must contain an items array`);
+    if (
+      !bundle ||
+      typeof bundle !== "object" ||
+      Array.isArray(bundle) ||
+      !Array.isArray(bundle.items)
+    ) {
+      throw new PalimpsestProtocolError(
+        `retrieval bundle for ${projectId} must contain an items array`,
+      );
     }
     for (const item of bundle.items) {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
-        throw new PalimpsestProtocolError(`retrieval bundle for ${projectId} contains a non-object item`);
+        throw new PalimpsestProtocolError(
+          `retrieval bundle for ${projectId} contains a non-object item`,
+        );
       }
       const factId = optionalText(item.fact_id);
       const revisionId = optionalText(item.revision_id);
       if (factId === null || revisionId === null) continue;
       const key = `${projectId}\u0000${factId}\u0000${revisionId}`;
-      if (itemsByRef.has(key)) throw new PalimpsestProtocolError("comparison bundles contain duplicate fact/revision references");
+      if (itemsByRef.has(key))
+        throw new PalimpsestProtocolError(
+          "comparison bundles contain duplicate fact/revision references",
+        );
       itemsByRef.set(key, item);
     }
   }
@@ -1141,20 +1608,32 @@ function returnedReviewItems(bundles, projectSet) {
 
 function comparisonItemDigestsFor(comparison) {
   if (!Array.isArray(comparison.groups)) {
-    throw new PalimpsestConfigurationError("comparison.groups must be an array");
+    throw new PalimpsestConfigurationError(
+      "comparison.groups must be an array",
+    );
   }
   const digests = new Map();
   comparison.groups.forEach((group, groupIndex) => {
     if (!group || typeof group !== "object" || Array.isArray(group)) {
-      throw new PalimpsestConfigurationError(`comparison group ${groupIndex} must be an object`);
+      throw new PalimpsestConfigurationError(
+        `comparison group ${groupIndex} must be an object`,
+      );
     }
     const itemsByProject = group.items_by_project;
-    if (!itemsByProject || typeof itemsByProject !== "object" || Array.isArray(itemsByProject)) {
-      throw new PalimpsestConfigurationError(`comparison group ${groupIndex} must contain items_by_project`);
+    if (
+      !itemsByProject ||
+      typeof itemsByProject !== "object" ||
+      Array.isArray(itemsByProject)
+    ) {
+      throw new PalimpsestConfigurationError(
+        `comparison group ${groupIndex} must contain items_by_project`,
+      );
     }
     Object.entries(itemsByProject).forEach(([projectId, rawItems]) => {
       if (!Array.isArray(rawItems)) {
-        throw new PalimpsestConfigurationError(`comparison group ${groupIndex} items must be an array`);
+        throw new PalimpsestConfigurationError(
+          `comparison group ${groupIndex} items must be an array`,
+        );
       }
       rawItems.forEach((rawItem, itemIndex) => {
         if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
@@ -1172,7 +1651,9 @@ function comparisonItemDigestsFor(comparison) {
         const key = `${projectId}\u0000${factId}\u0000${revisionId}`;
         const previous = digests.get(key);
         if (previous && previous !== valueSha256) {
-          throw new PalimpsestConfigurationError("comparison contains conflicting value digests for an item");
+          throw new PalimpsestConfigurationError(
+            "comparison contains conflicting value digests for an item",
+          );
         }
         digests.set(key, valueSha256);
       });
@@ -1183,16 +1664,28 @@ function comparisonItemDigestsFor(comparison) {
 
 function itemContent(item) {
   const value = item.value;
-  if (value && typeof value === "object" && !Array.isArray(value) && typeof value.content === "string") {
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof value.content === "string"
+  ) {
     return value.content;
   }
   return typeof value === "string" ? value : "";
 }
 
 function collectProjectContext(context, item) {
-  if (!context || !item.value || typeof item.value !== "object" || Array.isArray(item.value)) return;
+  if (
+    !context ||
+    !item.value ||
+    typeof item.value !== "object" ||
+    Array.isArray(item.value)
+  )
+    return;
   const metadata = item.value.metadata;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+    return;
   for (const [metadataKey, target] of [
     ["project_root", context.projectRoots],
     ["branch", context.branches],
@@ -1212,14 +1705,18 @@ function buildLexicalReview(textItems) {
     const left = textItems[leftIndex];
     for (const right of textItems.slice(leftIndex + 1)) {
       if (left.projectId === right.projectId) continue;
-      const shared = [...left.tokens].filter((token) => right.tokens.has(token));
+      const shared = [...left.tokens].filter((token) =>
+        right.tokens.has(token),
+      );
       if (shared.length < LEXICAL_OVERLAP_MINIMUM_SHARED_TOKENS) continue;
       const union = new Set([...left.tokens, ...right.tokens]);
       const similarity = shared.length / union.size;
       if (similarity < LEXICAL_OVERLAP_THRESHOLD) continue;
-      const ordered = [left, right].sort((first, second) => (
-        first.projectId.localeCompare(second.projectId) || first.itemIndex - second.itemIndex
-      ));
+      const ordered = [left, right].sort(
+        (first, second) =>
+          first.projectId.localeCompare(second.projectId) ||
+          first.itemIndex - second.itemIndex,
+      );
       const [first, second] = ordered;
       candidates.push({
         similarity: Math.round(similarity * 1_000_000) / 1_000_000,
@@ -1229,12 +1726,19 @@ function buildLexicalReview(textItems) {
       });
     }
   }
-  candidates.sort((left, right) => (
-    right.similarity - left.similarity
-      || left.projects.join("\u0000").localeCompare(right.projects.join("\u0000"))
-      || (left.items[0].revision_id ?? "").localeCompare(right.items[0].revision_id ?? "")
-      || (left.items[1].revision_id ?? "").localeCompare(right.items[1].revision_id ?? "")
-  ));
+  candidates.sort(
+    (left, right) =>
+      right.similarity - left.similarity ||
+      left.projects
+        .join("\u0000")
+        .localeCompare(right.projects.join("\u0000")) ||
+      (left.items[0].revision_id ?? "").localeCompare(
+        right.items[0].revision_id ?? "",
+      ) ||
+      (left.items[1].revision_id ?? "").localeCompare(
+        right.items[1].revision_id ?? "",
+      ),
+  );
   return {
     profile: "token-jaccard-v1",
     threshold: LEXICAL_OVERLAP_THRESHOLD,
@@ -1246,14 +1750,26 @@ function buildLexicalReview(textItems) {
 }
 
 function tokenDelta(first, second) {
-  const shared = [...first.tokens].filter((token) => second.tokens.has(token)).sort();
-  const firstOnly = [...first.tokens].filter((token) => !second.tokens.has(token)).sort();
-  const secondOnly = [...second.tokens].filter((token) => !first.tokens.has(token)).sort();
+  const shared = [...first.tokens]
+    .filter((token) => second.tokens.has(token))
+    .sort();
+  const firstOnly = [...first.tokens]
+    .filter((token) => !second.tokens.has(token))
+    .sort();
+  const secondOnly = [...second.tokens]
+    .filter((token) => !first.tokens.has(token))
+    .sort();
   return {
     shared: shared.slice(0, LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET),
     only_in: {
-      [first.projectId]: firstOnly.slice(0, LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET),
-      [second.projectId]: secondOnly.slice(0, LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET),
+      [first.projectId]: firstOnly.slice(
+        0,
+        LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
+      ),
+      [second.projectId]: secondOnly.slice(
+        0,
+        LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
+      ),
     },
     truncated: [shared, firstOnly, secondOnly].some(
       (tokens) => tokens.length > LEXICAL_REVIEW_MAXIMUM_TOKENS_PER_BUCKET,
@@ -1272,7 +1788,8 @@ function lexicalItemRef(item) {
 }
 
 function baseUrlValue(value) {
-  if (typeof value !== "string") throw new PalimpsestConfigurationError("baseUrl must be a string");
+  if (typeof value !== "string")
+    throw new PalimpsestConfigurationError("baseUrl must be a string");
   let parsed;
   try {
     parsed = new URL(value);
@@ -1283,7 +1800,9 @@ function baseUrlValue(value) {
     throw new PalimpsestConfigurationError("baseUrl must be an HTTP(S) URL");
   }
   if (parsed.search || parsed.hash || parsed.username || parsed.password) {
-    throw new PalimpsestConfigurationError("baseUrl must not contain credentials, a query, or a fragment");
+    throw new PalimpsestConfigurationError(
+      "baseUrl must not contain credentials, a query, or a fragment",
+    );
   }
   return value.replace(/\/+$/, "");
 }
@@ -1297,19 +1816,29 @@ function uuidValue(value, name) {
 
 function nonEmptyText(value, name) {
   if (typeof value !== "string" || !value.trim()) {
-    throw new PalimpsestConfigurationError(`${name} must be a non-empty string`);
+    throw new PalimpsestConfigurationError(
+      `${name} must be a non-empty string`,
+    );
   }
   return value.trim();
 }
 
 function nonNull(value, name) {
-  if (value === null || value === undefined) throw new PalimpsestConfigurationError(`${name} must not be null`);
+  if (value === null || value === undefined)
+    throw new PalimpsestConfigurationError(`${name} must not be null`);
   return value;
 }
 
 function confidenceValue(value) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-    throw new PalimpsestConfigurationError("confidence must be a number from 0 to 1");
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 1
+  ) {
+    throw new PalimpsestConfigurationError(
+      "confidence must be a number from 0 to 1",
+    );
   }
   return value;
 }
@@ -1317,15 +1846,22 @@ function confidenceValue(value) {
 function idempotencyKeyValue(value) {
   if (value === null) return `palimpsest-typescript-${randomUUID()}`;
   if (typeof value !== "string" || !value.trim() || value.length > 255) {
-    throw new PalimpsestConfigurationError("idempotencyKey must contain 1 to 255 characters");
+    throw new PalimpsestConfigurationError(
+      "idempotencyKey must contain 1 to 255 characters",
+    );
   }
   return value;
 }
 
 function idempotencyBase(value) {
-  const base = value === null ? `palimpsest-typescript-${randomUUID()}` : idempotencyKeyValue(value);
+  const base =
+    value === null
+      ? `palimpsest-typescript-${randomUUID()}`
+      : idempotencyKeyValue(value);
   if (base.length > 243) {
-    throw new PalimpsestConfigurationError("idempotencyKey must leave room for the operation suffix");
+    throw new PalimpsestConfigurationError(
+      "idempotencyKey must leave room for the operation suffix",
+    );
   }
   return base;
 }
@@ -1335,7 +1871,9 @@ export function projectNamespace(projectId, prefix = "agent_session") {
   const normalizedPrefix = nonEmptyText(prefix, "namespacePrefix");
   const namespace = `${normalizedPrefix}:${normalizedProject}`;
   if (namespace.length > 255) {
-    throw new PalimpsestConfigurationError("project namespace must contain at most 255 characters");
+    throw new PalimpsestConfigurationError(
+      "project namespace must contain at most 255 characters",
+    );
   }
   return namespace;
 }
