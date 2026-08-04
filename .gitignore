@@ -19,6 +19,7 @@ target/
 __pycache__/
 *.py[cod]
 .venv/
+.ruff_cache/
 *.egg-info/
 
 # Node
