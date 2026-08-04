@@ -37,7 +37,8 @@ authorized HTTP API, with common credential redaction.
 ## Out of scope
 
 - Provider APIs, native hooks, universal parsers; automatic consolidation of
-  raw session messages into higher-level facts (see spec 007 and backlog).
+  raw session messages into higher-level facts (governed consolidation is
+  specced in 011).
 
 ## Open questions
 

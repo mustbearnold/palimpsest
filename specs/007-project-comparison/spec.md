@@ -44,8 +44,8 @@ governed consolidation. Palimpsest never infers semantic truth itself.
 
 ## Open questions
 
-- Durable server-side consolidation jobs with retryable claims (today the
-  client coordinates the sequence per claim).
+- Server-side consolidation jobs with retryable claims are now specced in
+  spec 011; the client-coordinated sequence remains the conservative path.
 
 ## Links
 

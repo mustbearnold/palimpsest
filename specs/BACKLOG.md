@@ -14,11 +14,6 @@ Known-but-unspecced capabilities and gaps. One line each. Promote to a
   evidence (the 100,000-revision coverage-gated profile still misses the
   proposed p95 ≤ 200 ms / p99 ≤ 400 ms gate).
 - Concurrent and cold-cache retrieval evidence at scale.
-- Durable server-side consolidation jobs with retryable claims (today the
-  client coordinates per-claim sequences).
-- Automatic model-driven semantic project diffs, conflict explanations, and
-  promotion of raw session messages into higher-level facts (external
-  interpretation only today).
 - Provider-specific artifact/object deletion revocation, outage, and recovery
   evidence.
 - Embedded/single-user mode for offline agents with the same domain semantics.
