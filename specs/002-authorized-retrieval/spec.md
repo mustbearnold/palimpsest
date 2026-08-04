@@ -42,10 +42,13 @@ generation; lexical and vector search rank within the authorized set.
 - [ ] A2. Receipt creation and replay conformance scenarios pass, including
       the lexical-receipt upgrade path across migrations 0006–0020.
 - [ ] A3. Concurrent retrievals converge on one receipt (idempotency).
-- [ ] A4. The rollback-only scale probe is repeatable and content-free; the
-      latest 100,000-revision coverage-gated profile (p95 1.747 s, p99
-      1.821 s) is recorded in the attic evaluation. The proposed million-row
-      gate (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT yet met — no SLA claim.
+- [ ] A4. The rollback-only scale probe is repeatable and content-free. The
+      100,000-revision coverage-gated profile measured p95 1.747 s / p99
+      1.821 s; the first 1,000,000-revision profile measured p95 11.302 s /
+      p99 11.312 s (2026-08-05, plan digest
+      `8499ae8547697dbe4605c0dcddbc430bf26ca31ecb10e12deb806eedce826d1f`).
+      The proposed million-row gate (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT met —
+      no SLA claim; concurrent and cold-cache profiles remain unmeasured.
 
 ## Out of scope
 
@@ -56,8 +59,10 @@ generation; lexical and vector search rank within the authorized set.
 
 ## Open questions
 
-- Million-revision latency, throughput, cost, capacity, and SLA evidence;
-  concurrent and cold-cache evidence.
+- Million-revision latency: measured at p95 11.302 s (2026-08-05) against a
+  proposed ≤ 200 ms gate; the ranking sort over the full authorized set is
+  the measured bottleneck. Concurrent and cold-cache profiles, plus
+  limit-aware ranking remediation, remain.
 - Automatic per-request detection of arbitrary out-of-band projection
   corruption (owner-only rebuild exists; per-request comparison was measured
   at p95 4.609 s and rejected).
