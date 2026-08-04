@@ -4,15 +4,9 @@ Status: implementation and local verification complete; independent reviews clea
 
 ## Scope
 
-Issue #21 adds the explicitly selected `retrieval-hybrid-temporal-v1` policy to
-the authorization-first receipt contract. This evaluation will cover the
-deterministic temporal mechanics, trusted metadata assignment, bitemporal
-correctness, durable explanation, legacy compatibility, and failure behavior
-locked by ADR-0007.
+Issue #21 adds the explicitly selected `retrieval-hybrid-temporal-v1` policy to the authorization-first receipt contract. This evaluation will cover the deterministic temporal mechanics, trusted metadata assignment, bitemporal correctness, durable explanation, legacy compatibility, and failure behavior locked by ADR-0007.
 
-No scenario is marked passed until its implementation evidence and applicable
-focused and full gates have completed. Issue #22, not this report, owns the
-frozen 128-scenario corpus and all relevance-quality claims.
+No scenario is marked passed until its implementation evidence and applicable focused and full gates have completed. Issue #22, not this report, owns the frozen 128-scenario corpus and all relevance-quality claims.
 
 ## Evidence matrix
 
@@ -36,15 +30,7 @@ frozen 128-scenario corpus and all relevance-quality claims.
 
 ## Verified environment and gates
 
-Local evidence was produced on `x86_64-unknown-linux-gnu` with Rust `1.97.1`,
-PostgreSQL `18.4`, and pgvector `0.8.5`. The administrative test connection was
-superuser-capable; the conformance scenario additionally created a
-`NOLOGIN NOSUPERUSER NOBYPASSRLS` role, applied it on every connection in a
-dedicated runtime pool, exercised temporal creation, durable read, pagination,
-idempotent replay, deletion/expiry read and replay without resurrection,
-same-scope principal denial, and forbidden-candidate exclusion through HTTP,
-then removed the role. The explicit principal predicate was also exercised
-while the administrative connection could bypass RLS.
+Local evidence was produced on `x86_64-unknown-linux-gnu` with Rust `1.97.1`, PostgreSQL `18.4`, and pgvector `0.8.5`. The administrative test connection was superuser-capable; the conformance scenario additionally created a `NOLOGIN NOSUPERUSER NOBYPASSRLS` role, applied it on every connection in a dedicated runtime pool, exercised temporal creation, durable read, pagination, idempotent replay, deletion/expiry read and replay without resurrection, same-scope principal denial, and forbidden-candidate exclusion through HTTP, then removed the role. The explicit principal predicate was also exercised while the administrative connection could bypass RLS.
 
 All listed gates passed on the final pre-review tree:
 
@@ -60,11 +46,7 @@ python3 scripts/generate-q63-exp2.py
 git diff --check
 ```
 
-The generator reproduced constants digest
-`769d34b440235c889ccf0eb34d4b69bb8eb8cff5a99af1919cf475f1c8b6a7aa`
-with a maximum bound of 64 Q63 units. Cross-architecture and additional
-PostgreSQL-version comparison and database backup/restore remain release-matrix
-work; no cross-host compatibility or backup/restore result is claimed.
+The generator reproduced constants digest `769d34b440235c889ccf0eb34d4b69bb8eb8cff5a99af1919cf475f1c8b6a7aa` with a maximum bound of 64 Q63 units. Cross-architecture and additional PostgreSQL-version comparison and database backup/restore remain release-matrix work; no cross-host compatibility or backup/restore result is claimed.
 
 ## Locked fixed-fixture results
 
@@ -77,9 +59,7 @@ These are expected values, not recorded test results.
 | 3 | gamma | `0.500000000000` | `1.000000000000` | `1.000000000000` | `0.000000000000` | `0.015877016129` |
 | 4 | beta | `0.125000000000` | `1.000000000000` | `1.000000000000` | `0.000000000000` | `0.004065309360` |
 
-Exact identity precedence intentionally keeps the exact item first even when a
-nonexact item has a higher final score. The future-valid delta item is expected
-to be absent.
+Exact identity precedence intentionally keeps the exact item first even when a nonexact item has a higher final score. The future-valid delta item is expected to be absent.
 
 ## Recorded gates
 
@@ -94,22 +74,13 @@ bash scripts/check-repo.sh
 git diff --check
 ```
 
-Independent Standards and Spec re-reviews inspected the repaired implementation,
-migration, public contract, conformance evidence, and bounded claims. Both
-returned clean with no remaining actionable findings.
+Independent Standards and Spec re-reviews inspected the repaired implementation, migration, public contract, conformance evidence, and bounded claims. Both returned clean with no remaining actionable findings.
 
 ## Strict limits and non-claims
 
-- This matrix evaluates deterministic mechanics against fixed fixtures. Until
-  its rows are updated with evidence, it does not claim that #21 passes.
-- The issue #22 corpus is required before making retrieval-quality,
-  contradiction-resolution quality, or ranking-superiority claims.
-- The deterministic 4D embedding provider is conformance infrastructure, not a
-  production provider or evidence of provider compatibility or model quality.
-- Exact vector scan remains the reference behavior. This work makes no ANN
-  recall, latency, throughput, scale, cost, capacity, or production-readiness
-  claim.
-- Process restart and derived-projection rebuild are verified; database
-  backup/restore recovery and cross-host compatibility are not claimed.
-- A first production deployment or security-sensitive release remains subject
-  to founder approval and independent review under `AGENTS.md`.
+- This matrix evaluates deterministic mechanics against fixed fixtures. Until its rows are updated with evidence, it does not claim that #21 passes.
+- The issue #22 corpus is required before making retrieval-quality, contradiction-resolution quality, or ranking-superiority claims.
+- The deterministic 4D embedding provider is conformance infrastructure, not a production provider or evidence of provider compatibility or model quality.
+- Exact vector scan remains the reference behavior. This work makes no ANN recall, latency, throughput, scale, cost, capacity, or production-readiness claim.
+- Process restart and derived-projection rebuild are verified; database backup/restore recovery and cross-host compatibility are not claimed.
+- A first production deployment or security-sensitive release remains subject to founder approval and independent review under `AGENTS.md`.

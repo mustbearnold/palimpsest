@@ -32,5 +32,4 @@ Use these terms consistently in code, issues, tests, and documentation.
 | **As-of view** | The revisions valid or recorded at an explicitly requested historical instant. |
 | **Autonomy frontier** | Open `ready-for-agent` issues with no open blockers and no active assignee. |
 
-Avoid using **memory** to mean only an embedding. An embedding is a derived
-retrieval representation of a canonical memory record.
+Avoid using **memory** to mean only an embedding. An embedding is a derived retrieval representation of a canonical memory record.

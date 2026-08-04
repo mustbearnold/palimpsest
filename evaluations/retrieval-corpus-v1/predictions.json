@@ -777,9 +777,7 @@
         {
           "scenario_id": "temporal-contradiction-001",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-001-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-001-root"],
           "scores": {
             "temporal-contradiction-001-root": {
               "final_rank": "1",
@@ -832,9 +830,7 @@
         {
           "scenario_id": "temporal-contradiction-003",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-003-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-003-root"],
           "scores": {
             "temporal-contradiction-003-root": {
               "final_rank": "1",
@@ -887,9 +883,7 @@
         {
           "scenario_id": "temporal-contradiction-005",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-005-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-005-root"],
           "scores": {
             "temporal-contradiction-005-root": {
               "final_rank": "1",
@@ -942,9 +936,7 @@
         {
           "scenario_id": "temporal-contradiction-007",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-007-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-007-root"],
           "scores": {
             "temporal-contradiction-007-root": {
               "final_rank": "1",
@@ -997,9 +989,7 @@
         {
           "scenario_id": "temporal-contradiction-009",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-009-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-009-root"],
           "scores": {
             "temporal-contradiction-009-root": {
               "final_rank": "1",
@@ -1052,9 +1042,7 @@
         {
           "scenario_id": "temporal-contradiction-011",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-011-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-011-root"],
           "scores": {
             "temporal-contradiction-011-root": {
               "final_rank": "1",
@@ -1107,9 +1095,7 @@
         {
           "scenario_id": "temporal-contradiction-013",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-013-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-013-root"],
           "scores": {
             "temporal-contradiction-013-root": {
               "final_rank": "1",
@@ -1162,9 +1148,7 @@
         {
           "scenario_id": "temporal-contradiction-015",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-015-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-015-root"],
           "scores": {
             "temporal-contradiction-015-root": {
               "final_rank": "1",
@@ -1217,9 +1201,7 @@
         {
           "scenario_id": "temporal-contradiction-017",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-017-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-017-root"],
           "scores": {
             "temporal-contradiction-017-root": {
               "final_rank": "1",
@@ -1272,9 +1254,7 @@
         {
           "scenario_id": "temporal-contradiction-019",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-019-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-019-root"],
           "scores": {
             "temporal-contradiction-019-root": {
               "final_rank": "1",
@@ -1327,9 +1307,7 @@
         {
           "scenario_id": "temporal-contradiction-021",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-021-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-021-root"],
           "scores": {
             "temporal-contradiction-021-root": {
               "final_rank": "1",
@@ -1382,9 +1360,7 @@
         {
           "scenario_id": "temporal-contradiction-023",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-023-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-023-root"],
           "scores": {
             "temporal-contradiction-023-root": {
               "final_rank": "1",
@@ -2669,9 +2645,7 @@
         {
           "scenario_id": "isolation-lifecycle-001",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-001-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-001-relevant"],
           "scores": {
             "isolation-lifecycle-001-relevant": {
               "final_rank": "1",
@@ -2693,9 +2667,7 @@
         {
           "scenario_id": "isolation-lifecycle-002",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-002-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-002-relevant"],
           "scores": {
             "isolation-lifecycle-002-relevant": {
               "final_rank": "1",
@@ -2717,9 +2689,7 @@
         {
           "scenario_id": "isolation-lifecycle-003",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-003-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-003-relevant"],
           "scores": {
             "isolation-lifecycle-003-relevant": {
               "final_rank": "1",
@@ -2741,9 +2711,7 @@
         {
           "scenario_id": "isolation-lifecycle-004",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-004-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-004-relevant"],
           "scores": {
             "isolation-lifecycle-004-relevant": {
               "final_rank": "1",
@@ -2765,9 +2733,7 @@
         {
           "scenario_id": "isolation-lifecycle-005",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-005-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-005-relevant"],
           "scores": {
             "isolation-lifecycle-005-relevant": {
               "final_rank": "1",
@@ -2789,9 +2755,7 @@
         {
           "scenario_id": "isolation-lifecycle-006",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-006-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-006-relevant"],
           "scores": {
             "isolation-lifecycle-006-relevant": {
               "final_rank": "1",
@@ -2813,9 +2777,7 @@
         {
           "scenario_id": "isolation-lifecycle-007",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-007-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-007-relevant"],
           "scores": {
             "isolation-lifecycle-007-relevant": {
               "final_rank": "1",
@@ -2837,9 +2799,7 @@
         {
           "scenario_id": "isolation-lifecycle-008",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-008-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-008-relevant"],
           "scores": {
             "isolation-lifecycle-008-relevant": {
               "final_rank": "1",
@@ -2861,9 +2821,7 @@
         {
           "scenario_id": "isolation-lifecycle-009",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-009-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-009-relevant"],
           "scores": {
             "isolation-lifecycle-009-relevant": {
               "final_rank": "1",
@@ -2885,9 +2843,7 @@
         {
           "scenario_id": "isolation-lifecycle-010",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-010-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-010-relevant"],
           "scores": {
             "isolation-lifecycle-010-relevant": {
               "final_rank": "1",
@@ -2909,9 +2865,7 @@
         {
           "scenario_id": "isolation-lifecycle-011",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-011-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-011-relevant"],
           "scores": {
             "isolation-lifecycle-011-relevant": {
               "final_rank": "1",
@@ -2933,9 +2887,7 @@
         {
           "scenario_id": "isolation-lifecycle-012",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-012-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-012-relevant"],
           "scores": {
             "isolation-lifecycle-012-relevant": {
               "final_rank": "1",
@@ -2957,9 +2909,7 @@
         {
           "scenario_id": "isolation-lifecycle-013",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-013-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-013-relevant"],
           "scores": {
             "isolation-lifecycle-013-relevant": {
               "final_rank": "1",
@@ -2981,9 +2931,7 @@
         {
           "scenario_id": "isolation-lifecycle-014",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-014-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-014-relevant"],
           "scores": {
             "isolation-lifecycle-014-relevant": {
               "final_rank": "1",
@@ -3005,9 +2953,7 @@
         {
           "scenario_id": "isolation-lifecycle-015",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-015-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-015-relevant"],
           "scores": {
             "isolation-lifecycle-015-relevant": {
               "final_rank": "1",
@@ -3029,9 +2975,7 @@
         {
           "scenario_id": "isolation-lifecycle-016",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-016-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-016-relevant"],
           "scores": {
             "isolation-lifecycle-016-relevant": {
               "final_rank": "1",
@@ -3053,9 +2997,7 @@
         {
           "scenario_id": "isolation-lifecycle-017",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-017-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-017-relevant"],
           "scores": {
             "isolation-lifecycle-017-relevant": {
               "final_rank": "1",
@@ -3077,9 +3019,7 @@
         {
           "scenario_id": "isolation-lifecycle-018",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-018-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-018-relevant"],
           "scores": {
             "isolation-lifecycle-018-relevant": {
               "final_rank": "1",
@@ -3101,9 +3041,7 @@
         {
           "scenario_id": "isolation-lifecycle-019",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-019-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-019-relevant"],
           "scores": {
             "isolation-lifecycle-019-relevant": {
               "final_rank": "1",
@@ -3125,9 +3063,7 @@
         {
           "scenario_id": "isolation-lifecycle-020",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-020-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-020-relevant"],
           "scores": {
             "isolation-lifecycle-020-relevant": {
               "final_rank": "1",
@@ -3149,9 +3085,7 @@
         {
           "scenario_id": "isolation-lifecycle-021",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-021-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-021-relevant"],
           "scores": {
             "isolation-lifecycle-021-relevant": {
               "final_rank": "1",
@@ -3173,9 +3107,7 @@
         {
           "scenario_id": "isolation-lifecycle-022",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-022-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-022-relevant"],
           "scores": {
             "isolation-lifecycle-022-relevant": {
               "final_rank": "1",
@@ -3197,9 +3129,7 @@
         {
           "scenario_id": "isolation-lifecycle-023",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-023-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-023-relevant"],
           "scores": {
             "isolation-lifecycle-023-relevant": {
               "final_rank": "1",
@@ -3221,9 +3151,7 @@
         {
           "scenario_id": "isolation-lifecycle-024",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-024-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-024-relevant"],
           "scores": {
             "isolation-lifecycle-024-relevant": {
               "final_rank": "1",
@@ -3245,9 +3173,7 @@
         {
           "scenario_id": "isolation-lifecycle-025",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-025-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-025-relevant"],
           "scores": {
             "isolation-lifecycle-025-relevant": {
               "final_rank": "1",
@@ -3269,9 +3195,7 @@
         {
           "scenario_id": "isolation-lifecycle-026",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-026-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-026-relevant"],
           "scores": {
             "isolation-lifecycle-026-relevant": {
               "final_rank": "1",
@@ -3293,9 +3217,7 @@
         {
           "scenario_id": "isolation-lifecycle-027",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-027-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-027-relevant"],
           "scores": {
             "isolation-lifecycle-027-relevant": {
               "final_rank": "1",
@@ -3317,9 +3239,7 @@
         {
           "scenario_id": "isolation-lifecycle-028",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-028-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-028-relevant"],
           "scores": {
             "isolation-lifecycle-028-relevant": {
               "final_rank": "1",
@@ -3341,9 +3261,7 @@
         {
           "scenario_id": "isolation-lifecycle-029",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-029-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-029-relevant"],
           "scores": {
             "isolation-lifecycle-029-relevant": {
               "final_rank": "1",
@@ -3365,9 +3283,7 @@
         {
           "scenario_id": "isolation-lifecycle-030",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-030-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-030-relevant"],
           "scores": {
             "isolation-lifecycle-030-relevant": {
               "final_rank": "1",
@@ -3389,9 +3305,7 @@
         {
           "scenario_id": "isolation-lifecycle-031",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-031-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-031-relevant"],
           "scores": {
             "isolation-lifecycle-031-relevant": {
               "final_rank": "1",
@@ -3413,9 +3327,7 @@
         {
           "scenario_id": "isolation-lifecycle-032",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-032-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-032-relevant"],
           "scores": {
             "isolation-lifecycle-032-relevant": {
               "final_rank": "1",
@@ -4402,9 +4314,7 @@
         {
           "scenario_id": "temporal-contradiction-001",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-001-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-001-root"],
           "scores": {
             "temporal-contradiction-001-root": {
               "final_rank": "1",
@@ -4466,9 +4376,7 @@
         {
           "scenario_id": "temporal-contradiction-003",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-003-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-003-root"],
           "scores": {
             "temporal-contradiction-003-root": {
               "final_rank": "1",
@@ -4530,9 +4438,7 @@
         {
           "scenario_id": "temporal-contradiction-005",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-005-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-005-root"],
           "scores": {
             "temporal-contradiction-005-root": {
               "final_rank": "1",
@@ -4594,9 +4500,7 @@
         {
           "scenario_id": "temporal-contradiction-007",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-007-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-007-root"],
           "scores": {
             "temporal-contradiction-007-root": {
               "final_rank": "1",
@@ -4658,9 +4562,7 @@
         {
           "scenario_id": "temporal-contradiction-009",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-009-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-009-root"],
           "scores": {
             "temporal-contradiction-009-root": {
               "final_rank": "1",
@@ -4722,9 +4624,7 @@
         {
           "scenario_id": "temporal-contradiction-011",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-011-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-011-root"],
           "scores": {
             "temporal-contradiction-011-root": {
               "final_rank": "1",
@@ -4786,9 +4686,7 @@
         {
           "scenario_id": "temporal-contradiction-013",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-013-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-013-root"],
           "scores": {
             "temporal-contradiction-013-root": {
               "final_rank": "1",
@@ -4850,9 +4748,7 @@
         {
           "scenario_id": "temporal-contradiction-015",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-015-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-015-root"],
           "scores": {
             "temporal-contradiction-015-root": {
               "final_rank": "1",
@@ -4914,9 +4810,7 @@
         {
           "scenario_id": "temporal-contradiction-017",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-017-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-017-root"],
           "scores": {
             "temporal-contradiction-017-root": {
               "final_rank": "1",
@@ -4978,9 +4872,7 @@
         {
           "scenario_id": "temporal-contradiction-019",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-019-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-019-root"],
           "scores": {
             "temporal-contradiction-019-root": {
               "final_rank": "1",
@@ -5042,9 +4934,7 @@
         {
           "scenario_id": "temporal-contradiction-021",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-021-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-021-root"],
           "scores": {
             "temporal-contradiction-021-root": {
               "final_rank": "1",
@@ -5106,9 +4996,7 @@
         {
           "scenario_id": "temporal-contradiction-023",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-023-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-023-root"],
           "scores": {
             "temporal-contradiction-023-root": {
               "final_rank": "1",
@@ -6594,9 +6482,7 @@
         {
           "scenario_id": "isolation-lifecycle-001",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-001-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-001-relevant"],
           "scores": {
             "isolation-lifecycle-001-relevant": {
               "final_rank": "1",
@@ -6621,9 +6507,7 @@
         {
           "scenario_id": "isolation-lifecycle-002",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-002-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-002-relevant"],
           "scores": {
             "isolation-lifecycle-002-relevant": {
               "final_rank": "1",
@@ -6648,9 +6532,7 @@
         {
           "scenario_id": "isolation-lifecycle-003",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-003-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-003-relevant"],
           "scores": {
             "isolation-lifecycle-003-relevant": {
               "final_rank": "1",
@@ -6675,9 +6557,7 @@
         {
           "scenario_id": "isolation-lifecycle-004",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-004-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-004-relevant"],
           "scores": {
             "isolation-lifecycle-004-relevant": {
               "final_rank": "1",
@@ -6702,9 +6582,7 @@
         {
           "scenario_id": "isolation-lifecycle-005",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-005-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-005-relevant"],
           "scores": {
             "isolation-lifecycle-005-relevant": {
               "final_rank": "1",
@@ -6729,9 +6607,7 @@
         {
           "scenario_id": "isolation-lifecycle-006",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-006-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-006-relevant"],
           "scores": {
             "isolation-lifecycle-006-relevant": {
               "final_rank": "1",
@@ -6756,9 +6632,7 @@
         {
           "scenario_id": "isolation-lifecycle-007",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-007-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-007-relevant"],
           "scores": {
             "isolation-lifecycle-007-relevant": {
               "final_rank": "1",
@@ -6783,9 +6657,7 @@
         {
           "scenario_id": "isolation-lifecycle-008",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-008-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-008-relevant"],
           "scores": {
             "isolation-lifecycle-008-relevant": {
               "final_rank": "1",
@@ -6810,9 +6682,7 @@
         {
           "scenario_id": "isolation-lifecycle-009",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-009-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-009-relevant"],
           "scores": {
             "isolation-lifecycle-009-relevant": {
               "final_rank": "1",
@@ -6837,9 +6707,7 @@
         {
           "scenario_id": "isolation-lifecycle-010",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-010-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-010-relevant"],
           "scores": {
             "isolation-lifecycle-010-relevant": {
               "final_rank": "1",
@@ -6864,9 +6732,7 @@
         {
           "scenario_id": "isolation-lifecycle-011",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-011-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-011-relevant"],
           "scores": {
             "isolation-lifecycle-011-relevant": {
               "final_rank": "1",
@@ -6891,9 +6757,7 @@
         {
           "scenario_id": "isolation-lifecycle-012",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-012-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-012-relevant"],
           "scores": {
             "isolation-lifecycle-012-relevant": {
               "final_rank": "1",
@@ -6918,9 +6782,7 @@
         {
           "scenario_id": "isolation-lifecycle-013",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-013-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-013-relevant"],
           "scores": {
             "isolation-lifecycle-013-relevant": {
               "final_rank": "1",
@@ -6945,9 +6807,7 @@
         {
           "scenario_id": "isolation-lifecycle-014",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-014-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-014-relevant"],
           "scores": {
             "isolation-lifecycle-014-relevant": {
               "final_rank": "1",
@@ -6972,9 +6832,7 @@
         {
           "scenario_id": "isolation-lifecycle-015",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-015-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-015-relevant"],
           "scores": {
             "isolation-lifecycle-015-relevant": {
               "final_rank": "1",
@@ -6999,9 +6857,7 @@
         {
           "scenario_id": "isolation-lifecycle-016",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-016-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-016-relevant"],
           "scores": {
             "isolation-lifecycle-016-relevant": {
               "final_rank": "1",
@@ -7026,9 +6882,7 @@
         {
           "scenario_id": "isolation-lifecycle-017",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-017-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-017-relevant"],
           "scores": {
             "isolation-lifecycle-017-relevant": {
               "final_rank": "1",
@@ -7053,9 +6907,7 @@
         {
           "scenario_id": "isolation-lifecycle-018",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-018-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-018-relevant"],
           "scores": {
             "isolation-lifecycle-018-relevant": {
               "final_rank": "1",
@@ -7080,9 +6932,7 @@
         {
           "scenario_id": "isolation-lifecycle-019",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-019-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-019-relevant"],
           "scores": {
             "isolation-lifecycle-019-relevant": {
               "final_rank": "1",
@@ -7107,9 +6957,7 @@
         {
           "scenario_id": "isolation-lifecycle-020",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-020-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-020-relevant"],
           "scores": {
             "isolation-lifecycle-020-relevant": {
               "final_rank": "1",
@@ -7134,9 +6982,7 @@
         {
           "scenario_id": "isolation-lifecycle-021",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-021-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-021-relevant"],
           "scores": {
             "isolation-lifecycle-021-relevant": {
               "final_rank": "1",
@@ -7161,9 +7007,7 @@
         {
           "scenario_id": "isolation-lifecycle-022",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-022-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-022-relevant"],
           "scores": {
             "isolation-lifecycle-022-relevant": {
               "final_rank": "1",
@@ -7188,9 +7032,7 @@
         {
           "scenario_id": "isolation-lifecycle-023",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-023-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-023-relevant"],
           "scores": {
             "isolation-lifecycle-023-relevant": {
               "final_rank": "1",
@@ -7215,9 +7057,7 @@
         {
           "scenario_id": "isolation-lifecycle-024",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-024-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-024-relevant"],
           "scores": {
             "isolation-lifecycle-024-relevant": {
               "final_rank": "1",
@@ -7242,9 +7082,7 @@
         {
           "scenario_id": "isolation-lifecycle-025",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-025-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-025-relevant"],
           "scores": {
             "isolation-lifecycle-025-relevant": {
               "final_rank": "1",
@@ -7269,9 +7107,7 @@
         {
           "scenario_id": "isolation-lifecycle-026",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-026-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-026-relevant"],
           "scores": {
             "isolation-lifecycle-026-relevant": {
               "final_rank": "1",
@@ -7296,9 +7132,7 @@
         {
           "scenario_id": "isolation-lifecycle-027",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-027-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-027-relevant"],
           "scores": {
             "isolation-lifecycle-027-relevant": {
               "final_rank": "1",
@@ -7323,9 +7157,7 @@
         {
           "scenario_id": "isolation-lifecycle-028",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-028-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-028-relevant"],
           "scores": {
             "isolation-lifecycle-028-relevant": {
               "final_rank": "1",
@@ -7350,9 +7182,7 @@
         {
           "scenario_id": "isolation-lifecycle-029",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-029-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-029-relevant"],
           "scores": {
             "isolation-lifecycle-029-relevant": {
               "final_rank": "1",
@@ -7377,9 +7207,7 @@
         {
           "scenario_id": "isolation-lifecycle-030",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-030-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-030-relevant"],
           "scores": {
             "isolation-lifecycle-030-relevant": {
               "final_rank": "1",
@@ -7404,9 +7232,7 @@
         {
           "scenario_id": "isolation-lifecycle-031",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-031-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-031-relevant"],
           "scores": {
             "isolation-lifecycle-031-relevant": {
               "final_rank": "1",
@@ -7431,9 +7257,7 @@
         {
           "scenario_id": "isolation-lifecycle-032",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-032-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-032-relevant"],
           "scores": {
             "isolation-lifecycle-032-relevant": {
               "final_rank": "1",
@@ -8567,9 +8391,7 @@
         {
           "scenario_id": "temporal-contradiction-001",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-001-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-001-root"],
           "scores": {
             "temporal-contradiction-001-root": {
               "final_rank": "1",
@@ -8640,9 +8462,7 @@
         {
           "scenario_id": "temporal-contradiction-003",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-003-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-003-root"],
           "scores": {
             "temporal-contradiction-003-root": {
               "final_rank": "1",
@@ -8713,9 +8533,7 @@
         {
           "scenario_id": "temporal-contradiction-005",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-005-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-005-root"],
           "scores": {
             "temporal-contradiction-005-root": {
               "final_rank": "1",
@@ -8786,9 +8604,7 @@
         {
           "scenario_id": "temporal-contradiction-007",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-007-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-007-root"],
           "scores": {
             "temporal-contradiction-007-root": {
               "final_rank": "1",
@@ -8859,9 +8675,7 @@
         {
           "scenario_id": "temporal-contradiction-009",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-009-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-009-root"],
           "scores": {
             "temporal-contradiction-009-root": {
               "final_rank": "1",
@@ -8932,9 +8746,7 @@
         {
           "scenario_id": "temporal-contradiction-011",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-011-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-011-root"],
           "scores": {
             "temporal-contradiction-011-root": {
               "final_rank": "1",
@@ -9005,9 +8817,7 @@
         {
           "scenario_id": "temporal-contradiction-013",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-013-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-013-root"],
           "scores": {
             "temporal-contradiction-013-root": {
               "final_rank": "1",
@@ -9078,9 +8888,7 @@
         {
           "scenario_id": "temporal-contradiction-015",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-015-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-015-root"],
           "scores": {
             "temporal-contradiction-015-root": {
               "final_rank": "1",
@@ -9151,9 +8959,7 @@
         {
           "scenario_id": "temporal-contradiction-017",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-017-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-017-root"],
           "scores": {
             "temporal-contradiction-017-root": {
               "final_rank": "1",
@@ -9224,9 +9030,7 @@
         {
           "scenario_id": "temporal-contradiction-019",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-019-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-019-root"],
           "scores": {
             "temporal-contradiction-019-root": {
               "final_rank": "1",
@@ -9297,9 +9101,7 @@
         {
           "scenario_id": "temporal-contradiction-021",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-021-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-021-root"],
           "scores": {
             "temporal-contradiction-021-root": {
               "final_rank": "1",
@@ -9370,9 +9172,7 @@
         {
           "scenario_id": "temporal-contradiction-023",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-023-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-023-root"],
           "scores": {
             "temporal-contradiction-023-root": {
               "final_rank": "1",
@@ -11059,9 +10859,7 @@
         {
           "scenario_id": "isolation-lifecycle-001",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-001-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-001-relevant"],
           "scores": {
             "isolation-lifecycle-001-relevant": {
               "final_rank": "1",
@@ -11089,9 +10887,7 @@
         {
           "scenario_id": "isolation-lifecycle-002",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-002-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-002-relevant"],
           "scores": {
             "isolation-lifecycle-002-relevant": {
               "final_rank": "1",
@@ -11119,9 +10915,7 @@
         {
           "scenario_id": "isolation-lifecycle-003",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-003-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-003-relevant"],
           "scores": {
             "isolation-lifecycle-003-relevant": {
               "final_rank": "1",
@@ -11149,9 +10943,7 @@
         {
           "scenario_id": "isolation-lifecycle-004",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-004-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-004-relevant"],
           "scores": {
             "isolation-lifecycle-004-relevant": {
               "final_rank": "1",
@@ -11179,9 +10971,7 @@
         {
           "scenario_id": "isolation-lifecycle-005",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-005-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-005-relevant"],
           "scores": {
             "isolation-lifecycle-005-relevant": {
               "final_rank": "1",
@@ -11209,9 +10999,7 @@
         {
           "scenario_id": "isolation-lifecycle-006",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-006-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-006-relevant"],
           "scores": {
             "isolation-lifecycle-006-relevant": {
               "final_rank": "1",
@@ -11239,9 +11027,7 @@
         {
           "scenario_id": "isolation-lifecycle-007",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-007-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-007-relevant"],
           "scores": {
             "isolation-lifecycle-007-relevant": {
               "final_rank": "1",
@@ -11269,9 +11055,7 @@
         {
           "scenario_id": "isolation-lifecycle-008",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-008-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-008-relevant"],
           "scores": {
             "isolation-lifecycle-008-relevant": {
               "final_rank": "1",
@@ -11299,9 +11083,7 @@
         {
           "scenario_id": "isolation-lifecycle-009",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-009-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-009-relevant"],
           "scores": {
             "isolation-lifecycle-009-relevant": {
               "final_rank": "1",
@@ -11329,9 +11111,7 @@
         {
           "scenario_id": "isolation-lifecycle-010",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-010-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-010-relevant"],
           "scores": {
             "isolation-lifecycle-010-relevant": {
               "final_rank": "1",
@@ -11359,9 +11139,7 @@
         {
           "scenario_id": "isolation-lifecycle-011",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-011-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-011-relevant"],
           "scores": {
             "isolation-lifecycle-011-relevant": {
               "final_rank": "1",
@@ -11389,9 +11167,7 @@
         {
           "scenario_id": "isolation-lifecycle-012",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-012-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-012-relevant"],
           "scores": {
             "isolation-lifecycle-012-relevant": {
               "final_rank": "1",
@@ -11419,9 +11195,7 @@
         {
           "scenario_id": "isolation-lifecycle-013",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-013-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-013-relevant"],
           "scores": {
             "isolation-lifecycle-013-relevant": {
               "final_rank": "1",
@@ -11449,9 +11223,7 @@
         {
           "scenario_id": "isolation-lifecycle-014",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-014-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-014-relevant"],
           "scores": {
             "isolation-lifecycle-014-relevant": {
               "final_rank": "1",
@@ -11479,9 +11251,7 @@
         {
           "scenario_id": "isolation-lifecycle-015",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-015-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-015-relevant"],
           "scores": {
             "isolation-lifecycle-015-relevant": {
               "final_rank": "1",
@@ -11509,9 +11279,7 @@
         {
           "scenario_id": "isolation-lifecycle-016",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-016-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-016-relevant"],
           "scores": {
             "isolation-lifecycle-016-relevant": {
               "final_rank": "1",
@@ -11539,9 +11307,7 @@
         {
           "scenario_id": "isolation-lifecycle-017",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-017-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-017-relevant"],
           "scores": {
             "isolation-lifecycle-017-relevant": {
               "final_rank": "1",
@@ -11569,9 +11335,7 @@
         {
           "scenario_id": "isolation-lifecycle-018",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-018-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-018-relevant"],
           "scores": {
             "isolation-lifecycle-018-relevant": {
               "final_rank": "1",
@@ -11599,9 +11363,7 @@
         {
           "scenario_id": "isolation-lifecycle-019",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-019-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-019-relevant"],
           "scores": {
             "isolation-lifecycle-019-relevant": {
               "final_rank": "1",
@@ -11629,9 +11391,7 @@
         {
           "scenario_id": "isolation-lifecycle-020",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-020-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-020-relevant"],
           "scores": {
             "isolation-lifecycle-020-relevant": {
               "final_rank": "1",
@@ -11659,9 +11419,7 @@
         {
           "scenario_id": "isolation-lifecycle-021",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-021-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-021-relevant"],
           "scores": {
             "isolation-lifecycle-021-relevant": {
               "final_rank": "1",
@@ -11689,9 +11447,7 @@
         {
           "scenario_id": "isolation-lifecycle-022",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-022-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-022-relevant"],
           "scores": {
             "isolation-lifecycle-022-relevant": {
               "final_rank": "1",
@@ -11719,9 +11475,7 @@
         {
           "scenario_id": "isolation-lifecycle-023",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-023-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-023-relevant"],
           "scores": {
             "isolation-lifecycle-023-relevant": {
               "final_rank": "1",
@@ -11749,9 +11503,7 @@
         {
           "scenario_id": "isolation-lifecycle-024",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-024-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-024-relevant"],
           "scores": {
             "isolation-lifecycle-024-relevant": {
               "final_rank": "1",
@@ -11779,9 +11531,7 @@
         {
           "scenario_id": "isolation-lifecycle-025",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-025-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-025-relevant"],
           "scores": {
             "isolation-lifecycle-025-relevant": {
               "final_rank": "1",
@@ -11809,9 +11559,7 @@
         {
           "scenario_id": "isolation-lifecycle-026",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-026-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-026-relevant"],
           "scores": {
             "isolation-lifecycle-026-relevant": {
               "final_rank": "1",
@@ -11839,9 +11587,7 @@
         {
           "scenario_id": "isolation-lifecycle-027",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-027-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-027-relevant"],
           "scores": {
             "isolation-lifecycle-027-relevant": {
               "final_rank": "1",
@@ -11869,9 +11615,7 @@
         {
           "scenario_id": "isolation-lifecycle-028",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-028-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-028-relevant"],
           "scores": {
             "isolation-lifecycle-028-relevant": {
               "final_rank": "1",
@@ -11899,9 +11643,7 @@
         {
           "scenario_id": "isolation-lifecycle-029",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-029-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-029-relevant"],
           "scores": {
             "isolation-lifecycle-029-relevant": {
               "final_rank": "1",
@@ -11929,9 +11671,7 @@
         {
           "scenario_id": "isolation-lifecycle-030",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-030-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-030-relevant"],
           "scores": {
             "isolation-lifecycle-030-relevant": {
               "final_rank": "1",
@@ -11959,9 +11699,7 @@
         {
           "scenario_id": "isolation-lifecycle-031",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-031-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-031-relevant"],
           "scores": {
             "isolation-lifecycle-031-relevant": {
               "final_rank": "1",
@@ -11989,9 +11727,7 @@
         {
           "scenario_id": "isolation-lifecycle-032",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-032-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-032-relevant"],
           "scores": {
             "isolation-lifecycle-032-relevant": {
               "final_rank": "1",
@@ -13464,9 +13200,7 @@
         {
           "scenario_id": "temporal-contradiction-001",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-001-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-001-root"],
           "scores": {
             "temporal-contradiction-001-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -13558,9 +13292,7 @@
         {
           "scenario_id": "temporal-contradiction-003",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-003-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-003-root"],
           "scores": {
             "temporal-contradiction-003-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -13652,9 +13384,7 @@
         {
           "scenario_id": "temporal-contradiction-005",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-005-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-005-root"],
           "scores": {
             "temporal-contradiction-005-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -13746,9 +13476,7 @@
         {
           "scenario_id": "temporal-contradiction-007",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-007-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-007-root"],
           "scores": {
             "temporal-contradiction-007-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -13840,9 +13568,7 @@
         {
           "scenario_id": "temporal-contradiction-009",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-009-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-009-root"],
           "scores": {
             "temporal-contradiction-009-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -13934,9 +13660,7 @@
         {
           "scenario_id": "temporal-contradiction-011",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-011-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-011-root"],
           "scores": {
             "temporal-contradiction-011-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -14028,9 +13752,7 @@
         {
           "scenario_id": "temporal-contradiction-013",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-013-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-013-root"],
           "scores": {
             "temporal-contradiction-013-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -14122,9 +13844,7 @@
         {
           "scenario_id": "temporal-contradiction-015",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-015-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-015-root"],
           "scores": {
             "temporal-contradiction-015-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -14216,9 +13936,7 @@
         {
           "scenario_id": "temporal-contradiction-017",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-017-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-017-root"],
           "scores": {
             "temporal-contradiction-017-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -14310,9 +14028,7 @@
         {
           "scenario_id": "temporal-contradiction-019",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-019-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-019-root"],
           "scores": {
             "temporal-contradiction-019-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -14404,9 +14120,7 @@
         {
           "scenario_id": "temporal-contradiction-021",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-021-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-021-root"],
           "scores": {
             "temporal-contradiction-021-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -14498,9 +14212,7 @@
         {
           "scenario_id": "temporal-contradiction-023",
           "disposition": "results",
-          "ranked_ids": [
-            "temporal-contradiction-023-root"
-          ],
+          "ranked_ids": ["temporal-contradiction-023-root"],
           "scores": {
             "temporal-contradiction-023-root": {
               "confidence_adjustment": "-0.003278688525",
@@ -16656,9 +16368,7 @@
         {
           "scenario_id": "isolation-lifecycle-001",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-001-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-001-relevant"],
           "scores": {
             "isolation-lifecycle-001-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16693,9 +16403,7 @@
         {
           "scenario_id": "isolation-lifecycle-002",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-002-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-002-relevant"],
           "scores": {
             "isolation-lifecycle-002-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16730,9 +16438,7 @@
         {
           "scenario_id": "isolation-lifecycle-003",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-003-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-003-relevant"],
           "scores": {
             "isolation-lifecycle-003-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16767,9 +16473,7 @@
         {
           "scenario_id": "isolation-lifecycle-004",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-004-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-004-relevant"],
           "scores": {
             "isolation-lifecycle-004-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16804,9 +16508,7 @@
         {
           "scenario_id": "isolation-lifecycle-005",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-005-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-005-relevant"],
           "scores": {
             "isolation-lifecycle-005-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16841,9 +16543,7 @@
         {
           "scenario_id": "isolation-lifecycle-006",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-006-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-006-relevant"],
           "scores": {
             "isolation-lifecycle-006-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16878,9 +16578,7 @@
         {
           "scenario_id": "isolation-lifecycle-007",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-007-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-007-relevant"],
           "scores": {
             "isolation-lifecycle-007-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16915,9 +16613,7 @@
         {
           "scenario_id": "isolation-lifecycle-008",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-008-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-008-relevant"],
           "scores": {
             "isolation-lifecycle-008-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16952,9 +16648,7 @@
         {
           "scenario_id": "isolation-lifecycle-009",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-009-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-009-relevant"],
           "scores": {
             "isolation-lifecycle-009-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -16989,9 +16683,7 @@
         {
           "scenario_id": "isolation-lifecycle-010",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-010-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-010-relevant"],
           "scores": {
             "isolation-lifecycle-010-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17026,9 +16718,7 @@
         {
           "scenario_id": "isolation-lifecycle-011",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-011-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-011-relevant"],
           "scores": {
             "isolation-lifecycle-011-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17063,9 +16753,7 @@
         {
           "scenario_id": "isolation-lifecycle-012",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-012-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-012-relevant"],
           "scores": {
             "isolation-lifecycle-012-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17100,9 +16788,7 @@
         {
           "scenario_id": "isolation-lifecycle-013",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-013-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-013-relevant"],
           "scores": {
             "isolation-lifecycle-013-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17137,9 +16823,7 @@
         {
           "scenario_id": "isolation-lifecycle-014",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-014-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-014-relevant"],
           "scores": {
             "isolation-lifecycle-014-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17174,9 +16858,7 @@
         {
           "scenario_id": "isolation-lifecycle-015",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-015-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-015-relevant"],
           "scores": {
             "isolation-lifecycle-015-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17211,9 +16893,7 @@
         {
           "scenario_id": "isolation-lifecycle-016",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-016-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-016-relevant"],
           "scores": {
             "isolation-lifecycle-016-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17248,9 +16928,7 @@
         {
           "scenario_id": "isolation-lifecycle-017",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-017-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-017-relevant"],
           "scores": {
             "isolation-lifecycle-017-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17285,9 +16963,7 @@
         {
           "scenario_id": "isolation-lifecycle-018",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-018-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-018-relevant"],
           "scores": {
             "isolation-lifecycle-018-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17322,9 +16998,7 @@
         {
           "scenario_id": "isolation-lifecycle-019",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-019-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-019-relevant"],
           "scores": {
             "isolation-lifecycle-019-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17359,9 +17033,7 @@
         {
           "scenario_id": "isolation-lifecycle-020",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-020-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-020-relevant"],
           "scores": {
             "isolation-lifecycle-020-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17396,9 +17068,7 @@
         {
           "scenario_id": "isolation-lifecycle-021",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-021-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-021-relevant"],
           "scores": {
             "isolation-lifecycle-021-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17433,9 +17103,7 @@
         {
           "scenario_id": "isolation-lifecycle-022",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-022-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-022-relevant"],
           "scores": {
             "isolation-lifecycle-022-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17470,9 +17138,7 @@
         {
           "scenario_id": "isolation-lifecycle-023",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-023-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-023-relevant"],
           "scores": {
             "isolation-lifecycle-023-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17507,9 +17173,7 @@
         {
           "scenario_id": "isolation-lifecycle-024",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-024-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-024-relevant"],
           "scores": {
             "isolation-lifecycle-024-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17544,9 +17208,7 @@
         {
           "scenario_id": "isolation-lifecycle-025",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-025-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-025-relevant"],
           "scores": {
             "isolation-lifecycle-025-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17581,9 +17243,7 @@
         {
           "scenario_id": "isolation-lifecycle-026",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-026-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-026-relevant"],
           "scores": {
             "isolation-lifecycle-026-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17618,9 +17278,7 @@
         {
           "scenario_id": "isolation-lifecycle-027",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-027-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-027-relevant"],
           "scores": {
             "isolation-lifecycle-027-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17655,9 +17313,7 @@
         {
           "scenario_id": "isolation-lifecycle-028",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-028-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-028-relevant"],
           "scores": {
             "isolation-lifecycle-028-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17692,9 +17348,7 @@
         {
           "scenario_id": "isolation-lifecycle-029",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-029-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-029-relevant"],
           "scores": {
             "isolation-lifecycle-029-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17729,9 +17383,7 @@
         {
           "scenario_id": "isolation-lifecycle-030",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-030-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-030-relevant"],
           "scores": {
             "isolation-lifecycle-030-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17766,9 +17418,7 @@
         {
           "scenario_id": "isolation-lifecycle-031",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-031-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-031-relevant"],
           "scores": {
             "isolation-lifecycle-031-relevant": {
               "confidence_adjustment": "0.000000000000",
@@ -17803,9 +17453,7 @@
         {
           "scenario_id": "isolation-lifecycle-032",
           "disposition": "results",
-          "ranked_ids": [
-            "isolation-lifecycle-032-relevant"
-          ],
+          "ranked_ids": ["isolation-lifecycle-032-relevant"],
           "scores": {
             "isolation-lifecycle-032-relevant": {
               "confidence_adjustment": "0.000000000000",

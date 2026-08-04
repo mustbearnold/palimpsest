@@ -11,25 +11,29 @@ function comparisonResult() {
   const bundles = {
     "project-a": {
       status: "results",
-      items: [{
-        fact_id: "fact-a",
-        revision_id: "revision-a",
-        namespace: "agent_session:project-a",
-        key: "release-target",
-        value: { content: "ship version one", metadata: {} },
-        evidence_episode_ids: ["episode-a"],
-      }],
+      items: [
+        {
+          fact_id: "fact-a",
+          revision_id: "revision-a",
+          namespace: "agent_session:project-a",
+          key: "release-target",
+          value: { content: "ship version one", metadata: {} },
+          evidence_episode_ids: ["episode-a"],
+        },
+      ],
     },
     "project-b": {
       status: "results",
-      items: [{
-        fact_id: "fact-b",
-        revision_id: "revision-b",
-        namespace: "agent_session:project-b",
-        key: "release-target",
-        value: { content: "ship version two", metadata: {} },
-        evidence_episode_ids: ["episode-b"],
-      }],
+      items: [
+        {
+          fact_id: "fact-b",
+          revision_id: "revision-b",
+          namespace: "agent_session:project-b",
+          key: "release-target",
+          value: { content: "ship version two", metadata: {} },
+          evidence_episode_ids: ["episode-b"],
+        },
+      ],
     },
   };
   const comparison = compareProjectBundles(bundles);
@@ -45,18 +49,34 @@ function reviewPayload() {
       model_revision: "2026-08-03",
       prompt_sha256: "a".repeat(64),
     },
-    review_policy: { id: "project-review-v1", version: "1", sha256: "b".repeat(64) },
-    claims: [{
-      claim_id: "claim-release-target",
-      classification: "semantic_conflict",
-      summary: "The projects record different release targets.",
-      projects: ["project-a", "project-b"],
-      confidence: 0.91,
-      evidence: [
-        { project_id: "project-a", fact_id: "fact-a", revision_id: "revision-a", evidence_episode_ids: ["episode-a"] },
-        { project_id: "project-b", fact_id: "fact-b", revision_id: "revision-b", evidence_episode_ids: ["episode-b"] },
-      ],
-    }],
+    review_policy: {
+      id: "project-review-v1",
+      version: "1",
+      sha256: "b".repeat(64),
+    },
+    claims: [
+      {
+        claim_id: "claim-release-target",
+        classification: "semantic_conflict",
+        summary: "The projects record different release targets.",
+        projects: ["project-a", "project-b"],
+        confidence: 0.91,
+        evidence: [
+          {
+            project_id: "project-a",
+            fact_id: "fact-a",
+            revision_id: "revision-a",
+            evidence_episode_ids: ["episode-a"],
+          },
+          {
+            project_id: "project-b",
+            fact_id: "fact-b",
+            revision_id: "revision-b",
+            evidence_episode_ids: ["episode-b"],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -107,15 +127,27 @@ test("project review rejects a comparison not matching its bundles", () => {
 
 test("consolidation plan derives episode lineage and stable retry key", () => {
   const validated = validateProjectReview(comparisonResult(), reviewPayload());
-  const plan = prepareProjectConsolidation(validated, [consolidationWrite()], { consolidationId: "review-run-1" });
-  const repeat = prepareProjectConsolidation(validated, [consolidationWrite()], { consolidationId: "review-run-1" });
+  const plan = prepareProjectConsolidation(validated, [consolidationWrite()], {
+    consolidationId: "review-run-1",
+  });
+  const repeat = prepareProjectConsolidation(
+    validated,
+    [consolidationWrite()],
+    { consolidationId: "review-run-1" },
+  );
 
   assert.equal(plan.profile, "project-comparison-governed-consolidation-v1");
   assert.deepEqual(plan.claim_ids, ["claim-release-target"]);
   assert.deepEqual(plan.source_episode_ids, ["episode-a", "episode-b"]);
-  assert.deepEqual(plan.writes[0].evidence_episode_ids, ["episode-a", "episode-b"]);
+  assert.deepEqual(plan.writes[0].evidence_episode_ids, [
+    "episode-a",
+    "episode-b",
+  ]);
   assert.equal(plan.writes[0].classification, "semantic_conflict");
-  assert.equal(plan.writes[0].idempotency_key, repeat.writes[0].idempotency_key);
+  assert.equal(
+    plan.writes[0].idempotency_key,
+    repeat.writes[0].idempotency_key,
+  );
   assert.match(plan.writes[0].idempotency_key, /^palimpsest-consolidation-v1:/);
 });
 
@@ -123,17 +155,30 @@ test("consolidation plan rejects insufficient evidence and caller lineage", () =
   const validated = validateProjectReview(comparisonResult(), reviewPayload());
   validated.claims[0].classification = "insufficient_evidence";
   assert.throws(
-    () => prepareProjectConsolidation(validated, [{ ...consolidationWrite(), evidence_episode_ids: ["unrelated"] }], {
-      consolidationId: "review-run-1",
-    }),
+    () =>
+      prepareProjectConsolidation(
+        validated,
+        [{ ...consolidationWrite(), evidence_episode_ids: ["unrelated"] }],
+        {
+          consolidationId: "review-run-1",
+        },
+      ),
     /insufficient_evidence/,
   );
 
-  const validReview = validateProjectReview(comparisonResult(), reviewPayload());
+  const validReview = validateProjectReview(
+    comparisonResult(),
+    reviewPayload(),
+  );
   assert.throws(
-    () => prepareProjectConsolidation(validReview, [{ ...consolidationWrite(), evidence_episode_ids: ["unrelated"] }], {
-      consolidationId: "review-run-1",
-    }),
+    () =>
+      prepareProjectConsolidation(
+        validReview,
+        [{ ...consolidationWrite(), evidence_episode_ids: ["unrelated"] }],
+        {
+          consolidationId: "review-run-1",
+        },
+      ),
     /evidence_episode_ids are derived/,
   );
 });

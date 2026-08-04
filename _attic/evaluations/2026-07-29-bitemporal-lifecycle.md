@@ -2,10 +2,7 @@
 
 ## Scope
 
-Issue #2's first public MemoryService lifecycle was evaluated through an
-implementation-neutral HTTP client over a real TCP listener and an isolated
-PostgreSQL 18.4 database with pgvector 0.8.5. The portable conformance crate has
-no dependency on the HTTP, application, domain, PostgreSQL, or server crates.
+Issue #2's first public MemoryService lifecycle was evaluated through an implementation-neutral HTTP client over a real TCP listener and an isolated PostgreSQL 18.4 database with pgvector 0.8.5. The portable conformance crate has no dependency on the HTTP, application, domain, PostgreSQL, or server crates.
 
 ## Scenarios
 
@@ -23,8 +20,7 @@ no dependency on the HTTP, application, domain, PostgreSQL, or server crates.
 | Governed writes | Each append, create, and supersede has exactly one audit/outbox pair; exact replays create none | Pass |
 | Outbox publication | A scoped transaction can perform the sole permitted one-way `published_at` transition | Pass |
 
-The isolation fixtures contain unique private marker values and resource IDs.
-Neither marker nor hidden ID appears in the unauthorized response.
+The isolation fixtures contain unique private marker values and resource IDs. Neither marker nor hidden ID appears in the unauthorized response.
 
 ## Commands and gates
 
@@ -35,18 +31,10 @@ cargo test --workspace
 bash scripts/check-repo.sh
 ```
 
-All gates passed locally. The PostgreSQL conformance test creates and removes a
-fresh database per run and validates the PostgreSQL and pgvector versions before
-starting the HTTP server.
+All gates passed locally. The PostgreSQL conformance test creates and removes a fresh database per run and validates the PostgreSQL and pgvector versions before starting the HTTP server.
 
 ## Boundaries
 
-- Local native PostgreSQL evidence used an installed PostgreSQL 18.4 server and
-  pgvector 0.8.5. Docker is unavailable on this machine, so Compose was validated
-  structurally but its pinned image will receive runtime proof in GitHub CI.
-- The local default database role is a superuser and therefore does not prove RLS.
-  CI runs the same conformance suite with a `NOSUPERUSER NOBYPASSRLS` role; the
-  migration evaluation separately proved unscoped and cross-subject RLS failures.
-- Static bearer credentials are a local composition adapter. Tenant and subject
-  values in paths never grant authority; production OAuth/OIDC integration remains
-  a future adapter behind the same authentication boundary.
+- Local native PostgreSQL evidence used an installed PostgreSQL 18.4 server and pgvector 0.8.5. Docker is unavailable on this machine, so Compose was validated structurally but its pinned image will receive runtime proof in GitHub CI.
+- The local default database role is a superuser and therefore does not prove RLS. CI runs the same conformance suite with a `NOSUPERUSER NOBYPASSRLS` role; the migration evaluation separately proved unscoped and cross-subject RLS failures.
+- Static bearer credentials are a local composition adapter. Tenant and subject values in paths never grant authority; production OAuth/OIDC integration remains a future adapter behind the same authentication boundary.

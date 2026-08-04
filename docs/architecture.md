@@ -8,7 +8,7 @@ memory lives in PostgreSQL 18 plus pgvector 0.8.5; the versioned HTTP API
 holds large immutable artifacts; Valkey/Redis is a future optional hot cache
 only.
 
-```
+```text
 agents (Codex/Claude Code/Hermes)
    │  MCP adapter (scripts/palimpsest_mcp.py)   thin clients (Python/TS)
    ▼                                                    │

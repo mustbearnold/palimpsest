@@ -2,11 +2,7 @@
 
 ## Scope
 
-Issue #3's checkpoint contract was evaluated through an implementation-neutral
-HTTP client over real TCP listeners and an isolated PostgreSQL 18.4 database
-with pgvector 0.8.5. The public seam is one tenant-, subject-, agent-, and
-thread-scoped checkpoint head; every accepted save creates an immutable full
-snapshot revision.
+Issue #3's checkpoint contract was evaluated through an implementation-neutral HTTP client over real TCP listeners and an isolated PostgreSQL 18.4 database with pgvector 0.8.5. The public seam is one tenant-, subject-, agent-, and thread-scoped checkpoint head; every accepted save creates an immutable full snapshot revision.
 
 ## Scenarios
 
@@ -30,9 +26,7 @@ snapshot revision.
 | Redaction | Private state and external-reference markers do not appear in audit authorization context or outbox payloads | Pass |
 | Bounds | More than 100 effect transitions returns stable `413 checkpoint-too-large` before persistence | Pass |
 
-The two-window hard-crash scenario also verifies exactly three revisions, one
-prepared effect, one completion receipt, three completed idempotency records,
-and three audit/outbox pairs after restart.
+The two-window hard-crash scenario also verifies exactly three revisions, one prepared effect, one completion receipt, three completed idempotency records, and three audit/outbox pairs after restart.
 
 ## Commands and gates
 
@@ -45,22 +39,12 @@ bash scripts/check-repo.sh
 git diff --check
 ```
 
-All gates passed locally. The PostgreSQL conformance test creates and removes a
-fresh database per run. Its crash child is an ignored test fixture that runs
-only when explicitly spawned by the parent scenario.
+All gates passed locally. The PostgreSQL conformance test creates and removes a fresh database per run. Its crash child is an ignored test fixture that runs only when explicitly spawned by the parent scenario.
 
 ## Boundaries
 
-- Palimpsest records effect recovery state but does not execute provider calls.
-  Exactly-once external behavior still requires provider idempotency or reliable
-  reconciliation; the API and ADR make that limitation explicit.
-- The mock provider proves caller behavior at the crash seam, not compatibility
-  with any named third-party provider.
-- The local default database role is a superuser. Existing-record collision
-  fixtures prove application-level tenant and subject cloaking locally; GitHub
-  CI runs the same suite as a `NOSUPERUSER NOBYPASSRLS` database owner so forced
-  RLS is exercised at the PostgreSQL boundary.
-- Expired heads are hidden immediately. Physical retention cleanup and recreation
-  of an expired logical scope are intentionally outside issue #3.
-- This is local development and CI conformance evidence, not a production
-  deployment, performance benchmark, or production-readiness claim.
+- Palimpsest records effect recovery state but does not execute provider calls. Exactly-once external behavior still requires provider idempotency or reliable reconciliation; the API and ADR make that limitation explicit.
+- The mock provider proves caller behavior at the crash seam, not compatibility with any named third-party provider.
+- The local default database role is a superuser. Existing-record collision fixtures prove application-level tenant and subject cloaking locally; GitHub CI runs the same suite as a `NOSUPERUSER NOBYPASSRLS` database owner so forced RLS is exercised at the PostgreSQL boundary.
+- Expired heads are hidden immediately. Physical retention cleanup and recreation of an expired logical scope are intentionally outside issue #3.
+- This is local development and CI conformance evidence, not a production deployment, performance benchmark, or production-readiness claim.

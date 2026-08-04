@@ -9,5 +9,4 @@ Before exploring or changing the product:
 3. Surface an ADR conflict explicitly instead of silently overriding it.
 4. Add or revise glossary terms only when the domain decision is real.
 
-`CONTEXT.md` owns ubiquitous language. `docs/adr/` owns durable architecture and
-governance decisions. GitHub Issues own open specifications and delivery work.
+`CONTEXT.md` owns ubiquitous language. `docs/adr/` owns durable architecture and governance decisions. GitHub Issues own open specifications and delivery work.

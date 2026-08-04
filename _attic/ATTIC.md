@@ -1,8 +1,6 @@
 # Attic
 
-Quarantine for items of unclear or historical value during the SDD migration.
-Human reviews this list, then empties the attic. Git history preserves
-everything.
+Quarantine for items of unclear or historical value during the SDD migration. Human reviews this list, then empties the attic. Git history preserves everything.
 
 | Item | Original path | Why atticked | Suggested fate |
 | --- | --- | --- | --- |

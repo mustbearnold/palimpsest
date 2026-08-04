@@ -1,29 +1,19 @@
 # Subject lifecycle fence evaluation
 
-Date: 2026-07-29
-Issue: #29
-Status: review remediation under validation
+Date: 2026-07-29 Issue: #29 Status: review remediation under validation
 
 ## Claim under evaluation
 
-An active subject may admit bounded content work. Once its monotonic lifecycle
-commits `deletion_pending`, no new HTTP response, idempotent replay, projection
-worker, or restricted database query may begin returning subject content. Work
-admitted before the transition remains durably visible as a content lease until
-it drains or is released.
+An active subject may admit bounded content work. Once its monotonic lifecycle commits `deletion_pending`, no new HTTP response, idempotent replay, projection worker, or restricted database query may begin returning subject content. Work admitted before the transition remains durably visible as a content lease until it drains or is released.
 
-This evaluation does not claim that subject deletion is implemented. Durable
-deletion operations, lease revocation, purge workers, and absence verification
-remain issue #31.
+This evaluation does not claim that subject deletion is implemented. Durable deletion operations, lease revocation, purge workers, and absence verification remain issue #31.
 
 ## Environment
 
 - PostgreSQL server version: 18 or newer, asserted by each integration test.
 - pgvector extension: exactly 0.8.5, asserted by each integration test.
-- Isolation authority: separate fresh `NOSUPERUSER NOBYPASSRLS` runtime and
-  least-privilege lifecycle-controller roles with forced row-level security.
-- Public seam: real TCP HTTP requests through the Axum adapter and PostgreSQL
-  repository.
+- Isolation authority: separate fresh `NOSUPERUSER NOBYPASSRLS` runtime and least-privilege lifecycle-controller roles with forced row-level security.
+- Public seam: real TCP HTTP requests through the Axum adapter and PostgreSQL repository.
 
 ## Scenarios and results
 
@@ -46,8 +36,7 @@ remain issue #31.
 | Restricted forced-RLS queries expose zero canonical, receipt, checkpoint, retrieval, and projection rows after the fence | Pass |
 | Pre-vector lexical receipts survive migrations 0007 through 0009 and still replay | Pass |
 
-The cross-tenant and cross-subject conformance suite also remained green under
-the new restrictive policies.
+The cross-tenant and cross-subject conformance suite also remained green under the new restrictive policies.
 
 ## Commands
 
@@ -58,21 +47,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-All commands passed. The workspace test includes the PostgreSQL 18 conformance,
-legacy receipt upgrade, and focused subject lifecycle fence scenarios.
+All commands passed. The workspace test includes the PostgreSQL 18 conformance, legacy receipt upgrade, and focused subject lifecycle fence scenarios.
 
 ## Residual boundaries
 
-- Content delivery and provider work stop at the 30-second lease deadline.
-  Lease rows remain durable until retrying cleanup succeeds, and terminal
-  lifecycle transition requires zero rows. Issue #31 owns explicit revocation,
-  target purge, and absence verification.
+- Content delivery and provider work stop at the 30-second lease deadline. Lease rows remain durable until retrying cleanup succeeds, and terminal lifecycle transition requires zero rows. Issue #31 owns explicit revocation, target purge, and absence verification.
 - No public export or deletion endpoint exists in this change.
-- No production deployment, destructive purge, recovery exercise, or release
-  claim was performed.
+- No production deployment, destructive purge, recovery exercise, or release claim was performed.
 
 ## Verdict
 
-The implementation is undergoing independent Standards and Spec re-review.
-This report authorizes neither a security-sensitive release nor a first
-production deployment.
+The implementation is undergoing independent Standards and Spec re-review. This report authorizes neither a security-sensitive release nor a first production deployment.

@@ -2,11 +2,7 @@
 
 ## Scope
 
-Issue #19's lexical retrieval contract was evaluated through the portable
-conformance client over a real TCP listener and an isolated PostgreSQL 18.4
-database with pgvector 0.8.5. The public seam creates durable, content-free
-retrieval receipts and reauthorizes their manifest items before returning
-canonical fact values.
+Issue #19's lexical retrieval contract was evaluated through the portable conformance client over a real TCP listener and an isolated PostgreSQL 18.4 database with pgvector 0.8.5. The public seam creates durable, content-free retrieval receipts and reauthorizes their manifest items before returning canonical fact values.
 
 ## Scenarios
 
@@ -25,9 +21,7 @@ canonical fact values.
 | Expiry and deletion | Expired content disappears on receipt read; a deleted successor is not replaced by its superseded predecessor | Pass |
 | Request bounds | A future recorded-time coordinate returns `422`, a 4,097-byte query returns `413`, and a missing idempotency key returns `400` | Pass |
 
-The privacy fixtures use unique marker values. Unauthorized, projection-failure,
-and post-deletion responses are checked for those values and for hidden revision
-identifiers where applicable.
+The privacy fixtures use unique marker values. Unauthorized, projection-failure, and post-deletion responses are checked for those values and for hidden revision identifiers where applicable.
 
 ## Commands and gates
 
@@ -41,24 +35,12 @@ bash scripts/check-repo.sh
 git diff --check
 ```
 
-The focused PostgreSQL retrieval scenario and repository-wide Rust and contract
-gates passed locally. The conformance scenario creates and removes a fresh
-database per run and validates PostgreSQL and pgvector versions before starting
-the HTTP server. A second focused run used a synthetic `NOSUPERUSER
-NOBYPASSRLS` runtime role with separate migration authority; it passed, and its
-temporary role, database, and template extension were removed afterward.
+The focused PostgreSQL retrieval scenario and repository-wide Rust and contract gates passed locally. The conformance scenario creates and removes a fresh database per run and validates PostgreSQL and pgvector versions before starting the HTTP server. A second focused run used a synthetic `NOSUPERUSER NOBYPASSRLS` runtime role with separate migration authority; it passed, and its temporary role, database, and template extension were removed afterward.
 
 ## Boundaries
 
-- The implemented policy is exact identity plus PostgreSQL lexical search. It
-  does not yet include vector candidates, reciprocal-rank fusion, learned
-  reranking, or an approximate-nearest-neighbor index.
-- The evaluation proves scenario correctness for the fixed fixtures. It is not
-  a relevance-quality corpus, load test, latency benchmark, capacity result, or
-  production-readiness claim.
-- Receipt and manifest records are immutable and retained indefinitely in v1.
-  The service currently has no receipt cleanup or deletion workflow.
-- Search projections are rebuildable derived data, but creation deliberately
-  fails closed when a required projection is absent or stale.
-- Static bearer credentials are a local composition adapter. Production
-  OAuth/OIDC integration remains outside this issue.
+- The implemented policy is exact identity plus PostgreSQL lexical search. It does not yet include vector candidates, reciprocal-rank fusion, learned reranking, or an approximate-nearest-neighbor index.
+- The evaluation proves scenario correctness for the fixed fixtures. It is not a relevance-quality corpus, load test, latency benchmark, capacity result, or production-readiness claim.
+- Receipt and manifest records are immutable and retained indefinitely in v1. The service currently has no receipt cleanup or deletion workflow.
+- Search projections are rebuildable derived data, but creation deliberately fails closed when a required projection is absent or stale.
+- Static bearer credentials are a local composition adapter. Production OAuth/OIDC integration remains outside this issue.
