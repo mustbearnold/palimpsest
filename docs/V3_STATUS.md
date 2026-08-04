@@ -42,9 +42,11 @@ is not an official release or a production-readiness claim.
 - Current lexical and hybrid retrieval use a scope-protected derived current
   fact-revision projection, with canonical-history fallback for as-of and
   missing-pointer cases. An owner-only rebuild function repairs an active
-  scope from canonical history, and restore/deletion residual accounting
-  includes the projection. Migration replay and bitemporal conformance cover
-  the new path.
+  scope from canonical history. A durable scope-local coverage marker gates the
+  fast path, expires at finite valid-time horizons, and moves back to repair
+  mode on writes or projection deletion. Restore/deletion residual accounting
+  includes the projection and its marker. Migration replay and bitemporal
+  conformance cover the new path.
 
 ## Somewhat working
 
@@ -72,12 +74,13 @@ is not an official release or a production-readiness claim.
   behavior is not yet evidenced.
 - A rollback-only scale probe is repeatable and content-free. Its first
   100,000-revision local profile measured p95 3.857 seconds and p99 3.923
-  seconds. The checked-in completeness-preserving current-row path measured
-  p95 4.264 seconds and p99 4.312 seconds, so it is not claimed as a latency
-  improvement. A per-request canonical stale guard was also measured and
-  rejected at p95 4.609 seconds. Each run emits a bounded EXPLAIN node profile,
-  so these rejections are measurable without exposing synthetic values or raw
-  SQL.
+  seconds; the initial completeness-preserving path measured p95 4.264 seconds
+  and p99 4.312 seconds. The latest coverage-gated rerun measured p95 1.747
+  seconds and p99 1.821 seconds, but still misses the proposed million-row
+  p95 <= 200 ms and p99 <= 400 ms gate. A per-request canonical stale guard was
+  also measured and rejected at p95 4.609 seconds. Each run emits a bounded
+  EXPLAIN node profile, so these results are measurable without exposing
+  synthetic values or raw SQL.
 - Restore work proves database-copy replay and logical dump/restore. It does
   not prove base-backup/WAL/PITR recovery, backup expiry, or production RPO/RTO.
 - The default server embedding provider is unavailable; exact and lexical
@@ -111,10 +114,10 @@ is not an official release or a production-readiness claim.
 
 ## Next v3 frontier
 
-The next high-value slices are a cheaper completeness/fallback boundary,
-deterministic object/cache fault injection, and concurrent million-revision
-evidence. Server-side atomic consolidation jobs and provider-native semantic
-review remain separate future boundaries.
+The next high-value slices are deterministic object/cache fault injection,
+concurrent million-revision evidence, and durable server-side consolidation
+jobs with retryable claims. Provider-native semantic review and automatic
+model-driven promotion remain separate future boundaries.
 v3 is only honest when those remaining
 boundaries are either implemented with evidence or clearly retained as
 non-claims.

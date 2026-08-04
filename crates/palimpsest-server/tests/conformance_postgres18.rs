@@ -667,7 +667,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         let scenario = async {
             records_and_reads_an_immutable_episode(&scenario_target).await?;
             creates_an_attributable_fact_revision(&scenario_target).await?;
-            rebuilds_the_current_fact_revision_projection(&migration_pool, &scenario_target)
+            rebuilds_the_current_fact_revision_projection(&pool, &migration_pool, &scenario_target)
                 .await?;
             creates_and_replays_a_lexical_retrieval_receipt(&scenario_target).await?;
             supersedes_the_fact_head(&scenario_target).await?;
@@ -1215,6 +1215,10 @@ async fn restore_scope_row_counts(
             UNION ALL
             SELECT 'fact_revision_current', count(*)::bigint
             FROM memory.fact_revision_current WHERE tenant_id = $1 AND subject_id = $2
+            UNION ALL
+            SELECT 'fact_revision_current_coverage', count(*)::bigint
+            FROM memory.fact_revision_current_coverage
+            WHERE tenant_id = $1 AND subject_id = $2
             UNION ALL
             SELECT 'fact_revision_evidence', count(*)::bigint
             FROM memory.fact_revision_evidence WHERE tenant_id = $1 AND subject_id = $2
@@ -5025,6 +5029,7 @@ async fn set_retrieval_test_scope(
 }
 
 async fn rebuilds_the_current_fact_revision_projection(
+    pool: &PgPool,
     migration_pool: &PgPool,
     target: &Target,
 ) -> Result<()> {
@@ -5046,6 +5051,21 @@ async fn rebuilds_the_current_fact_revision_projection(
     .bind(fact_id)
     .fetch_one(migration_pool)
     .await?;
+    let coverage = sqlx::query(
+        "SELECT coverage_state, fact_count, projection_count
+         FROM memory.fact_revision_current_coverage
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(coverage.try_get::<String, _>("coverage_state")? == "complete");
+    ensure!(coverage.try_get::<i64, _>("fact_count")? >= 1);
+    ensure!(
+        coverage.try_get::<i64, _>("fact_count")?
+            == coverage.try_get::<i64, _>("projection_count")?
+    );
 
     let quoted_session_role: String = sqlx::query_scalar("SELECT quote_ident(session_user::text)")
         .fetch_one(migration_pool)
@@ -5139,7 +5159,11 @@ async fn rebuilds_the_current_fact_revision_projection(
     cross_scope_result?;
     cleanup_role?;
 
-    let mut transaction = migration_pool.begin().await?;
+    // The owner-only repair path must run as the role that owns the derived
+    // tables (the conformance runtime role applied the migrations), because
+    // rebuild_fact_revision_current requires session_user to be the table
+    // owner. The migration pool only owns the outer test database.
+    let mut transaction = pool.begin().await?;
     set_retrieval_test_scope(&mut transaction, target).await?;
     sqlx::query(
         "SELECT set_config(
@@ -5160,6 +5184,16 @@ async fn rebuilds_the_current_fact_revision_projection(
     .execute(&mut *transaction)
     .await?;
     ensure!(deleted.rows_affected() == 1);
+    let coverage_after_delete: String = sqlx::query_scalar(
+        "SELECT coverage_state
+         FROM memory.fact_revision_current_coverage
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(coverage_after_delete == "repair_required");
     let rebuilt: i64 = sqlx::query_scalar("SELECT memory.rebuild_fact_revision_current($1, $2)")
         .bind(target.tenant_id)
         .bind(target.subject_id)
@@ -5176,6 +5210,16 @@ async fn rebuilds_the_current_fact_revision_projection(
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(repaired_revision_id == expected_revision_id);
+    let coverage_after_rebuild: String = sqlx::query_scalar(
+        "SELECT coverage_state
+         FROM memory.fact_revision_current_coverage
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    ensure!(coverage_after_rebuild == "complete");
     transaction.commit().await?;
     Ok(())
 }
@@ -5342,6 +5386,7 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                  memory.fact_revisions, \
                  memory.fact_revision_evidence, \
                  memory.fact_revision_current, \
+                 memory.fact_revision_current_coverage, \
                  memory.checkpoints, \
                  memory.checkpoint_revisions, \
                  memory.fact_revision_governance, \
@@ -5492,6 +5537,8 @@ async fn verify_nonbypass_temporal_runtime(runtime: NonbypassTemporalRuntime<'_>
                   + (SELECT count(*) FROM memory.fact_revisions
                      WHERE tenant_id = $1 AND subject_id = $2)
                   + (SELECT count(*) FROM memory.fact_revision_current
+                     WHERE tenant_id = $1 AND subject_id = $2)
+                  + (SELECT count(*) FROM memory.fact_revision_current_coverage
                      WHERE tenant_id = $1 AND subject_id = $2)
                   + (SELECT count(*) FROM memory.checkpoints
                      WHERE tenant_id = $1 AND subject_id = $2)

@@ -182,7 +182,21 @@ DECLARE
 BEGIN
     FOR iteration IN 1..current_setting('palimpsest.scale_queries')::integer LOOP
         started_at := clock_timestamp();
-        WITH current_projection AS MATERIALIZED (
+        WITH current_coverage AS MATERIALIZED (
+            SELECT COALESCE(
+                (
+                    SELECT coverage_state = 'complete'
+                        AND (
+                            coverage_valid_until IS NULL
+                            OR coverage_valid_until > '2026-08-03T00:00:00Z'::timestamptz
+                        )
+                    FROM memory.fact_revision_current_coverage
+                    WHERE tenant_id = current_setting('palimpsest.tenant_id')::uuid
+                      AND subject_id = current_setting('palimpsest.subject_id')::uuid
+                ),
+                false
+            ) AS projection_complete
+        ), current_projection AS MATERIALIZED (
             SELECT projection.tenant_id,
                 projection.subject_id,
                 projection.case_id,
@@ -207,6 +221,7 @@ BEGIN
             FROM memory.facts AS fact
             WHERE fact.tenant_id = current_setting('palimpsest.tenant_id')::uuid
               AND fact.subject_id = current_setting('palimpsest.subject_id')::uuid
+              AND NOT (SELECT projection_complete FROM current_coverage)
               AND NOT EXISTS (
                   SELECT 1
                   FROM current_projection AS current_row
@@ -303,7 +318,21 @@ SELECT
 
 \o :plan_file
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-WITH current_projection AS MATERIALIZED (
+WITH current_coverage AS MATERIALIZED (
+    SELECT COALESCE(
+        (
+            SELECT coverage_state = 'complete'
+                AND (
+                    coverage_valid_until IS NULL
+                    OR coverage_valid_until > '2026-08-03T00:00:00Z'::timestamptz
+                )
+            FROM memory.fact_revision_current_coverage
+            WHERE tenant_id = :'tenant_id'::uuid
+              AND subject_id = :'subject_id'::uuid
+        ),
+        false
+    ) AS projection_complete
+), current_projection AS MATERIALIZED (
     SELECT projection.tenant_id,
         projection.subject_id,
         projection.case_id,
@@ -328,6 +357,7 @@ WITH current_projection AS MATERIALIZED (
     FROM memory.facts AS fact
     WHERE fact.tenant_id = :'tenant_id'::uuid
       AND fact.subject_id = :'subject_id'::uuid
+      AND NOT (SELECT projection_complete FROM current_coverage)
       AND NOT EXISTS (
           SELECT 1
           FROM current_projection AS current_row

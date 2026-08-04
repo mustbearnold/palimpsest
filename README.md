@@ -67,7 +67,9 @@ status and plan are read-only. apply takes the Palimpsest PostgreSQL advisory
 lock and runs only forward, checked-in SQLx migrations; it reports pending,
 failed, unknown, and checksum-mismatched versions as content-free JSON. Use a
 privileged migration identity for apply and keep the runtime identity for the
-HTTP process.
+HTTP process. When those identities differ, grant the runtime identity the
+scope-filtered `SELECT` privileges required by the checked-in derived tables,
+including `memory.fact_revision_current_coverage`.
 
 The same binary has a read-only operator diagnostic. It never starts HTTP or
 applies migrations; it prints content-free JSON and exits nonzero when a
@@ -171,11 +173,11 @@ PALIMPSEST_SCALE_QUERIES=20 \
 
 It prints only counts, latency percentiles, a plan digest, and a bounded plan
 summary containing node timings, row counts, cache/temp block counts, and
-relation names. It does not print synthetic values or raw SQL. The first local
-100,000-revision profile is recorded in
+relation names. It does not print synthetic values or raw SQL. The local
+100,000-revision baseline and coverage-gated profiles are recorded in
 [the scale evaluation](docs/evaluations/2026-08-03-authorized-lexical-scale-probe.md);
-it misses the proposed release latency target, so no million-revision or SLA
-claim is made.
+the latest coverage-gated profile is materially faster but still misses the
+proposed release latency target, so no million-revision or SLA claim is made.
 
 With Docker, stop PostgreSQL without deleting its volume:
 

@@ -1074,6 +1074,48 @@ struct TemporalCandidate {
 }
 
 impl PostgresMemoryRepository {
+    async fn current_projection_coverage_state(
+        transaction: &mut Transaction<'_, Postgres>,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        perspective: &str,
+        evaluated_at: OffsetDateTime,
+    ) -> Result<String, RepositoryError> {
+        if perspective != "current" {
+            return Ok("not_current".to_owned());
+        }
+        let coverage = sqlx::query(
+            r#"
+            SELECT coverage_state, coverage_valid_until
+            FROM memory.fact_revision_current_coverage
+            WHERE tenant_id = $1 AND subject_id = $2
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
+        match coverage {
+            Some(coverage) => {
+                let state: String = coverage.try_get("coverage_state").map_err(unexpected)?;
+                let coverage_valid_until: Option<OffsetDateTime> = coverage
+                    .try_get("coverage_valid_until")
+                    .map_err(unexpected)?;
+                let horizon_is_open = match coverage_valid_until {
+                    Some(coverage_valid_until) => coverage_valid_until > evaluated_at,
+                    None => true,
+                };
+                if state == "complete" && horizon_is_open {
+                    Ok("complete".to_owned())
+                } else {
+                    Ok("repair_required".to_owned())
+                }
+            }
+            None => Ok("repair_required".to_owned()),
+        }
+    }
+
     async fn create_receipt_once(
         &self,
         retrieval: NewRetrieval,
@@ -1180,6 +1222,14 @@ impl PostgresMemoryRepository {
                 ("as_of", *valid_at, *recorded_at)
             }
         };
+        let current_projection_coverage = Self::current_projection_coverage_state(
+            &mut transaction,
+            retrieval.tenant_id,
+            retrieval.subject_id,
+            perspective,
+            evaluated_at,
+        )
+        .await?;
 
         let policy = sqlx::query(
             r#"
@@ -1259,6 +1309,7 @@ impl PostgresMemoryRepository {
                     &idempotency,
                     query_embedding.as_ref(),
                     perspective,
+                    &current_projection_coverage,
                     valid_at,
                     recorded_at,
                     evaluated_at,
@@ -1351,13 +1402,16 @@ impl PostgresMemoryRepository {
                   AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
                   AND (
                       $17::text <> 'current'
-                      OR NOT EXISTS (
-                          SELECT 1
-                          FROM current_projection AS current_row
-                          WHERE current_row.tenant_id = fact.tenant_id
-                            AND current_row.subject_id = fact.subject_id
-                            AND current_row.case_id = fact.case_id
-                            AND current_row.fact_id = fact.fact_id
+                      OR (
+                          $18::text <> 'complete'
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM current_projection AS current_row
+                              WHERE current_row.tenant_id = fact.tenant_id
+                                AND current_row.subject_id = fact.subject_id
+                                AND current_row.case_id = fact.case_id
+                                AND current_row.fact_id = fact.fact_id
+                          )
                       )
                   )
             ),
@@ -1527,6 +1581,7 @@ impl PostgresMemoryRepository {
         .bind(score_scale)
         .bind(candidate_limit)
         .bind(perspective)
+        .bind(&current_projection_coverage)
         .fetch_all(&mut *transaction)
         .await
         .map_err(unexpected)?;
@@ -1675,6 +1730,7 @@ impl PostgresMemoryRepository {
         idempotency: &IdempotencyRequest,
         query_embedding: Option<&RetrievalQueryEmbedding>,
         perspective: &str,
+        current_projection_coverage: &str,
         valid_at: OffsetDateTime,
         recorded_at: OffsetDateTime,
         evaluated_at: OffsetDateTime,
@@ -1764,13 +1820,16 @@ impl PostgresMemoryRepository {
                   AND ($7::text[] IS NULL OR fact.fact_key = ANY($7))
                   AND (
                       $30::text <> 'current'
-                      OR NOT EXISTS (
-                          SELECT 1
-                          FROM current_projection AS current_row
-                          WHERE current_row.tenant_id = fact.tenant_id
-                            AND current_row.subject_id = fact.subject_id
-                            AND current_row.case_id = fact.case_id
-                            AND current_row.fact_id = fact.fact_id
+                      OR (
+                          $31::text <> 'complete'
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM current_projection AS current_row
+                              WHERE current_row.tenant_id = fact.tenant_id
+                                AND current_row.subject_id = fact.subject_id
+                                AND current_row.case_id = fact.case_id
+                                AND current_row.fact_id = fact.fact_id
+                          )
                       )
                   )
             ),
@@ -2142,6 +2201,7 @@ impl PostgresMemoryRepository {
         .bind(plan.manifest_limit)
         .bind(plan.temporal_scoring)
         .bind(perspective)
+        .bind(current_projection_coverage)
         .fetch_all(&mut **transaction)
         .await
         .map_err(unexpected)?;
@@ -7046,6 +7106,6 @@ mod tests {
 
     #[test]
     fn latest_migration_version_matches_the_checked_in_schema() {
-        assert_eq!(latest_migration_version(), 19);
+        assert_eq!(latest_migration_version(), 20);
     }
 }

@@ -71,6 +71,26 @@ correctness/repairability slice, not as a claimed latency improvement. The
 earlier 1.014-second projection-only result is not accepted as evidence for
 the current query shape.
 
+## Coverage-gated current path
+
+Migration 0020 adds a durable scope-local coverage marker. Fact and revision
+statement triggers move a scope to `repair_required`; the revision trigger
+reconciles canonical fact counts, current projection counts, and the earliest
+finite valid-time upper bound after the current-row trigger has run. Current
+retrieval trusts `complete` only while that horizon remains open. Projection
+deletion, owner repair, deletion purge, and restore replay all update or remove
+the marker. As-of retrieval remains on the canonical fallback path.
+
+A subsequent 100,000-revision local rerun of that checked-in path measured p50
+1,081.711 ms, p95 1,747.183 ms, p99 1,820.718 ms, mean 1,204.628 ms, and max
+1,839.102 ms across 20 serial queries. Its plan digest is
+`f57a7fd79d9106ae2a6d94fe5ba7c1987ebc451be08e439ed8c84a1ee9938c10`. The
+coverage proof removes the complete-path facts anti-join while preserving the
+canonical fallback boundary. It is a meaningful local improvement over the
+previous 4.264-second p95 profile, but it still misses the proposed million-
+revision p95 <= 200 ms and p99 <= 400 ms gate; no extrapolated SLA claim is
+made.
+
 ## Rejected per-request stale validation
 
 An exploratory 100,000-revision run added a per-request canonical `NOT EXISTS`
