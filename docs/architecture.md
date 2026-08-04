@@ -10,7 +10,7 @@ only.
 
 ```text
 agents (Codex/Claude Code/Hermes)
-   │  MCP adapter (scripts/palimpsest_mcp.py)   thin clients (Python/TS)
+   │  MCP adapter (tools/palimpsest_mcp.py)   thin clients (Python/TS)
    ▼                                                    │
 Palimpsest HTTP service (crates/palimpsest-server)      │
    │  migrate · doctor · restore · serve                │

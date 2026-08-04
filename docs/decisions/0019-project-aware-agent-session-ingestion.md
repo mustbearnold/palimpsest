@@ -10,7 +10,7 @@ Coding agents already persist useful conversation history, but each agent uses a
 
 ## Decision
 
-Ship a dependency-free Python ingestion library and the `scripts/palimpsest_ingest.py` `once`/`watch` bridge. Source paths are required explicitly; there are no default Codex, Claude, or Hermes paths. A source owner must authorize access to a path, and the bridge never widens the configured tenant, subject, case, or bearer-token scope.
+Ship a dependency-free Python ingestion library and the `tools/palimpsest_ingest.py` `once`/`watch` bridge. Source paths are required explicitly; there are no default Codex, Claude, or Hermes paths. A source owner must authorize access to a path, and the bridge never widens the configured tenant, subject, case, or bearer-token scope.
 
 The first adapters read these source seams:
 

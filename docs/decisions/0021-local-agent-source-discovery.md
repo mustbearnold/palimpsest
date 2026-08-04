@@ -10,7 +10,7 @@ The project-aware ingestion bridge can follow Codex, Claude Code, and Hermes, bu
 
 ## Decision
 
-Add an explicit `--discover` mode to `scripts/palimpsest_ingest.py` and the dependency-free Python helper `discover_local_sources`. Discovery checks only these exact locations for the current user:
+Add an explicit `--discover` mode to `tools/palimpsest_ingest.py` and the dependency-free Python helper `discover_local_sources`. Discovery checks only these exact locations for the current user:
 
 - `~/.codex/sessions`;
 - `~/.claude/projects`;
@@ -25,7 +25,7 @@ Discovery does not recurse through the home directory, search for files by conte
 The normal local setup can use one supervised command:
 
 ```bash
-python3 scripts/palimpsest_ingest.py watch --discover
+python3 tools/palimpsest_ingest.py watch --discover
 ```
 
 The bridge can discover newly created conventional stores while running, while the narrow path set keeps the privacy boundary legible. A separate account, provider API, native hook, or server-managed ingestion worker still requires explicit configuration and remains outside this adapter.

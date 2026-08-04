@@ -64,7 +64,7 @@ export PALIMPSEST_INGEST_TENANT_ID=019be000-0000-7000-8000-000000000010
 export PALIMPSEST_INGEST_SUBJECT_ID=019be000-0000-7000-8000-000000000020
 export PALIMPSEST_INGEST_CASE_ID=019be000-0000-7000-8000-000000000030
 
-python3 scripts/palimpsest_ingest.py watch \
+python3 tools/palimpsest_ingest.py watch \
   --source codex="$HOME/.codex/sessions" \
   --source claude="$HOME/.claude/projects" \
   --source hermes="$HOME/.hermes/state.db"
@@ -73,7 +73,7 @@ python3 scripts/palimpsest_ingest.py watch \
 For the conventional locations above, the equivalent discovery mode is:
 
 ```bash
-python3 scripts/palimpsest_ingest.py watch --discover
+python3 tools/palimpsest_ingest.py watch --discover
 ```
 
 On this Linux checkout, install that watcher as a user service when it should run continuously with the desktop session:

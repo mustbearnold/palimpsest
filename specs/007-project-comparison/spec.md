@@ -50,6 +50,6 @@ governed consolidation. Palimpsest never infers semantic truth itself.
 ## Links
 
 Code: `crates/palimpsest-postgres` · `crates/palimpsest-server` ·
-`clients/python` · `clients/typescript` · `scripts/palimpsest_mcp.py`
+`clients/python` · `clients/typescript` · `tools/palimpsest_mcp.py`
 Tests: `conformance_postgres18.rs` · client suites
 Decisions: 0025, 0026, 0028

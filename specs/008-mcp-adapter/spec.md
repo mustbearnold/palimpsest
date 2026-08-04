@@ -26,7 +26,7 @@ consolidation.
 
 ## Acceptance criteria
 
-- [ ] A1. `scripts/test_palimpsest_mcp.py` passes (tool discovery, recall,
+- [ ] A1. `tools/test_palimpsest_mcp.py` passes (tool discovery, recall,
       compare, validate, consolidate, remember).
 - [ ] A2. Registration instructions in the quickstart runbook work with
       `codex mcp add`; `codex mcp list` shows the adapter.
@@ -41,6 +41,6 @@ consolidation.
 
 ## Links
 
-Code: `scripts/palimpsest_mcp.py`
-Tests: `scripts/test_palimpsest_mcp.py`
+Code: `tools/palimpsest_mcp.py`
+Tests: `tools/test_palimpsest_mcp.py`
 Decisions: 0012, 0020

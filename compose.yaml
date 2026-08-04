@@ -15,7 +15,7 @@ services:
       - "127.0.0.1:${PALIMPSEST_POSTGRES_PORT:-5432}:5432"
     stop_grace_period: 30s
     volumes:
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
       - palimpsest-postgres-data:/var/lib/postgresql
 
 volumes:

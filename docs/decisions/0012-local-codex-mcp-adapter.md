@@ -10,7 +10,7 @@ Palimpsest's canonical public seam is the versioned HTTP/OpenAPI service. Codex 
 
 ## Decision
 
-Add `scripts/palimpsest_mcp.py` as a thin, local stdio MCP adapter. It talks to the running Palimpsest HTTP service with the configured bearer token, tenant, subject, and case identifiers. It exposes six tools:
+Add `tools/palimpsest_mcp.py` as a thin, local stdio MCP adapter. It talks to the running Palimpsest HTTP service with the configured bearer token, tenant, subject, and case identifiers. It exposes six tools:
 
 - `palimpsest_retrieve` creates an authorized current retrieval receipt and returns its visible fact items.
 - `palimpsest_recall_by_project` creates one authorized retrieval receipt per named project and returns project-keyed evidence bundles. It requires at least two distinct project IDs, owns the exact project namespaces, and does not claim to infer a semantic diff or consolidate conflicts.

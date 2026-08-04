@@ -106,7 +106,7 @@ codex mcp add palimpsest \
   --env PALIMPSEST_TENANT_ID=019be000-0000-7000-8000-000000000010 \
   --env PALIMPSEST_SUBJECT_ID=019be000-0000-7000-8000-000000000020 \
   --env PALIMPSEST_CASE_ID=019be000-0000-7000-8000-000000000030 \
-  -- python3 "$(pwd)/scripts/palimpsest_mcp.py"
+  -- python3 "$(pwd)/tools/palimpsest_mcp.py"
 ```
 
 Codex then has `palimpsest_retrieve`, `palimpsest_recall_by_project`, `palimpsest_compare_by_project`, `palimpsest_validate_project_review`, `palimpsest_consolidate_project_review`, and `palimpsest_remember`. The comparison tool does not infer semantic conflicts; consolidation requires caller-supplied values, temporal fields, and a registered write policy. The adapter uses the HTTP API, keeps the configured tenant and subject scope, and never exposes delete or export operations. Verify registration with `codex mcp list`.

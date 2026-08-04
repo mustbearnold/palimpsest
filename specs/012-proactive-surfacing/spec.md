@@ -63,8 +63,8 @@ host-initiated push extension; it is never ambient surveillance.
 
 ## Links
 
-Code: `crates/palimpsest-server` (API surface) · `scripts/palimpsest_mcp.py`
-Tests: `scripts/test_palimpsest_mcp.py` · `conformance_postgres18.rs`
+Code: `crates/palimpsest-server` (API surface) · `tools/palimpsest_mcp.py`
+Tests: `tools/test_palimpsest_mcp.py` · `conformance_postgres18.rs`
 Specs: 002 (authorized retrieval) · 008 (MCP adapter) · 011 (consolidation)
 Decisions: 0005 (authorization-first receipts), 0020 (project-separated
 recall)

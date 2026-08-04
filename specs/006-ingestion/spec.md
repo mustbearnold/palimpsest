@@ -27,7 +27,7 @@ authorized HTTP API, with common credential redaction.
 
 ## Acceptance criteria
 
-- [ ] A1. The ingest and MCP test suites pass (`scripts/test_palimpsest_mcp.py`
+- [ ] A1. The ingest and MCP test suites pass (`tools/test_palimpsest_mcp.py`
       and client ingest tests).
 - [ ] A2. `scripts/install-palimpsest-ingest-service.sh` installs an owner-only
       systemd user service on Linux.
@@ -46,6 +46,6 @@ authorized HTTP API, with common credential redaction.
 
 ## Links
 
-Code: `scripts/palimpsest_ingest.py` · `scripts/palimpsest-ingest.service`
-Tests: `scripts/test_palimpsest_mcp.py`
+Code: `tools/palimpsest_ingest.py` · `scripts/palimpsest-ingest.service`
+Tests: `tools/test_palimpsest_mcp.py`
 Decisions: 0019, 0021, 0022
