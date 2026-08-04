@@ -77,6 +77,7 @@ Legend: CODE · TEST · CONFIG · ASSET · DOC · GENERATED · JUNK · UNKNOWN
 
 - Formatters adopted: `cargo fmt` (already enforced), `ruff` (12 Python files), `prettier` (TypeScript client + `api/openapi.yaml`), `shfmt` (all shell scripts), markdown normalization (35 files: paragraphs and list continuations unwrapped per conventions; fences, tables, and blocks preserved).
 - Zero logic changes; all suites green after formatting (repo contract, MCP, Python 35, TypeScript 18, scale-probe script, `cargo fmt --check`, clippy `-D warnings`, full `cargo test --locked --workspace` including the PostgreSQL conformance suite).
+- One formatter-behavior case (per the protocol's Phase 5 step 4): prettier reformatted the frozen retrieval corpus (`evaluations/retrieval-corpus-v1/`), which broke the digest-pinned conformance checks (`manifest.corpus_sha256` vs. raw bytes). Reverted; the corpus is excluded from prettier via `.prettierignore` and recorded here as a deliberate non-formatted artifact.
 - Links fixed: ADR-0003 research pointer and ADR-0008 research pointer re-pointed to `_attic/research/`; `CONTRIBUTING.md` vocabulary pointer re-pointed to the constitution.
 
 ## Judgment calls (documented deviations)

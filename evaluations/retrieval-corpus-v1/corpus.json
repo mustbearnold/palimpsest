@@ -46,7 +46,9 @@
       "id": "exact-name-001",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-001",
-      "relevant_ids": ["exact-name-001-relevant"],
+      "relevant_ids": [
+        "exact-name-001-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -95,7 +97,9 @@
       "id": "exact-name-002",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-002",
-      "relevant_ids": ["exact-name-002-relevant"],
+      "relevant_ids": [
+        "exact-name-002-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -144,7 +148,9 @@
       "id": "exact-name-003",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-003",
-      "relevant_ids": ["exact-name-003-relevant"],
+      "relevant_ids": [
+        "exact-name-003-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -193,7 +199,9 @@
       "id": "exact-name-004",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-004",
-      "relevant_ids": ["exact-name-004-relevant"],
+      "relevant_ids": [
+        "exact-name-004-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -242,7 +250,9 @@
       "id": "exact-name-005",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-005",
-      "relevant_ids": ["exact-name-005-relevant"],
+      "relevant_ids": [
+        "exact-name-005-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -291,7 +301,9 @@
       "id": "exact-name-006",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-006",
-      "relevant_ids": ["exact-name-006-relevant"],
+      "relevant_ids": [
+        "exact-name-006-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -340,7 +352,9 @@
       "id": "exact-name-007",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-007",
-      "relevant_ids": ["exact-name-007-relevant"],
+      "relevant_ids": [
+        "exact-name-007-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -389,7 +403,9 @@
       "id": "exact-name-008",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-008",
-      "relevant_ids": ["exact-name-008-relevant"],
+      "relevant_ids": [
+        "exact-name-008-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -438,7 +454,9 @@
       "id": "exact-name-009",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-009",
-      "relevant_ids": ["exact-name-009-relevant"],
+      "relevant_ids": [
+        "exact-name-009-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -487,7 +505,9 @@
       "id": "exact-name-010",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-010",
-      "relevant_ids": ["exact-name-010-relevant"],
+      "relevant_ids": [
+        "exact-name-010-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -536,7 +556,9 @@
       "id": "exact-name-011",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-011",
-      "relevant_ids": ["exact-name-011-relevant"],
+      "relevant_ids": [
+        "exact-name-011-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -585,7 +607,9 @@
       "id": "exact-name-012",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-012",
-      "relevant_ids": ["exact-name-012-relevant"],
+      "relevant_ids": [
+        "exact-name-012-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -634,7 +658,9 @@
       "id": "exact-name-013",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-013",
-      "relevant_ids": ["exact-name-013-relevant"],
+      "relevant_ids": [
+        "exact-name-013-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -683,7 +709,9 @@
       "id": "exact-name-014",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-014",
-      "relevant_ids": ["exact-name-014-relevant"],
+      "relevant_ids": [
+        "exact-name-014-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -732,7 +760,9 @@
       "id": "exact-name-015",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-015",
-      "relevant_ids": ["exact-name-015-relevant"],
+      "relevant_ids": [
+        "exact-name-015-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -781,7 +811,9 @@
       "id": "exact-name-016",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-016",
-      "relevant_ids": ["exact-name-016-relevant"],
+      "relevant_ids": [
+        "exact-name-016-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -830,7 +862,9 @@
       "id": "exact-name-017",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-017",
-      "relevant_ids": ["exact-name-017-relevant"],
+      "relevant_ids": [
+        "exact-name-017-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -879,7 +913,9 @@
       "id": "exact-name-018",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-018",
-      "relevant_ids": ["exact-name-018-relevant"],
+      "relevant_ids": [
+        "exact-name-018-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -928,7 +964,9 @@
       "id": "exact-name-019",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-019",
-      "relevant_ids": ["exact-name-019-relevant"],
+      "relevant_ids": [
+        "exact-name-019-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -977,7 +1015,9 @@
       "id": "exact-name-020",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-020",
-      "relevant_ids": ["exact-name-020-relevant"],
+      "relevant_ids": [
+        "exact-name-020-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -1026,7 +1066,9 @@
       "id": "exact-name-021",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-021",
-      "relevant_ids": ["exact-name-021-relevant"],
+      "relevant_ids": [
+        "exact-name-021-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -1075,7 +1117,9 @@
       "id": "exact-name-022",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-022",
-      "relevant_ids": ["exact-name-022-relevant"],
+      "relevant_ids": [
+        "exact-name-022-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -1124,7 +1168,9 @@
       "id": "exact-name-023",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-023",
-      "relevant_ids": ["exact-name-023-relevant"],
+      "relevant_ids": [
+        "exact-name-023-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -1173,13 +1219,17 @@
       "id": "exact-name-024",
       "perspective": "fixed",
       "query": "corpus.exact_name:palimpsest-exact-name-024",
-      "relevant_ids": ["exact-name-024-relevant"],
+      "relevant_ids": [
+        "exact-name-024-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000019",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-001-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-001-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1235,7 +1285,9 @@
       "id": "temporal-contradiction-001",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-001",
-      "relevant_ids": ["temporal-contradiction-001-root"],
+      "relevant_ids": [
+        "temporal-contradiction-001-root"
+      ],
       "split": "calibration"
     },
     {
@@ -1300,13 +1352,17 @@
       "id": "temporal-contradiction-002",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-002",
-      "relevant_ids": ["temporal-contradiction-002-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-002-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000001b",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-003-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-003-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1362,7 +1418,9 @@
       "id": "temporal-contradiction-003",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-003",
-      "relevant_ids": ["temporal-contradiction-003-root"],
+      "relevant_ids": [
+        "temporal-contradiction-003-root"
+      ],
       "split": "calibration"
     },
     {
@@ -1427,13 +1485,17 @@
       "id": "temporal-contradiction-004",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-004",
-      "relevant_ids": ["temporal-contradiction-004-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-004-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000001d",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-005-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-005-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1489,7 +1551,9 @@
       "id": "temporal-contradiction-005",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-005",
-      "relevant_ids": ["temporal-contradiction-005-root"],
+      "relevant_ids": [
+        "temporal-contradiction-005-root"
+      ],
       "split": "calibration"
     },
     {
@@ -1554,13 +1618,17 @@
       "id": "temporal-contradiction-006",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-006",
-      "relevant_ids": ["temporal-contradiction-006-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-006-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000001f",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-007-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-007-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1616,7 +1684,9 @@
       "id": "temporal-contradiction-007",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-007",
-      "relevant_ids": ["temporal-contradiction-007-root"],
+      "relevant_ids": [
+        "temporal-contradiction-007-root"
+      ],
       "split": "gate"
     },
     {
@@ -1681,13 +1751,17 @@
       "id": "temporal-contradiction-008",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-008",
-      "relevant_ids": ["temporal-contradiction-008-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-008-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000021",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-009-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-009-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1743,7 +1817,9 @@
       "id": "temporal-contradiction-009",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-009",
-      "relevant_ids": ["temporal-contradiction-009-root"],
+      "relevant_ids": [
+        "temporal-contradiction-009-root"
+      ],
       "split": "gate"
     },
     {
@@ -1808,13 +1884,17 @@
       "id": "temporal-contradiction-010",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-010",
-      "relevant_ids": ["temporal-contradiction-010-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-010-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000023",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-011-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-011-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1870,7 +1950,9 @@
       "id": "temporal-contradiction-011",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-011",
-      "relevant_ids": ["temporal-contradiction-011-root"],
+      "relevant_ids": [
+        "temporal-contradiction-011-root"
+      ],
       "split": "gate"
     },
     {
@@ -1935,13 +2017,17 @@
       "id": "temporal-contradiction-012",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-012",
-      "relevant_ids": ["temporal-contradiction-012-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-012-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000025",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-013-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-013-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -1997,7 +2083,9 @@
       "id": "temporal-contradiction-013",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-013",
-      "relevant_ids": ["temporal-contradiction-013-root"],
+      "relevant_ids": [
+        "temporal-contradiction-013-root"
+      ],
       "split": "gate"
     },
     {
@@ -2062,13 +2150,17 @@
       "id": "temporal-contradiction-014",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-014",
-      "relevant_ids": ["temporal-contradiction-014-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-014-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000027",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-015-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-015-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -2124,7 +2216,9 @@
       "id": "temporal-contradiction-015",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-015",
-      "relevant_ids": ["temporal-contradiction-015-root"],
+      "relevant_ids": [
+        "temporal-contradiction-015-root"
+      ],
       "split": "gate"
     },
     {
@@ -2189,13 +2283,17 @@
       "id": "temporal-contradiction-016",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-016",
-      "relevant_ids": ["temporal-contradiction-016-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-016-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000029",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-017-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-017-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -2251,7 +2349,9 @@
       "id": "temporal-contradiction-017",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-017",
-      "relevant_ids": ["temporal-contradiction-017-root"],
+      "relevant_ids": [
+        "temporal-contradiction-017-root"
+      ],
       "split": "gate"
     },
     {
@@ -2316,13 +2416,17 @@
       "id": "temporal-contradiction-018",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-018",
-      "relevant_ids": ["temporal-contradiction-018-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-018-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000002b",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-019-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-019-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -2378,7 +2482,9 @@
       "id": "temporal-contradiction-019",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-019",
-      "relevant_ids": ["temporal-contradiction-019-root"],
+      "relevant_ids": [
+        "temporal-contradiction-019-root"
+      ],
       "split": "gate"
     },
     {
@@ -2443,13 +2549,17 @@
       "id": "temporal-contradiction-020",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-020",
-      "relevant_ids": ["temporal-contradiction-020-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-020-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000002d",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-021-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-021-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -2505,7 +2615,9 @@
       "id": "temporal-contradiction-021",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-021",
-      "relevant_ids": ["temporal-contradiction-021-root"],
+      "relevant_ids": [
+        "temporal-contradiction-021-root"
+      ],
       "split": "gate"
     },
     {
@@ -2570,13 +2682,17 @@
       "id": "temporal-contradiction-022",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-022",
-      "relevant_ids": ["temporal-contradiction-022-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-022-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000002f",
       "category": "temporal-contradiction",
-      "expected_candidate_ids": ["temporal-contradiction-023-root"],
+      "expected_candidate_ids": [
+        "temporal-contradiction-023-root"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -2632,7 +2748,9 @@
       "id": "temporal-contradiction-023",
       "perspective": "before-successor",
       "query": "palimpsest-temporal-contradiction-023",
-      "relevant_ids": ["temporal-contradiction-023-root"],
+      "relevant_ids": [
+        "temporal-contradiction-023-root"
+      ],
       "split": "gate"
     },
     {
@@ -2697,7 +2815,9 @@
       "id": "temporal-contradiction-024",
       "perspective": "after-successor",
       "query": "palimpsest-temporal-contradiction-024",
-      "relevant_ids": ["temporal-contradiction-024-relevant"],
+      "relevant_ids": [
+        "temporal-contradiction-024-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -2746,7 +2866,9 @@
       "id": "stale-distractor-001",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-001",
-      "relevant_ids": ["stale-distractor-001-relevant"],
+      "relevant_ids": [
+        "stale-distractor-001-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -2795,7 +2917,9 @@
       "id": "stale-distractor-002",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-002",
-      "relevant_ids": ["stale-distractor-002-relevant"],
+      "relevant_ids": [
+        "stale-distractor-002-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -2844,7 +2968,9 @@
       "id": "stale-distractor-003",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-003",
-      "relevant_ids": ["stale-distractor-003-relevant"],
+      "relevant_ids": [
+        "stale-distractor-003-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -2893,7 +3019,9 @@
       "id": "stale-distractor-004",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-004",
-      "relevant_ids": ["stale-distractor-004-relevant"],
+      "relevant_ids": [
+        "stale-distractor-004-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -2942,7 +3070,9 @@
       "id": "stale-distractor-005",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-005",
-      "relevant_ids": ["stale-distractor-005-relevant"],
+      "relevant_ids": [
+        "stale-distractor-005-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -2991,7 +3121,9 @@
       "id": "stale-distractor-006",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-006",
-      "relevant_ids": ["stale-distractor-006-relevant"],
+      "relevant_ids": [
+        "stale-distractor-006-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3040,7 +3172,9 @@
       "id": "stale-distractor-007",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-007",
-      "relevant_ids": ["stale-distractor-007-relevant"],
+      "relevant_ids": [
+        "stale-distractor-007-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3089,7 +3223,9 @@
       "id": "stale-distractor-008",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-008",
-      "relevant_ids": ["stale-distractor-008-relevant"],
+      "relevant_ids": [
+        "stale-distractor-008-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3138,7 +3274,9 @@
       "id": "stale-distractor-009",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-009",
-      "relevant_ids": ["stale-distractor-009-relevant"],
+      "relevant_ids": [
+        "stale-distractor-009-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3187,7 +3325,9 @@
       "id": "stale-distractor-010",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-010",
-      "relevant_ids": ["stale-distractor-010-relevant"],
+      "relevant_ids": [
+        "stale-distractor-010-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3236,7 +3376,9 @@
       "id": "stale-distractor-011",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-011",
-      "relevant_ids": ["stale-distractor-011-relevant"],
+      "relevant_ids": [
+        "stale-distractor-011-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3285,7 +3427,9 @@
       "id": "stale-distractor-012",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-012",
-      "relevant_ids": ["stale-distractor-012-relevant"],
+      "relevant_ids": [
+        "stale-distractor-012-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3334,7 +3478,9 @@
       "id": "stale-distractor-013",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-013",
-      "relevant_ids": ["stale-distractor-013-relevant"],
+      "relevant_ids": [
+        "stale-distractor-013-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3383,7 +3529,9 @@
       "id": "stale-distractor-014",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-014",
-      "relevant_ids": ["stale-distractor-014-relevant"],
+      "relevant_ids": [
+        "stale-distractor-014-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3432,7 +3580,9 @@
       "id": "stale-distractor-015",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-015",
-      "relevant_ids": ["stale-distractor-015-relevant"],
+      "relevant_ids": [
+        "stale-distractor-015-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3481,7 +3631,9 @@
       "id": "stale-distractor-016",
       "perspective": "fixed",
       "query": "palimpsest-stale-distractor-016",
-      "relevant_ids": ["stale-distractor-016-relevant"],
+      "relevant_ids": [
+        "stale-distractor-016-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3530,7 +3682,9 @@
       "id": "stable-versus-decaying-001",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-001",
-      "relevant_ids": ["stable-versus-decaying-001-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-001-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -3579,7 +3733,9 @@
       "id": "stable-versus-decaying-002",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-002",
-      "relevant_ids": ["stable-versus-decaying-002-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-002-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -3628,7 +3784,9 @@
       "id": "stable-versus-decaying-003",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-003",
-      "relevant_ids": ["stable-versus-decaying-003-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-003-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -3677,7 +3835,9 @@
       "id": "stable-versus-decaying-004",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-004",
-      "relevant_ids": ["stable-versus-decaying-004-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-004-relevant"
+      ],
       "split": "calibration"
     },
     {
@@ -3726,7 +3886,9 @@
       "id": "stable-versus-decaying-005",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-005",
-      "relevant_ids": ["stable-versus-decaying-005-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-005-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3775,7 +3937,9 @@
       "id": "stable-versus-decaying-006",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-006",
-      "relevant_ids": ["stable-versus-decaying-006-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-006-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3824,7 +3988,9 @@
       "id": "stable-versus-decaying-007",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-007",
-      "relevant_ids": ["stable-versus-decaying-007-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-007-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3873,7 +4039,9 @@
       "id": "stable-versus-decaying-008",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-008",
-      "relevant_ids": ["stable-versus-decaying-008-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-008-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3922,7 +4090,9 @@
       "id": "stable-versus-decaying-009",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-009",
-      "relevant_ids": ["stable-versus-decaying-009-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-009-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -3971,7 +4141,9 @@
       "id": "stable-versus-decaying-010",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-010",
-      "relevant_ids": ["stable-versus-decaying-010-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-010-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4020,7 +4192,9 @@
       "id": "stable-versus-decaying-011",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-011",
-      "relevant_ids": ["stable-versus-decaying-011-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-011-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4069,7 +4243,9 @@
       "id": "stable-versus-decaying-012",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-012",
-      "relevant_ids": ["stable-versus-decaying-012-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-012-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4118,7 +4294,9 @@
       "id": "stable-versus-decaying-013",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-013",
-      "relevant_ids": ["stable-versus-decaying-013-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-013-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4167,7 +4345,9 @@
       "id": "stable-versus-decaying-014",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-014",
-      "relevant_ids": ["stable-versus-decaying-014-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-014-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4216,7 +4396,9 @@
       "id": "stable-versus-decaying-015",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-015",
-      "relevant_ids": ["stable-versus-decaying-015-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-015-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4265,7 +4447,9 @@
       "id": "stable-versus-decaying-016",
       "perspective": "fixed",
       "query": "palimpsest-stable-versus-decaying-016",
-      "relevant_ids": ["stable-versus-decaying-016-relevant"],
+      "relevant_ids": [
+        "stable-versus-decaying-016-relevant"
+      ],
       "split": "gate"
     },
     {
@@ -4291,7 +4475,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-001-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-001-trap"
+      ],
       "id": "abstention-conflict-ready-001",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-001",
@@ -4321,7 +4507,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-002-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-002-trap"
+      ],
       "id": "abstention-conflict-ready-002",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-002",
@@ -4351,7 +4539,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-003-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-003-trap"
+      ],
       "id": "abstention-conflict-ready-003",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-003",
@@ -4381,7 +4571,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-004-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-004-trap"
+      ],
       "id": "abstention-conflict-ready-004",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-004",
@@ -4411,7 +4603,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-005-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-005-trap"
+      ],
       "id": "abstention-conflict-ready-005",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-005",
@@ -4441,7 +4635,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-006-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-006-trap"
+      ],
       "id": "abstention-conflict-ready-006",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-006",
@@ -4471,7 +4667,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-007-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-007-trap"
+      ],
       "id": "abstention-conflict-ready-007",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-007",
@@ -4501,7 +4699,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-008-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-008-trap"
+      ],
       "id": "abstention-conflict-ready-008",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-008",
@@ -4531,7 +4731,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-009-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-009-trap"
+      ],
       "id": "abstention-conflict-ready-009",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-009",
@@ -4561,7 +4763,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-010-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-010-trap"
+      ],
       "id": "abstention-conflict-ready-010",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-010",
@@ -4591,7 +4795,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-011-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-011-trap"
+      ],
       "id": "abstention-conflict-ready-011",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-011",
@@ -4621,7 +4827,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-012-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-012-trap"
+      ],
       "id": "abstention-conflict-ready-012",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-012",
@@ -4651,7 +4859,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-013-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-013-trap"
+      ],
       "id": "abstention-conflict-ready-013",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-013",
@@ -4681,7 +4891,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-014-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-014-trap"
+      ],
       "id": "abstention-conflict-ready-014",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-014",
@@ -4711,7 +4923,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-015-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-015-trap"
+      ],
       "id": "abstention-conflict-ready-015",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-015",
@@ -4741,7 +4955,9 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["abstention-conflict-ready-016-trap"],
+      "forbidden_ids": [
+        "abstention-conflict-ready-016-trap"
+      ],
       "id": "abstention-conflict-ready-016",
       "perspective": "fixed",
       "query": "palimpsest-abstention-conflict-ready-016",
@@ -4751,7 +4967,9 @@
     {
       "case_id": "019fac90-0000-7000-8000-000000000061",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-001-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-001-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -4787,17 +5005,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-001-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-001-trap"
+      ],
       "id": "isolation-lifecycle-001",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-001",
-      "relevant_ids": ["isolation-lifecycle-001-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-001-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000062",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-002-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-002-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -4833,17 +5057,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-002-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-002-trap"
+      ],
       "id": "isolation-lifecycle-002",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-002",
-      "relevant_ids": ["isolation-lifecycle-002-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-002-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000063",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-003-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-003-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -4879,17 +5109,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-003-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-003-trap"
+      ],
       "id": "isolation-lifecycle-003",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-003",
-      "relevant_ids": ["isolation-lifecycle-003-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-003-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000064",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-004-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-004-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -4925,17 +5161,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-004-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-004-trap"
+      ],
       "id": "isolation-lifecycle-004",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-004",
-      "relevant_ids": ["isolation-lifecycle-004-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-004-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000065",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-005-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-005-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -4971,17 +5213,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-005-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-005-trap"
+      ],
       "id": "isolation-lifecycle-005",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-005",
-      "relevant_ids": ["isolation-lifecycle-005-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-005-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000066",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-006-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-006-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5017,17 +5265,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-006-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-006-trap"
+      ],
       "id": "isolation-lifecycle-006",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-006",
-      "relevant_ids": ["isolation-lifecycle-006-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-006-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000067",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-007-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-007-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5063,17 +5317,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-007-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-007-trap"
+      ],
       "id": "isolation-lifecycle-007",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-007",
-      "relevant_ids": ["isolation-lifecycle-007-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-007-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000068",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-008-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-008-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5109,17 +5369,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-008-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-008-trap"
+      ],
       "id": "isolation-lifecycle-008",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-008",
-      "relevant_ids": ["isolation-lifecycle-008-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-008-relevant"
+      ],
       "split": "calibration"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000069",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-009-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-009-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5155,17 +5421,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-009-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-009-trap"
+      ],
       "id": "isolation-lifecycle-009",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-009",
-      "relevant_ids": ["isolation-lifecycle-009-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-009-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000006a",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-010-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-010-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5201,17 +5473,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-010-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-010-trap"
+      ],
       "id": "isolation-lifecycle-010",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-010",
-      "relevant_ids": ["isolation-lifecycle-010-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-010-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000006b",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-011-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-011-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5247,17 +5525,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-011-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-011-trap"
+      ],
       "id": "isolation-lifecycle-011",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-011",
-      "relevant_ids": ["isolation-lifecycle-011-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-011-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000006c",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-012-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-012-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5293,17 +5577,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-012-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-012-trap"
+      ],
       "id": "isolation-lifecycle-012",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-012",
-      "relevant_ids": ["isolation-lifecycle-012-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-012-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000006d",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-013-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-013-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5339,17 +5629,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-013-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-013-trap"
+      ],
       "id": "isolation-lifecycle-013",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-013",
-      "relevant_ids": ["isolation-lifecycle-013-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-013-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000006e",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-014-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-014-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5385,17 +5681,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-014-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-014-trap"
+      ],
       "id": "isolation-lifecycle-014",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-014",
-      "relevant_ids": ["isolation-lifecycle-014-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-014-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000006f",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-015-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-015-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5431,17 +5733,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-015-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-015-trap"
+      ],
       "id": "isolation-lifecycle-015",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-015",
-      "relevant_ids": ["isolation-lifecycle-015-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-015-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000070",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-016-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-016-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5477,17 +5785,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-016-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-016-trap"
+      ],
       "id": "isolation-lifecycle-016",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-016",
-      "relevant_ids": ["isolation-lifecycle-016-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-016-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000071",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-017-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-017-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5523,17 +5837,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-017-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-017-trap"
+      ],
       "id": "isolation-lifecycle-017",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-017",
-      "relevant_ids": ["isolation-lifecycle-017-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-017-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000072",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-018-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-018-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5569,17 +5889,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-018-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-018-trap"
+      ],
       "id": "isolation-lifecycle-018",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-018",
-      "relevant_ids": ["isolation-lifecycle-018-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-018-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000073",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-019-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-019-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5615,17 +5941,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-019-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-019-trap"
+      ],
       "id": "isolation-lifecycle-019",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-019",
-      "relevant_ids": ["isolation-lifecycle-019-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-019-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000074",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-020-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-020-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5661,17 +5993,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-020-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-020-trap"
+      ],
       "id": "isolation-lifecycle-020",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-020",
-      "relevant_ids": ["isolation-lifecycle-020-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-020-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000075",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-021-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-021-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5707,17 +6045,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-021-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-021-trap"
+      ],
       "id": "isolation-lifecycle-021",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-021",
-      "relevant_ids": ["isolation-lifecycle-021-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-021-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000076",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-022-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-022-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5753,17 +6097,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-022-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-022-trap"
+      ],
       "id": "isolation-lifecycle-022",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-022",
-      "relevant_ids": ["isolation-lifecycle-022-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-022-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000077",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-023-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-023-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5799,17 +6149,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-023-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-023-trap"
+      ],
       "id": "isolation-lifecycle-023",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-023",
-      "relevant_ids": ["isolation-lifecycle-023-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-023-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000078",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-024-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-024-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5845,17 +6201,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-024-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-024-trap"
+      ],
       "id": "isolation-lifecycle-024",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-024",
-      "relevant_ids": ["isolation-lifecycle-024-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-024-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000079",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-025-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-025-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5891,17 +6253,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-025-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-025-trap"
+      ],
       "id": "isolation-lifecycle-025",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-025",
-      "relevant_ids": ["isolation-lifecycle-025-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-025-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000007a",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-026-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-026-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5937,17 +6305,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-026-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-026-trap"
+      ],
       "id": "isolation-lifecycle-026",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-026",
-      "relevant_ids": ["isolation-lifecycle-026-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-026-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000007b",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-027-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-027-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -5983,17 +6357,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-027-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-027-trap"
+      ],
       "id": "isolation-lifecycle-027",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-027",
-      "relevant_ids": ["isolation-lifecycle-027-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-027-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000007c",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-028-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-028-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -6029,17 +6409,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-028-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-028-trap"
+      ],
       "id": "isolation-lifecycle-028",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-028",
-      "relevant_ids": ["isolation-lifecycle-028-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-028-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000007d",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-029-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-029-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -6075,17 +6461,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-029-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-029-trap"
+      ],
       "id": "isolation-lifecycle-029",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-029",
-      "relevant_ids": ["isolation-lifecycle-029-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-029-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000007e",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-030-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-030-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -6121,17 +6513,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-030-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-030-trap"
+      ],
       "id": "isolation-lifecycle-030",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-030",
-      "relevant_ids": ["isolation-lifecycle-030-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-030-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-00000000007f",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-031-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-031-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -6167,17 +6565,23 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-031-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-031-trap"
+      ],
       "id": "isolation-lifecycle-031",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-031",
-      "relevant_ids": ["isolation-lifecycle-031-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-031-relevant"
+      ],
       "split": "gate"
     },
     {
       "case_id": "019fac90-0000-7000-8000-000000000080",
       "category": "isolation-lifecycle",
-      "expected_candidate_ids": ["isolation-lifecycle-032-relevant"],
+      "expected_candidate_ids": [
+        "isolation-lifecycle-032-relevant"
+      ],
       "expected_disposition": "results",
       "facts": [
         {
@@ -6213,11 +6617,15 @@
           "write_policy_id": "temporal-stable-evidence"
         }
       ],
-      "forbidden_ids": ["isolation-lifecycle-032-trap"],
+      "forbidden_ids": [
+        "isolation-lifecycle-032-trap"
+      ],
       "id": "isolation-lifecycle-032",
       "perspective": "fixed",
       "query": "palimpsest-isolation-lifecycle-032",
-      "relevant_ids": ["isolation-lifecycle-032-relevant"],
+      "relevant_ids": [
+        "isolation-lifecycle-032-relevant"
+      ],
       "split": "gate"
     }
   ],

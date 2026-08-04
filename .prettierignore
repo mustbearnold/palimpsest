@@ -1,0 +1,4 @@
+# The retrieval corpus is a frozen, digest-pinned artifact: manifest.json and
+# predictions.json record SHA-256 digests that conformance tests verify against
+# the raw bytes. Reformatting it would break the pin.
+evaluations/retrieval-corpus-v1/
