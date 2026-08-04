@@ -12,10 +12,9 @@ specs: constitution → conventions → specs → code comments.
 - Tables only for genuinely tabular data; otherwise lists or prose.
 - Relative links only within the repo. Kebab-case filenames:
   `spec-extraction.md`.
-- Spec files follow the template in the migration protocol's Appendix A:
-  Status, Owner, Purpose, Requirements (RFC 2119 MUST/SHOULD/MAY), Acceptance
-  criteria (Given/When/Then), Out of scope, Open questions, Links. Inferred
-  requirements are tagged `[inferred]`.
+- Spec files follow this template: Status, Owner, Purpose, Requirements
+  (RFC 2119 MUST/SHOULD/MAY), Acceptance criteria (Given/When/Then), Out of
+  scope, Open questions, Links. Inferred requirements are tagged `[inferred]`.
 
 ## Code
 
