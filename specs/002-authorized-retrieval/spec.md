@@ -48,12 +48,19 @@ generation; lexical and vector search rank within the authorized set.
       (2026-08-05, plan digest
       `8499ae8547697dbe4605c0dcddbc430bf26ca31ecb10e12deb806eedce826d1f`)
       and, with a selectivity-mixed query set, 12.2-23.2 s across all match
-      bands — the latency floor is selectivity-independent. The proposed
-      million-row gate (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT met — no SLA
-      claim; the GIN-indexed selective documents access measures 43 ms for
-      31k rows, so the remaining cost is the per-query full-set pipeline
-      (materialization + governance join), not ranking or document join.
-      Concurrent and cold-cache profiles remain unmeasured.
+      bands — the latency floor is selectivity-independent. The prepared-seed
+      profiles (committed 1M scope, measured 2026-08-05) measured a cold
+      first query at 19.288 s (1,655,838 disk blocks read), warm serial
+      p95 13.111 s (digest
+      `07fa3f652a59f214980a2a94e0b8095383681d4fd9a9b24f6ea6e65abfc244f1`),
+      and 8-way concurrent p95 16.792 s / p99 16.909 s with a tight
+      per-session spread — the same full-set pipeline floor under every
+      cache and concurrency condition. The proposed million-row gate
+      (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT met — no SLA claim; the
+      GIN-indexed selective documents access measures 43 ms for 31k rows, so
+      the remaining cost is the per-query full-set pipeline
+      (materialization + governance join), not ranking, document join, cache
+      temperature, or concurrency.
 
 ## Out of scope
 
@@ -64,15 +71,16 @@ generation; lexical and vector search rank within the authorized set.
 
 ## Open questions
 
-- Million-revision latency: measured at p95 11.302 s (all-match) and
-  12.2-23.2 s across selectivity bands (2026-08-05) against a proposed
-  ≤ 200 ms gate. The GIN-indexed selective documents access is fast (43 ms
-  for 31k rows); the measured floor is the per-query full-set pipeline
-  (authorized-set materialization + governance join), which is
-  selectivity-independent. Primary levers: precomputed authorized-current
+- Million-revision latency: measured at p95 11.302 s (all-match), 12.2-23.2 s
+  across selectivity bands, cold first query 19.288 s (1,655,838 disk
+  blocks), warm serial p95 13.111 s, and 8-way concurrent p95 16.792 s
+  (all 2026-08-05) against a proposed ≤ 200 ms gate. The GIN-indexed
+  selective documents access is fast (43 ms for 31k rows); the measured
+  floor is the per-query full-set pipeline (authorized-set materialization +
+  governance join), which is selectivity-, cache-temperature-, and
+  concurrency-independent. Primary levers: precomputed authorized-current
   structure or a loss-safe hot cache (issue #39), then a selectivity-modeled
-  gate. Concurrent and cold-cache profiles, plus measured remediation,
-  remain.
+  gate. Measured remediation remains.
 - Automatic per-request detection of arbitrary out-of-band projection
   corruption (owner-only rebuild exists; per-request comparison was measured
   at p95 4.609 s and rejected).
