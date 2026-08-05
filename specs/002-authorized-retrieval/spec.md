@@ -44,11 +44,16 @@ generation; lexical and vector search rank within the authorized set.
 - [ ] A3. Concurrent retrievals converge on one receipt (idempotency).
 - [ ] A4. The rollback-only scale probe is repeatable and content-free. The
       100,000-revision coverage-gated profile measured p95 1.747 s / p99
-      1.821 s; the first 1,000,000-revision profile measured p95 11.302 s /
-      p99 11.312 s (2026-08-05, plan digest
-      `8499ae8547697dbe4605c0dcddbc430bf26ca31ecb10e12deb806eedce826d1f`).
-      The proposed million-row gate (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT met —
-      no SLA claim; concurrent and cold-cache profiles remain unmeasured.
+      1.821 s; the first 1,000,000-revision profiles measured p95 11.302 s
+      (2026-08-05, plan digest
+      `8499ae8547697dbe4605c0dcddbc430bf26ca31ecb10e12deb806eedce826d1f`)
+      and, with a selectivity-mixed query set, 12.2-23.2 s across all match
+      bands — the latency floor is selectivity-independent. The proposed
+      million-row gate (p95 ≤ 200 ms, p99 ≤ 400 ms) is NOT met — no SLA
+      claim; the GIN-indexed selective documents access measures 43 ms for
+      31k rows, so the remaining cost is the per-query full-set pipeline
+      (materialization + governance join), not ranking or document join.
+      Concurrent and cold-cache profiles remain unmeasured.
 
 ## Out of scope
 
@@ -59,10 +64,15 @@ generation; lexical and vector search rank within the authorized set.
 
 ## Open questions
 
-- Million-revision latency: measured at p95 11.302 s (2026-08-05) against a
-  proposed ≤ 200 ms gate; the ranking sort over the full authorized set is
-  the measured bottleneck. Concurrent and cold-cache profiles, plus
-  limit-aware ranking remediation, remain.
+- Million-revision latency: measured at p95 11.302 s (all-match) and
+  12.2-23.2 s across selectivity bands (2026-08-05) against a proposed
+  ≤ 200 ms gate. The GIN-indexed selective documents access is fast (43 ms
+  for 31k rows); the measured floor is the per-query full-set pipeline
+  (authorized-set materialization + governance join), which is
+  selectivity-independent. Primary levers: precomputed authorized-current
+  structure or a loss-safe hot cache (issue #39), then a selectivity-modeled
+  gate. Concurrent and cold-cache profiles, plus measured remediation,
+  remain.
 - Automatic per-request detection of arbitrary out-of-band projection
   corruption (owner-only rebuild exists; per-request comparison was measured
   at p95 4.609 s and rejected).

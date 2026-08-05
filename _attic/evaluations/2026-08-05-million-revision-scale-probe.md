@@ -101,6 +101,43 @@ The remaining levers are architectural, not query-tuning:
 - **(c) A different ranking architecture** (e.g., approximate top-N) is the
   last resort and contradicts the exactness invariant.
 
+## Selectivity-mixed profile (measured 2026-08-05)
+
+The probe was extended (corpus gains a 32-group category token; the query
+mix alternates four selectivity bands) and re-run at 1,000,000 revisions, 20
+queries (5 per band), rollback-only:
+
+| Band (match rate) | p50 | p95 | p99 | mean | max |
+| --- | --- | --- | --- | --- | --- |
+| all (100%) | 13,764.4 ms | 22,387.8 ms | 24,014.5 ms | 15,448.7 ms | 24,421.2 ms |
+| quarter (25%) | 17,606.2 ms | 23,188.4 ms | 24,262.1 ms | 18,187.5 ms | 24,530.5 ms |
+| sixteenth (6.25%) | 12,705.6 ms | 12,935.5 ms | 12,965.3 ms | 12,455.4 ms | 12,972.8 ms |
+| thirtysecond (3.125%) | 12,194.3 ms | 20,825.5 ms | 22,529.0 ms | 14,048.1 ms | 22,954.8 ms |
+
+The selective documents-side access works exactly as designed: the
+thirtysecond-band plan is a Bitmap Index Scan over the GIN index returning
+31,250 rows in 43.0 ms (Bitmap Heap Scan 81.2 ms, aggregate 82.4 ms).
+Yet the full-pipeline latency is selectivity-independent — every band sits in
+the 12-24 s range, with high within-band variance (5 samples each). The cost
+is per-query and corpus-wide: materializing the full authorized set (~550 MB
+temp spill per query, repeated for all 20 queries) plus the governance join
+(5.1 s nested loop). Even a 3% match query pays the entire 1M-row pipeline.
+
+This sharpens the earlier conclusion: the proposed p95 <= 200 ms gate at
+1,000,000 revisions is falsified for every selectivity band with the current
+query architecture, and a selectivity model alone would not have saved it.
+The remaining levers are architectural:
+
+- **(b') Pipeline restructuring**: eliminate the per-query full-set
+  materialization and governance join — e.g., a precomputed, incrementally
+  maintained authorized-current structure, or a hot cache with loss-safety
+  evidence (issue #39). This is now the primary lever; the documents join
+  (GIN-accelerated, 43 ms) is no longer the problem.
+- **(a) Selectivity model for the gate**: still needed for an honest gate,
+  but now secondary — the measured floor is selectivity-independent.
+- **(c) A different ranking architecture** remains the last resort and
+  contradicts the exactness invariant.
+
 Concurrent and cold-cache profiles remain unmeasured (issue #37).
 
 ## Reuse
