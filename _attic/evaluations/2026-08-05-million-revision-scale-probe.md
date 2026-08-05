@@ -60,13 +60,48 @@ Scaling context: the 100,000-revision coverage-gated profile measured p95
 latency; the absolute gap to the gate is decisive regardless of scaling
 exponent, and no superlinearity or capacity claim is made.
 
-## Next remediation direction (pointed by the plan)
+## Remediation experiments (measured 2026-08-05)
 
-The sort-over-full-candidate-set with temp spill is the measured bottleneck.
-Candidate remediation to be measured before re-running: limit-aware ranking
-(order pushed below the authorization join), an index-backed ordering path,
-or candidate-set pushdown into the current projection. Concurrent and
-cold-cache profiles remain unmeasured (issue #37).
+The plan pointed at the ranking sort; targeted experiments disproved that
+hypothesis and located the real cost:
+
+1. **Sort mechanics are not the bottleneck.** An isolated 1,000,000-row
+   microbenchmark (scratch tables, same ranking semantics) measured
+   ts_rank_cd computation at ~37 ms, top-N heapsort at ~360 ms, and a
+   hash-join pipeline at ~0.6-1.5 s — the planner uses in-memory top-N
+   heapsort (26 kB, zero spill) when nothing else constrains it.
+2. **The probe's 11.3 s is the documents join.** The measured plan is a
+   nested loop producing 1,000,000 rows: per-row index probes into
+   `fact_revision_search_documents` (~10 us each). The planner chooses it
+   because the `@@` filter's selectivity estimate (and the materialized-CTE
+   shape, which blocks parallelism) makes the hash-join alternative look
+   more expensive.
+3. **Variant A (documents-first join, identical semantics):** no improvement
+   at 1M (p95 13.47 s) — the planner re-flipped the join order.
+4. **Variant B (documents-first + inline the single-use CTEs):** 100k p95
+   1,178.6 ms vs. the 1,747.2 ms baseline (-33%, a hash join appeared on the
+   governance join); at 1M, p50 9,664.4 ms / p95 10,458.5 ms / p99 10,965.9
+   ms — an ~8% improvement. The documents nested loop (9,776.8 ms) still
+   dominates.
+
+Conclusion: with the current query architecture, a 100%-match 1,000,000-row
+corpus, and PostgreSQL's cost model, the ~10 s join is inherent to the shape.
+The remaining levers are architectural, not query-tuning:
+
+- **(a) Selectivity model for the gate.** The all-match corpus is the
+  pathological worst case; a realistic query mix (e.g., 1-10% match rates,
+  where the GIN index prunes) is the honest gate shape. The proposed
+  p95 <= 200 ms / p99 <= 400 ms gate was defined without a selectivity
+  assumption and is not reachable by query shape alone on the all-match
+  profile.
+- **(b) Join elimination.** Folding `search_vector` and the projection
+  integrity fields into the current-projection table would remove the
+  documents join from the hot path entirely (the per-row `projection_ready`
+  verification is a correctness feature and would need a cheaper home).
+- **(c) A different ranking architecture** (e.g., approximate top-N) is the
+  last resort and contradicts the exactness invariant.
+
+Concurrent and cold-cache profiles remain unmeasured (issue #37).
 
 ## Reuse
 
