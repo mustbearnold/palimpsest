@@ -15,6 +15,7 @@ probe_output="$(
 PROBE_OUTPUT="$probe_output" python3 - <<'PY'
 import json
 import os
+import re
 
 report = json.loads(os.environ["PROBE_OUTPUT"])
 assert report["transaction_rolled_back"] is True
@@ -46,4 +47,45 @@ assert report["plan_summary"] == {
         },
     ],
 }
+assert report["selective_plan_summary"]["top_nodes"][1]["node_type"] == "Bitmap Heap Scan"
+assert report["selective_plan_summary"]["top_nodes"][2]["node_type"] == "Bitmap Index Scan"
+assert re.fullmatch(r"[0-9a-f]{64}", report["selective_plan_sha256"])
+assert report["bands"] == [
+    {
+        "band": "all",
+        "measured_queries": 2,
+        "p50_ms": 1.0,
+        "p95_ms": 2.0,
+        "p99_ms": 3.0,
+        "mean_ms": 1.5,
+        "max_ms": 4.0,
+    },
+    {
+        "band": "quarter",
+        "measured_queries": 1,
+        "p50_ms": 0.5,
+        "p95_ms": 0.6,
+        "p99_ms": 0.7,
+        "mean_ms": 0.55,
+        "max_ms": 0.7,
+    },
+    {
+        "band": "sixteenth",
+        "measured_queries": 1,
+        "p50_ms": 0.3,
+        "p95_ms": 0.35,
+        "p99_ms": 0.4,
+        "mean_ms": 0.32,
+        "max_ms": 0.4,
+    },
+    {
+        "band": "thirtysecond",
+        "measured_queries": 1,
+        "p50_ms": 0.2,
+        "p95_ms": 0.25,
+        "p99_ms": 0.3,
+        "mean_ms": 0.22,
+        "max_ms": 0.3,
+    },
+]
 PY
