@@ -52,6 +52,7 @@ PalimpsestConfig = plugin.PalimpsestConfig
 PalimpsestError = plugin.PalimpsestError
 PalimpsestMemoryProvider = plugin.PalimpsestMemoryProvider
 PalimpsestWriteQueue = plugin.PalimpsestWriteQueue
+_content_key = plugin._content_key
 format_receipt = plugin.format_receipt
 
 
@@ -75,8 +76,10 @@ class FakePalimpsestServer:
     def __init__(self) -> None:
         self.requests: list[dict[str, Any]] = []
         self.fail_episodes = False
+        self.episode_fail_countdown = 0
         self.fail_recall = False
         self.health_ok = True
+        self.recall_delay_seconds = 0.0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler_factory())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
@@ -135,6 +138,8 @@ class FakePalimpsestServer:
                     if server.fail_recall:
                         self._send(503, {"type": "unavailable"})
                         return
+                    if server.recall_delay_seconds > 0:
+                        time.sleep(server.recall_delay_seconds)
                     self._send(
                         200,
                         {
@@ -161,6 +166,10 @@ class FakePalimpsestServer:
                     )
                     return
                 if self.path == f"{_SCOPE}/episodes":
+                    if server.episode_fail_countdown > 0:
+                        server.episode_fail_countdown -= 1
+                        self._send(503, {"type": "unavailable"})
+                        return
                     if server.fail_episodes:
                         self._send(503, {"type": "unavailable"})
                         return
@@ -299,10 +308,8 @@ class TestConfig(PluginTestCase):
         config = PalimpsestConfig.load(str(self.hermes_home))
         public = config.public_dict()
         self.assertNotIn("bearer_token", public)
-        self.assertNotIn(
-            self.server.base_url.replace("http://", ""),
-            json.dumps(public.get("token_configured")),
-        )
+        self.assertNotIn("local-development-token", json.dumps(public, sort_keys=True))
+        self.assertIsInstance(public["token_configured"], bool)
         self.assertTrue(public["token_configured"])
 
 
@@ -410,6 +417,13 @@ class TestProviderLifecycle(PluginTestCase):
         self.assertEqual(schema["bearer_token"]["env_var"], "PALIMPSEST_BEARER_TOKEN")
         self.assertTrue(schema["bearer_token"]["secret"])
         self.assertEqual(schema["base_url"]["default"], "http://127.0.0.1:8080")
+
+    def test_config_schema_case_id_optional(self) -> None:
+        schema = {
+            field["key"]: field
+            for field in PalimpsestMemoryProvider().get_config_schema()
+        }
+        self.assertFalse(schema["case_id"]["required"], "spec R7: case_id is optional")
 
     def test_save_config_writes_non_secrets(self) -> None:
         provider = PalimpsestMemoryProvider()
@@ -570,6 +584,22 @@ class TestWriteQueue(PluginTestCase):
         self.assertEqual(replay_flushed[0]["idempotency_key"], "k3")
         self.assertEqual(second.pending_count(), 0)
 
+    def test_backlog_beyond_startup_batch_drains(self) -> None:
+        """Rows beyond the first 500-batch must drain without a restart (spec R4)."""
+        flushed, flush, _ = self._flush_recorder()
+        queue = PalimpsestWriteQueue(
+            self.hermes_home / "palimpsest" / "pending.db",
+            flush,
+            retry_delay_seconds=0.02,
+        )
+        self.addCleanup(queue.shutdown)
+        for index in range(510):
+            queue.enqueue_episode(
+                {"kind": "hermes_turn", "idempotency_key": f"k{index}"}
+            )
+        self.assertTrue(_wait_until(lambda: len(flushed) == 510, timeout=15.0))
+        self.assertEqual(queue.pending_count(), 0)
+
     def test_sync_turn_enqueues_episode_with_idempotency_key(self) -> None:
         provider = self.make_provider()
         provider.sync_turn("hello", "hi there", session_id="sess-x")
@@ -602,6 +632,29 @@ class TestWriteQueue(PluginTestCase):
             _wait_until(lambda: len(self.server.requests_for("POST", "/episodes")) == 1)
         )
         self.assertEqual(len(self.server.requests_for("POST", "/facts")), 0)
+
+    def test_sync_turn_observed_at_is_turn_time_not_flush_time(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        provider = self.make_provider()
+        self.server.recall_delay_seconds = 0.0
+        t_before = datetime.now(timezone.utc)
+        provider.sync_turn("when", "now", session_id="sess-t")
+        t_after = datetime.now(timezone.utc)
+        self.assertTrue(
+            _wait_until(lambda: len(self.server.requests_for("POST", "/episodes")) == 1)
+        )
+        observed = self.server.requests_for("POST", "/episodes")[0]["body"][
+            "observed_at"
+        ]
+        parsed = datetime.fromisoformat(observed)
+        slack = timedelta(milliseconds=100)  # _utc_now truncates to milliseconds
+        self.assertGreaterEqual(
+            parsed, t_before - slack, "observed_at must be the turn time"
+        )
+        self.assertLessEqual(
+            parsed, t_after + slack, "observed_at must be the turn time"
+        )
 
 
 # -- prefetch -----------------------------------------------------------------
@@ -637,6 +690,62 @@ class TestPrefetch(PluginTestCase):
             )
         )
         self.assertEqual(provider._prefetch_cache, "")
+
+    def test_prefetch_skips_when_previous_recall_still_running(self) -> None:
+        """queue_prefetch must never block the agent loop (spec R6)."""
+        provider = self.make_provider()
+        self.server.recall_delay_seconds = 0.5
+        provider.queue_prefetch("slow query", session_id="s")
+        self.assertTrue(_wait_until(lambda: provider._prefetch_thread is not None))
+        first_thread = provider._prefetch_thread
+        start = time.monotonic()
+        provider.queue_prefetch("second query", session_id="s")
+        elapsed = time.monotonic() - start
+        self.assertLess(elapsed, 0.2, "queue_prefetch must not block on a live thread")
+        self.assertIs(provider._prefetch_thread, first_thread)
+        self.server.recall_delay_seconds = 0.0
+
+
+class TestFallbackTrivialPrompt(unittest.TestCase):
+    """The standalone fallback must match the core grammar (spec R6)."""
+
+    def test_trivial_phrases(self) -> None:
+        for phrase in (
+            "",
+            "   ",
+            "ok",
+            "OK!",
+            "thanks",
+            "thank you",
+            "sure",
+            "yes",
+            "nope",
+            "continue",
+            "go ahead",
+            "done",
+            "/command",
+            "lgtm",
+        ):
+            self.assertTrue(
+                plugin.fallback_is_trivial_prompt(phrase),
+                f"expected {phrase!r} to be trivial",
+            )
+
+    def test_non_trivial_phrases(self) -> None:
+        for phrase in (
+            "okay so here is the plan",
+            "thanks for the help, now what about X",
+            "k8s deployment",
+            "note the difference",
+            "yolo",
+            "hindsight is 20/20",
+            "continue with the refactor",
+            "tell me about memory",
+        ):
+            self.assertFalse(
+                plugin.fallback_is_trivial_prompt(phrase),
+                f"expected {phrase!r} not to be trivial",
+            )
 
 
 # -- session lifecycle and memory mirroring ------------------------------------
@@ -680,6 +789,29 @@ class TestSessionAndMirror(PluginTestCase):
         provider.on_memory_write("remove", "user", "old value")
         time.sleep(0.15)
         self.assertEqual(len(self.server.requests), 0)
+
+    def test_mirror_retries_then_succeeds(self) -> None:
+        """Mirrored writes retry with bounded backoff before dropping (spec R5)."""
+        original_backoff = plugin._MIRROR_BACKOFF_SECONDS  # type: ignore[attr-defined]
+        plugin._MIRROR_BACKOFF_SECONDS = 0.05  # type: ignore[attr-defined]
+        self.addCleanup(setattr, plugin, "_MIRROR_BACKOFF_SECONDS", original_backoff)
+        provider = self.make_provider()
+        self.server.episode_fail_countdown = 2  # two 503s, then success
+        provider.on_memory_write("add", "memory", "survives retries")
+        self.assertTrue(
+            _wait_until(
+                lambda: len(self.server.requests_for("POST", "/facts")) == 1,
+                timeout=5.0,
+            )
+        )
+        episodes = self.server.requests_for("POST", "/episodes")
+        self.assertEqual(len(episodes), 3, "two failures then one success")
+        expected_key = "hermes-mwrite:memory:" + _content_key("survives retries")
+        self.assertEqual(
+            [request["headers"].get("idempotency-key") for request in episodes],
+            [expected_key + ":episode"] * 3,
+            "retries must reuse the same idempotency key",
+        )
 
 
 # -- invariants ---------------------------------------------------------------

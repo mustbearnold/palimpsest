@@ -19,32 +19,30 @@ from typing import Any
 
 try:  # loaded as a Hermes memory plugin submodule
     from .client import (
+        RECALL_TOP_K_MAX,
+        RECALL_TOP_K_MIN,
         PalimpsestClient,
         PalimpsestConfig,
         PalimpsestError,
+        _episode_id,
+        _fact_id,
         format_receipt,
+        resolve_hermes_home,
     )
 except ImportError:  # standalone import (tests, direct execution)
     from client import (
+        RECALL_TOP_K_MAX,
+        RECALL_TOP_K_MIN,
         PalimpsestClient,
         PalimpsestConfig,
         PalimpsestError,
+        _episode_id,
+        _fact_id,
         format_receipt,
+        resolve_hermes_home,
     )
 
 _TOP_K_DEFAULT = 8
-_TOP_K_MAX = 50
-
-
-def _hermes_home() -> str:
-    try:
-        from hermes_constants import get_hermes_home
-
-        return str(get_hermes_home())
-    except Exception:  # noqa: BLE001 - import fallback must never raise
-        import os
-
-        return os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
 
 
 def _print_json(value: Any) -> None:
@@ -52,7 +50,7 @@ def _print_json(value: Any) -> None:
 
 
 def _status() -> None:
-    config = PalimpsestConfig.load(_hermes_home())
+    config = PalimpsestConfig.load(resolve_hermes_home())
     client = PalimpsestClient(config)
     payload = {**config.public_dict(), "reachable": client.health()}
     print("Palimpsest memory provider")
@@ -67,7 +65,7 @@ def _status() -> None:
 
 
 def _config() -> None:
-    home = _hermes_home()
+    home = resolve_hermes_home()
     config = PalimpsestConfig.load(home)
     _print_json(
         {**config.public_dict(), "config_file": str(Path(home) / "palimpsest.json")}
@@ -75,7 +73,7 @@ def _config() -> None:
 
 
 def _recall(query: str, top_k: int) -> None:
-    config = PalimpsestConfig.load(_hermes_home())
+    config = PalimpsestConfig.load(resolve_hermes_home())
     client = PalimpsestClient(config)
     receipt = client.recall(query, page_size=top_k)
     print(format_receipt(receipt) or "[Palimpsest Memory]\n- (no results)")
@@ -83,7 +81,7 @@ def _recall(query: str, top_k: int) -> None:
 
 
 def _remember(content: str, key: str | None) -> None:
-    config = PalimpsestConfig.load(_hermes_home())
+    config = PalimpsestConfig.load(resolve_hermes_home())
     client = PalimpsestClient(config)
     observed = client.remember(
         content,
@@ -92,12 +90,8 @@ def _remember(content: str, key: str | None) -> None:
         source_type="hermes.cli",
         namespace=config.namespace,
     )
-    episode_id = observed["episode"].get("episode_id") or observed["episode"].get("id")
-    fact_id = (
-        observed["fact"].get("fact_id")
-        or observed["fact"].get("id")
-        or observed["fact"].get("revision_id")
-    )
+    episode_id = _episode_id(observed["episode"])
+    fact_id = _fact_id(observed["fact"])
     print(f"saved episode {episode_id}, fact {fact_id}")
 
 
@@ -112,7 +106,7 @@ def palimpsest_command(args: Any) -> None:
         elif sub == "recall":
             query = getattr(args, "query", "")
             top_k = int(getattr(args, "top_k", _TOP_K_DEFAULT) or _TOP_K_DEFAULT)
-            top_k = max(1, min(top_k, _TOP_K_MAX))
+            top_k = max(RECALL_TOP_K_MIN, min(top_k, RECALL_TOP_K_MAX))
             _recall(query, top_k)
         elif sub == "remember":
             content = getattr(args, "content", "")

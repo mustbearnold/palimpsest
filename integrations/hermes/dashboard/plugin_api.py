@@ -40,6 +40,9 @@ _client_mod = _load_sibling("client")
 PalimpsestClient = _client_mod.PalimpsestClient
 PalimpsestConfig = _client_mod.PalimpsestConfig
 PalimpsestError = _client_mod.PalimpsestError
+_episode_id = _client_mod._episode_id
+_fact_id = _client_mod._fact_id
+resolve_hermes_home = _client_mod.resolve_hermes_home
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -47,19 +50,8 @@ from pydantic import BaseModel, Field
 router = APIRouter()
 
 
-def _hermes_home() -> str:
-    try:
-        from hermes_constants import get_hermes_home
-
-        return str(get_hermes_home())
-    except Exception:  # noqa: BLE001 - import fallback must never raise
-        import os
-
-        return os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
-
-
 def _config() -> PalimpsestConfig:
-    return PalimpsestConfig.load(_hermes_home())
+    return PalimpsestConfig.load(resolve_hermes_home())
 
 
 class RecallBody(BaseModel):
@@ -129,6 +121,6 @@ def remember(body: RememberBody) -> dict:
     fact = observed["fact"]
     return {
         "status": "saved",
-        "episode_id": episode.get("episode_id") or episode.get("id"),
-        "fact_id": fact.get("fact_id") or fact.get("id") or fact.get("revision_id"),
+        "episode_id": _episode_id(episode),
+        "fact_id": _fact_id(fact),
     }

@@ -116,29 +116,16 @@ Codex then has `palimpsest_retrieve`, `palimpsest_recall_by_project`, `palimpses
 Install the memory provider plugin (spec 013) once — it is dependency-free:
 
 ```bash
-hermes plugins install https://github.com/<owner>/Palimpsest/tree/main/integrations/hermes
+hermes plugins install https://github.com/mustbearnold/palimpsest/tree/main/integrations/hermes
 # or, for a local checkout: ln -s "$(pwd)/integrations/hermes" "$HERMES_HOME/plugins/palimpsest"
 hermes memory setup    # select palimpsest; the bearer token is a secret (stored in .env)
 ```
 
-The provider reuses the same `PALIMPSEST_*` environment variables as the Codex
-MCP adapter (endpoint, bearer token, tenant, subject, case), so one local
-configuration serves every agent. Verify with `hermes memory status` (provider
-`palimpsest`, plugin installed, available) and `hermes palimpsest status`.
+The provider reuses the same `PALIMPSEST_*` environment variables as the Codex MCP adapter (endpoint, bearer token, tenant, subject, case), so one local configuration serves every agent. Verify with `hermes memory status` (provider `palimpsest`, plugin installed, available) and `hermes palimpsest status`.
 
-Hermes then has `palimpsest_recall`, `palimpsest_remember`, and
-`palimpsest_status` tools; every completed turn is persisted as an immutable
-episode through a crash-safe local write-behind queue, and facts are promoted
-only for attributable writes (explicit remembers and mirrored built-in memory
-`add` writes). The plugin talks only to the HTTP API within the configured
-scope, never to PostgreSQL, and exposes no delete or export operations.
+Hermes then has `palimpsest_recall`, `palimpsest_remember`, and `palimpsest_status` tools; every completed turn is persisted as an immutable episode through a crash-safe local write-behind queue, and facts are promoted only for attributable writes (explicit remembers and mirrored built-in memory `add` writes). The plugin talks only to the HTTP API within the configured scope, never to PostgreSQL, and exposes no delete or export operations.
 
-Hermes Desktop runs the same agent core, so the provider works there with no
-extra steps. A desktop pane (status, recall, remember) is available by
-symlinking `integrations/hermes/desktop/plugin.js` into
-`$HERMES_HOME/desktop-plugins/palimpsest/` and running `hermes plugins enable
-palimpsest`, then **Reload desktop plugins** from ⌘K. See
-`integrations/hermes/README.md`.
+Hermes Desktop runs the same agent core, so the provider works there with no extra steps. A desktop pane (status, recall, remember) is available via `bash integrations/hermes/install-desktop.sh`, then `hermes plugins enable palimpsest` and **Reload desktop plugins** from ⌘K. See `integrations/hermes/README.md`.
 
 ## Use Palimpsest from Python
 

@@ -406,8 +406,37 @@ class PalimpsestClient:
         return {"episode": episode, "fact": fact}
 
 
+RECALL_TOP_K_MIN = 1
+RECALL_TOP_K_MAX = 50
+PREFETCH_PAGE_SIZE = 5
+
+
 def _content_key(content: str) -> str:
     return f"hermes-{hashlib.sha1(content.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _episode_id(episode: Mapping[str, Any]) -> str:
+    """Extract an episode identifier from a server response, tolerating shapes."""
+    value = episode.get("episode_id") or episode.get("id")
+    return str(value) if value else ""
+
+
+def _fact_id(fact: Mapping[str, Any]) -> str:
+    """Extract a fact identifier from a server response, tolerating shapes."""
+    value = fact.get("fact_id") or fact.get("id") or fact.get("revision_id")
+    return str(value) if value else ""
+
+
+def resolve_hermes_home() -> str:
+    """Resolve the active Hermes home (profile-safe) with a plain fallback."""
+    try:
+        from hermes_constants import get_hermes_home
+
+        return str(get_hermes_home())
+    except Exception:  # noqa: BLE001 - import fallback must never raise
+        import os
+
+        return os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
 
 
 def format_receipt(receipt: Mapping[str, Any], limit: int = 5) -> str:

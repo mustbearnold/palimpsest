@@ -27,7 +27,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -37,15 +39,44 @@ from .client import (
     LOCAL_DEFAULT_CASE,
     LOCAL_DEFAULT_SUBJECT,
     LOCAL_DEFAULT_TENANT,
+    PREFETCH_PAGE_SIZE,
+    RECALL_TOP_K_MAX,
+    RECALL_TOP_K_MIN,
     PalimpsestClient,
     PalimpsestConfig,
     PalimpsestError,
     _content_key,
+    _episode_id,
+    _fact_id,
+    _utc_now,
     format_receipt,
 )
 from .queue import PalimpsestWriteQueue
 
 logger = logging.getLogger(__name__)
+
+# Mirrors agent.memory_provider.TRIVIAL_PROMPT_RE so the standalone fallback
+# matches in-Hermes behavior exactly (spec R6).
+_TRIVIAL_PROMPT_RE = re.compile(
+    r"^(yes|no|ok|okay|sure|thanks|thank you|y|n|yep|nope|yeah|nah|"
+    r"hi|hey|hello|yo|sup|"
+    r"continue|go ahead|do it|proceed|got it|cool|nice|great|done|next|lgtm|k)"
+    r'[\s!?.:;,"\'~\u2018\u2019\u201c\u201d\u2014\u2013\u2026()\[\]{}<>*&^%$#@!+=`\u00a0]*$',
+    re.IGNORECASE,
+)
+
+
+def fallback_is_trivial_prompt(text: str | None) -> bool:
+    """Standalone trivial-prompt gate with the same grammar as the core."""
+    if not text:
+        return True
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if stripped.startswith("/"):
+        return True
+    return bool(_TRIVIAL_PROMPT_RE.match(stripped))
+
 
 try:  # Hermes core present when the provider runs inside Hermes
     from agent.memory_provider import (
@@ -56,9 +87,7 @@ try:  # Hermes core present when the provider runs inside Hermes
     )
 except ImportError:  # standalone import (tests, cli, plugin backend)
     _MemoryProviderBase = object
-
-    def is_trivial_prompt(text: str | None) -> bool:  # type: ignore[misc]
-        return not (text or "").strip()
+    is_trivial_prompt = fallback_is_trivial_prompt
 
 
 _EPISODE_KIND = "hermes_turn"
@@ -68,6 +97,8 @@ _SOURCE_REMEMBER = "hermes.remember"
 _SOURCE_MEMORY_WRITE = "hermes.memory_write"
 _SENSITIVITY = "internal"
 _RETENTION = "standard"
+_MIRROR_MAX_ATTEMPTS = 3
+_MIRROR_BACKOFF_SECONDS = 1.0
 
 _TOOL_RECALL = "palimpsest_recall"
 _TOOL_REMEMBER = "palimpsest_remember"
@@ -245,7 +276,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
                 "key": "case_id",
                 "description": "Case UUID",
                 "default": LOCAL_DEFAULT_CASE,
-                "required": True,
+                "required": False,
             },
             {
                 "key": "namespace",
@@ -300,9 +331,11 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         if (
             isinstance(top_k, bool)
             or not isinstance(top_k, int)
-            or not 1 <= top_k <= 50
+            or not RECALL_TOP_K_MIN <= top_k <= RECALL_TOP_K_MAX
         ):
-            raise PalimpsestError("top_k must be an integer from 1 to 50")
+            raise PalimpsestError(
+                f"top_k must be an integer from {RECALL_TOP_K_MIN} to {RECALL_TOP_K_MAX}"
+            )
         return self._require_client().recall(query, page_size=top_k)
 
     def _tool_remember(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -338,13 +371,17 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
     # -- recall pre-warming --------------------------------------------------------
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        """Queue a background recall for the NEXT turn. Skips trivial prompts."""
+        """Queue a background recall for the NEXT turn. Skips trivial prompts.
+
+        Never blocks the agent loop: if a previous background recall is still
+        running, the new recall is skipped (at most one prefetch thread).
+        """
         if is_trivial_prompt(query):
             return
         with self._lock:
             previous = self._prefetch_thread
         if previous is not None and previous.is_alive():
-            previous.join(timeout=0.5)  # bound accumulation on rapid turns
+            return  # bounded by construction; the cache holds the prior result
         thread = threading.Thread(
             target=self._prefetch_worker,
             args=(query,),
@@ -357,7 +394,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
 
     def _prefetch_worker(self, query: str) -> None:
         try:
-            receipt = self._require_client().recall(query, page_size=5)
+            receipt = self._require_client().recall(query, page_size=PREFETCH_PAGE_SIZE)
             text = format_receipt(receipt)
         except Exception as exc:  # noqa: BLE001 - prefetch must never break a turn
             logger.debug("palimpsest prefetch failed: %s", exc)
@@ -391,7 +428,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         turn = queue.next_turn_number(active_session)
         payload = {
             "kind": _EPISODE_KIND,
-            "observed_at": None,  # filled by the flush thread at commit time
+            "observed_at": _utc_now(),  # the turn's time, not the flush time (spec R4)
             "provenance": {
                 "source_type": _SOURCE_TURN,
                 "source_uri": None,
@@ -453,17 +490,25 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
     def _mirror_memory_write(
         self, target: str, content: str, metadata: dict[str, Any]
     ) -> None:
-        try:
-            self._remember_sync(
-                content,
-                key=f"builtin:{target}:{_content_key(content)}",
-                metadata={"target": target, **metadata},
-                source_type=_SOURCE_MEMORY_WRITE,
-                kind="hermes_builtin_memory",
-                idempotency_base=f"hermes-mwrite:{target}:{_content_key(content)}",
-            )
-        except Exception as exc:  # noqa: BLE001 - mirror must never break the write path
-            logger.warning("palimpsest memory write mirror failed: %s", exc)
+        """Mirror with bounded retry; a partial episode/fact failure is logged (spec R5)."""
+        attempt = 0
+        while True:
+            try:
+                self._remember_sync(
+                    content,
+                    key=f"builtin:{target}:{_content_key(content)}",
+                    metadata={"target": target, **metadata},
+                    source_type=_SOURCE_MEMORY_WRITE,
+                    kind="hermes_builtin_memory",
+                    idempotency_base=f"hermes-mwrite:{target}:{_content_key(content)}",
+                )
+                return
+            except Exception as exc:  # noqa: BLE001 - mirror must never break the write path
+                attempt += 1
+                if attempt >= _MIRROR_MAX_ATTEMPTS:
+                    logger.warning("palimpsest memory write mirror failed: %s", exc)
+                    return
+                time.sleep(_MIRROR_BACKOFF_SECONDS * attempt)
 
     def _remember_sync(
         self,
@@ -497,11 +542,11 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         )
         episode = observed["episode"]
         fact = observed["fact"]
-        episode_id = episode.get("episode_id") or episode.get("id")
-        fact_id = fact.get("fact_id") or fact.get("id") or fact.get("revision_id")
+        episode_id = _episode_id(episode)
+        fact_id = _fact_id(fact)
         if not episode_id or not fact_id:
             raise PalimpsestError("Palimpsest remember returned incomplete identifiers")
-        return {"episode_id": str(episode_id), "fact_id": str(fact_id)}
+        return {"episode_id": episode_id, "fact_id": fact_id}
 
     # -- session lifecycle ---------------------------------------------------------------
 
@@ -519,12 +564,6 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
     def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         # The writer thread drains continuously; shutdown() flushes at exit.
         logger.debug("palimpsest on_session_end (queue drains in background)")
-
-
-def _utc_now() -> str:
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def register(ctx: Any) -> None:

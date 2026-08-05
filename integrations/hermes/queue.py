@@ -50,9 +50,9 @@ class PalimpsestWriteQueue:
             target=self._loop, name="palimpsest-writer", daemon=True
         )
         self._thread.start()
-        # Replay rows left by a previous crash before new writes.
-        for row_id, payload in self._pending_rows():
-            self._q.put((row_id, payload))
+        # Replay rows left by a previous crash before new writes. Rows beyond
+        # this first bounded batch are re-hydrated by the idle loop.
+        self._rehydrate_pending()
 
     # -- sqlite helpers -------------------------------------------------------
 
@@ -87,6 +87,18 @@ class PalimpsestWriteQueue:
                 "SELECT id, payload FROM pending ORDER BY id ASC LIMIT 500"
             ).fetchall()
         return [(int(row["id"]), json.loads(row["payload"])) for row in rows]
+
+    def _rehydrate_pending(self) -> None:
+        """Put rows that are durable-but-unqueued back on the flush queue.
+
+        Covers crash leftovers beyond the first startup batch and any rows
+        that landed while the queue was busy. Safe to call repeatedly: rows
+        already in flight are removed from ``pending`` on success and re-put
+        by the flush loop on failure, so a row is only ever re-hydrated when
+        it is genuinely unqueued.
+        """
+        for row_id, payload in self._pending_rows():
+            self._q.put((row_id, payload))
 
     # -- public API ------------------------------------------------------------
 
@@ -149,6 +161,7 @@ class PalimpsestWriteQueue:
             try:
                 item = self._q.get(timeout=5)
             except queue.Empty:
+                self._rehydrate_pending()  # drain backlog beyond the startup batch
                 continue
             if item is _ASYNC_SHUTDOWN:
                 break
