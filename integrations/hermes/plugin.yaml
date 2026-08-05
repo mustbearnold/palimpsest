@@ -1,0 +1,11 @@
+name: palimpsest
+version: 0.1.0
+description: "Palimpsest temporal memory — durable, bitemporal, authorized recall for Hermes via the Palimpsest HTTP service"
+manifest_version: 1
+api: dashboard/plugin_api.py
+pip_dependencies: []
+external_dependencies: []
+hooks:
+  - on_memory_write
+  - on_session_end
+  - on_session_switch

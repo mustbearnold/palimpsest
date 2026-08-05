@@ -10,11 +10,11 @@ only.
 
 ```text
 agents (Codex/Claude Code/Hermes)
-   │  MCP adapter (tools/palimpsest_mcp.py)   thin clients (Python/TS)
-   ▼                                                    │
-Palimpsest HTTP service (crates/palimpsest-server)      │
-   │  migrate · doctor · restore · serve                │
-   ▼                                                    ▼
+   │  MCP adapter (tools/palimpsest_mcp.py) + Hermes memory plugin (integrations/hermes)   thin clients (Python/TS)
+   ▼                                                                                                    │
+Palimpsest HTTP service (crates/palimpsest-server)                                                      │
+   │  migrate · doctor · restore · serve                                                                │
+   ▼                                                                                                    ▼
 crates/palimpsest-http ─► crates/palimpsest-application ─► crates/palimpsest-domain
         │                                                     ▲
         └────────────► crates/palimpsest-postgres ────────────┘
@@ -78,6 +78,6 @@ crates/palimpsest-http ─► crates/palimpsest-application ─► crates/palimp
 
 ## See also
 
-- Capability specs: `specs/001`–`specs/010`
+- Capability specs: `specs/001`–`specs/013`
 - Decisions: `docs/decisions/`
 - Runbooks: `docs/runbooks/`

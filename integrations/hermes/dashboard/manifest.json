@@ -1,0 +1,7 @@
+{
+  "name": "palimpsest",
+  "label": "Palimpsest",
+  "description": "Palimpsest memory pane: connection status, recall, and explicit remembers against the Palimpsest HTTP service.",
+  "version": "0.1.0",
+  "api": "plugin_api.py"
+}
