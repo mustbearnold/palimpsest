@@ -22,8 +22,8 @@ fresh, cited result.
 3. **Backup and restore verification**: the current and as-of views survive
    recovery — covered by the restore conformance scenarios
    (`verify_restore_replay_is_hidden_over_http`,
-   `verify_restore_corpus_is_visible_over_http`, rehearsal script
-   `scripts/` logical-backup rehearsal) and spec 005.
+   `verify_restore_corpus_is_visible_over_http`, logical-backup rehearsal
+   script `scripts/palimpsest-logical-backup-rehearsal.sh`) and spec 005.
 4. **Failure injection**: cache loss (restore/recovery), embedding-provider
    failure (provider-call cardinality conformance), process termination
    (crash-recovery scenario `recovers_a_committed_effect_after_response_loss`),
