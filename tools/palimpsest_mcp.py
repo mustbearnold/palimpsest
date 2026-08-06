@@ -18,7 +18,12 @@ from typing import Any, TextIO
 from urllib import parse
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "clients/python/src"))
+_repo_client_src = Path(__file__).resolve().parents[1] / "clients/python/src"
+if _repo_client_src.is_dir():
+    # In-repo layout: the dependency-free Python client lives next to this
+    # adapter. When installed as a wheel, `palimpsest` comes from the
+    # installed package instead.
+    sys.path.insert(0, str(_repo_client_src))
 from palimpsest import (  # noqa: E402
     PalimpsestClient as HttpClient,
     PalimpsestError,
@@ -695,6 +700,18 @@ def serve(
 
 
 def main() -> int:
+    if "--help" in sys.argv[1:] or "-h" in sys.argv[1:]:
+        print(
+            "palimpsest-mcp — local MCP adapter for the Palimpsest HTTP API (stdio).",
+            file=sys.stderr,
+        )
+        print(
+            "Environment: PALIMPSEST_MCP_BASE_URL, PALIMPSEST_BEARER_TOKEN, "
+            "PALIMPSEST_TENANT_ID, PALIMPSEST_SUBJECT_ID, PALIMPSEST_PRINCIPAL_ID "
+            "(see docs/runbooks/quickstart.md).",
+            file=sys.stderr,
+        )
+        return 0
     try:
         config = AdapterConfig.from_environment()
     except AdapterError as exc:

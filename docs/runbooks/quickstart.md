@@ -111,6 +111,23 @@ codex mcp add palimpsest \
 
 Codex then has `palimpsest_retrieve`, `palimpsest_recall_by_project`, `palimpsest_compare_by_project`, `palimpsest_validate_project_review`, `palimpsest_consolidate_project_review`, and `palimpsest_remember`. The comparison tool does not infer semantic conflicts; consolidation requires caller-supplied values, temporal fields, and a registered write policy. The adapter uses the HTTP API, keeps the configured tenant and subject scope, and never exposes delete or export operations. Verify registration with `codex mcp list`.
 
+### Any MCP client (client-neutral registration)
+
+The adapter is transport-neutral (spec 008 R6): install the packaged entry
+point once, then register it with any MCP-capable client using its standard
+stdio steps:
+
+```bash
+python3 -m pip install --user tools/     # installs the palimpsest-mcp entry point
+palimpsest-mcp --help                    # prints usage + required environment
+```
+
+Generic MCP stdio registration: command `palimpsest-mcp`, with the same
+`PALIMPSEST_MCP_BASE_URL`, `PALIMPSEST_BEARER_TOKEN`, `PALIMPSEST_TENANT_ID`,
+`PALIMPSEST_SUBJECT_ID`, and `PALIMPSEST_CASE_ID` environment variables as the
+codex example above. Codex's `codex mcp add` and the Hermes provider
+(spec 013) are two verified consumers; no client-specific code paths exist.
+
 ## Use Palimpsest from Hermes Agent
 
 Install the memory provider plugin (spec 013) once — it is dependency-free:
