@@ -72,10 +72,10 @@ def _config() -> None:
     )
 
 
-def _recall(query: str, top_k: int) -> None:
+def _recall(query: str, top_k: int, namespaces: list[str] | None = None) -> None:
     config = PalimpsestConfig.load(resolve_hermes_home())
     client = PalimpsestClient(config)
-    receipt = client.recall(query, page_size=top_k)
+    receipt = client.recall(query, page_size=top_k, namespaces=namespaces)
     print(format_receipt(receipt) or "[Palimpsest Memory]\n- (no results)")
     print(f"\nretrieval_id: {receipt.get('retrieval_id')}")
 
@@ -107,7 +107,7 @@ def palimpsest_command(args: Any) -> None:
             query = getattr(args, "query", "")
             top_k = int(getattr(args, "top_k", _TOP_K_DEFAULT) or _TOP_K_DEFAULT)
             top_k = max(RECALL_TOP_K_MIN, min(top_k, RECALL_TOP_K_MAX))
-            _recall(query, top_k)
+            _recall(query, top_k, getattr(args, "namespace", None) or None)
         elif sub == "remember":
             content = getattr(args, "content", "")
             _remember(content, getattr(args, "key", None))
@@ -133,6 +133,12 @@ def register_cli(subparser: Any) -> None:
         type=int,
         default=_TOP_K_DEFAULT,
         help=f"Max results (default: {_TOP_K_DEFAULT})",
+    )
+    recall.add_argument(
+        "--namespace",
+        action="append",
+        default=None,
+        help="Namespace to search instead of the configured one (repeatable)",
     )
     remember = subs.add_parser("remember", help="Save an explicit memory")
     remember.add_argument("content", help="The memory to save")

@@ -393,6 +393,24 @@ class TestClient(PluginTestCase):
         self.assertTrue(
             request["headers"]["idempotency-key"].startswith("palimpsest-hermes-")
         )
+        self.assertEqual(
+            request["body"]["filters"],
+            {"namespaces": ["hermes"]},
+            "recall must target the configured namespace by default",
+        )
+
+    def test_recall_honors_explicit_namespaces_override(self) -> None:
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        client.recall("x", page_size=2, namespaces=["agent_session:proj-1"])
+        request = self.server.requests_for("POST", "/retrievals")[0]
+        self.assertEqual(
+            request["body"]["filters"], {"namespaces": ["agent_session:proj-1"]}
+        )
+
+    def test_recall_rejects_empty_namespaces_list(self) -> None:
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        with self.assertRaises(PalimpsestConfigError):
+            client.recall("x", namespaces=[])
 
     def test_append_episode_normalizes_legacy_timestamp(self) -> None:
         """Buffered rows with the legacy +00:00 format must still flush (spec R4)."""
@@ -576,6 +594,12 @@ class TestProviderTools(PluginTestCase):
         self.assertIn("error", result)
         result = json.loads(
             provider.handle_tool_call("palimpsest_recall", {"query": "x", "top_k": 999})
+        )
+        self.assertIn("error", result)
+        result = json.loads(
+            provider.handle_tool_call(
+                "palimpsest_recall", {"query": "x", "namespace": "not-a-list"}
+            )
         )
         self.assertIn("error", result)
 
@@ -765,6 +789,12 @@ class TestPrefetch(PluginTestCase):
         block = provider.prefetch("duck typing", session_id="s")
         self.assertIn("[Palimpsest Memory]", block)
         self.assertIn("duck-typed interfaces", block)
+        request = self.server.requests_for("POST", "/retrievals")[0]
+        self.assertEqual(
+            request["body"]["filters"],
+            {"namespaces": ["hermes"]},
+            "prefetch recall must inherit the namespace default",
+        )
 
     def test_trivial_prompt_skips_prefetch(self) -> None:
         provider = self.make_provider()

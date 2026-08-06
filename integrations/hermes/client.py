@@ -341,19 +341,38 @@ class PalimpsestClient:
         except error.URLError:
             return False
 
-    def recall(self, query: str, page_size: int = 10) -> dict:
+    def recall(
+        self, query: str, page_size: int = 10, namespaces: list[str] | None = None
+    ) -> dict:
         """Create an authorized current retrieval receipt and return its items.
 
         Retrievals are durable operations: the server requires an
         Idempotency-Key (auto-generated per call when the caller does not
         supply one, mirroring the first-party client).
+
+        Recall targets the configured namespace by default. An explicit
+        ``namespaces`` override narrows further; an empty list is rejected
+        client-side because the server rejects empty filter arrays with 422
+        (subject-wide recall is intentionally unavailable).
         """
         query = _non_empty_text(query, "query")
+        if namespaces is not None:
+            if (
+                not isinstance(namespaces, list)
+                or not namespaces
+                or not all(isinstance(ns, str) and ns.strip() for ns in namespaces)
+            ):
+                raise PalimpsestConfigError(
+                    "namespaces must be a non-empty list of non-empty strings"
+                )
+            filters: dict = {"namespaces": namespaces}
+        else:
+            filters = {"namespaces": [self.config.namespace]}
         body = {
             "query": query,
             "perspective": {"kind": "current"},
             "page_size": page_size,
-            "filters": {},
+            "filters": filters,
         }
         return self._request(
             "POST",
