@@ -54,6 +54,9 @@ from .client import (
 from .client import (
     PalimpsestConfigError as PalimpsestConfigError,
 )
+from .client import (
+    PalimpsestHttpError as PalimpsestHttpError,
+)
 from .queue import PalimpsestWriteQueue
 
 logger = logging.getLogger(__name__)
@@ -409,7 +412,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         return {
             "episode_id": observed["episode_id"],
             "fact_id": observed["fact_id"],
-            "status": "saved",
+            "status": observed.get("status", "saved"),
         }
 
     def _tool_status(self) -> dict[str, Any]:
@@ -545,7 +548,14 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
     def _mirror_memory_write(
         self, target: str, content: str, metadata: dict[str, Any]
     ) -> None:
-        """Mirror with bounded retry; a partial episode/fact failure is logged (spec R5)."""
+        """Mirror with bounded retry; a partial episode/fact failure is logged (spec R5).
+
+        The observed time is fixed ONCE per logical write so every retry sends
+        a byte-identical body: the server then treats a retry after a lost
+        response as a replay and returns the original receipt instead of 409
+        idempotency-key-reused.
+        """
+        observed_at = _utc_now()
         attempt = 0
         while True:
             try:
@@ -556,6 +566,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
                     source_type=_SOURCE_MEMORY_WRITE,
                     kind="hermes_builtin_memory",
                     idempotency_base=f"hermes-mwrite:{target}:{_content_key(content)}",
+                    observed_at=observed_at,
                 )
                 return
             except Exception as exc:  # noqa: BLE001 - mirror must never break the write path
@@ -576,23 +587,34 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         source_type: str = _SOURCE_REMEMBER,
         kind: str = _REMEMBER_KIND,
         idempotency_base: str | None = None,
+        observed_at: str | None = None,
     ) -> dict[str, Any]:
         client = self._require_client()
         base = (
             idempotency_base
             or f"hermes-remember:{self._session_id}:{_content_key(content)}"
         )
-        observed = client.remember(
-            content,
-            key=key,
-            metadata=metadata,
-            kind=kind,
-            source_type=source_type,
-            namespace=client.config.namespace,
-            sensitivity=sensitivity,
-            retention_policy_id=retention_policy_id,
-            idempotency_key=base,
-        )
+        try:
+            observed = client.remember(
+                content,
+                key=key,
+                metadata=metadata,
+                kind=kind,
+                source_type=source_type,
+                namespace=client.config.namespace,
+                observed_at=observed_at,
+                sensitivity=sensitivity,
+                retention_policy_id=retention_policy_id,
+                idempotency_key=base,
+            )
+        except PalimpsestHttpError as exc:
+            if exc.status_code != 409:
+                raise
+            # Same session + same content reuses the deterministic base key:
+            # the second logical write is a different request, which the server
+            # rejects by design. Report it as an idempotent duplicate so the
+            # caller (tool or mirror) does not see a raw 409.
+            return {"status": "already_saved", "episode_id": None, "fact_id": None}
         episode = observed["episode"]
         fact = observed["fact"]
         episode_id = _episode_id(episode)

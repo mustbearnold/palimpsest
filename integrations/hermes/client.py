@@ -454,15 +454,15 @@ class PalimpsestClient:
         source_uri: str | None = None,
         external_id: str | None = None,
         namespace: str | None = None,
+        observed_at: str | None = None,
         sensitivity: str = "internal",
         retention_policy_id: str = "standard",
         confidence: float = 1.0,
-        observed_at: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict:
         """Append an immutable episode, then a governed direct-evidence fact."""
         content = _non_empty_text(content, "content")
-        observed_at = observed_at or _utc_now()
+        observed_at = _normalize_timestamp(observed_at or _utc_now())
         base_key = _idempotency_key(idempotency_key)  # one base for both writes
         episode = self.append_episode(
             kind=kind,

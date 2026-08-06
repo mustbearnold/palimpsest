@@ -85,9 +85,47 @@ class FakePalimpsestServer:
         self.fail_recall = False
         self.health_ok = True
         self.recall_delay_seconds = 0.0
+        self._durable_state: dict[str, dict[str, tuple[dict, dict]]] = {
+            "episodes": {},
+            "facts": {},
+        }
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler_factory())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
+
+    def _durable_replay(
+        self,
+        kind: str,
+        headers: Any,
+        body: dict,
+        make_response,
+        send,
+    ) -> None:
+        """Emulate the server's exactly-once semantics for durable writes.
+
+        Same Idempotency-Key + byte-identical body -> replay the original
+        response; same key + different body -> 409 idempotency-key-reused.
+        """
+        key = headers.get("Idempotency-Key") or headers.get("idempotency-key")
+        state = self._durable_state[kind]
+        if key in state:
+            previous_body, previous_response = state[key]
+            if previous_body == body:
+                send(200, previous_response)
+                return
+            send(
+                409,
+                {
+                    "type": "https://palimpsest.dev/problems/idempotency-key-reused",
+                    "title": "Idempotency key was already used",
+                    "status": 409,
+                    "code": "idempotency_key_reused",
+                },
+            )
+            return
+        response = make_response()
+        state[key] = (body, response)
+        send(200, response)
 
     @property
     def base_url(self) -> str:
@@ -222,10 +260,22 @@ class FakePalimpsestServer:
                     if server.fail_episodes:
                         self._send(503, {"type": "unavailable"})
                         return
-                    self._send(200, {"episode_id": str(uuid.uuid4())})
+                    server._durable_replay(
+                        "episodes",
+                        self.headers,
+                        server.requests[-1]["body"],
+                        lambda: {"episode_id": str(uuid.uuid4())},
+                        self._send,
+                    )
                     return
                 if self.path == f"{_SCOPE}/facts":
-                    self._send(200, {"fact_id": str(uuid.uuid4())})
+                    server._durable_replay(
+                        "facts",
+                        self.headers,
+                        server.requests[-1]["body"],
+                        lambda: {"fact_id": str(uuid.uuid4())},
+                        self._send,
+                    )
                     return
                 self._send(404, {"type": "not_found"})
 
@@ -634,13 +684,32 @@ class TestProviderTools(PluginTestCase):
         provider = self.make_provider()
         result = json.loads(
             provider.handle_tool_call(
-                "palimpsest_remember",
-                {"content": "user-approved fact", "metadata": {"origin": "test"}},
+                "palimpsest_remember", {"content": "remember this", "key": "k1"}
             )
         )
+        self.assertIn("result", result)
         self.assertEqual(result["result"]["status"], "saved")
         self.assertTrue(result["result"]["episode_id"])
         self.assertTrue(result["result"]["fact_id"])
+
+    def test_double_remember_same_content_returns_already_saved(self) -> None:
+        """Same session + same content reuses the base key: the second write is
+        a different request, so the server 409s and the tool reports it as an
+        idempotent duplicate instead of a raw HTTP error."""
+        provider = self.make_provider()
+        first = json.loads(
+            provider.handle_tool_call(
+                "palimpsest_remember", {"content": "dup content", "key": "dup-key"}
+            )
+        )
+        self.assertEqual(first["result"]["status"], "saved")
+        second = json.loads(
+            provider.handle_tool_call(
+                "palimpsest_remember", {"content": "dup content", "key": "dup-key"}
+            )
+        )
+        self.assertEqual(second["result"]["status"], "already_saved")
+        self.assertIsNone(second["result"]["episode_id"])
         episodes = self.server.requests_for("POST", "/episodes")
         self.assertEqual(
             episodes[0]["body"]["provenance"]["source_type"], "hermes.remember"
@@ -966,6 +1035,28 @@ class TestSessionAndMirror(PluginTestCase):
             [expected_key + ":episode"] * 3,
             "retries must reuse the same idempotency key",
         )
+        # The observed time is frozen per logical write, so every retry sends a
+        # byte-identical body: the server can replay a lost response instead of
+        # 409ing (spec R5 retry semantics).
+        self.assertEqual(
+            len({repr(request["body"]) for request in episodes}),
+            1,
+            "every retry must send a byte-identical body",
+        )
+
+    def test_double_mirror_same_content_no_duplicate_fact(self) -> None:
+        """A second mirror of the same content is a different request (fresh
+        observed time) with the same base key: the server 409s and the mirror
+        treats it as already-saved instead of writing a duplicate fact."""
+        provider = self.make_provider()
+        provider.on_memory_write("add", "memory", "mirror once")
+        self.assertTrue(
+            _wait_until(lambda: len(self.server.requests_for("POST", "/facts")) == 1)
+        )
+        provider.on_memory_write("add", "memory", "mirror once")
+        time.sleep(0.5)
+        self.assertEqual(len(self.server.requests_for("POST", "/facts")), 1)
+        self.assertEqual(len(self.server.requests_for("POST", "/episodes")), 2)
 
 
 # -- invariants ---------------------------------------------------------------
