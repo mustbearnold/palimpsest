@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::{
     Router,
+    extract::Request,
     http::{StatusCode, header},
-    response::IntoResponse,
+    middleware,
+    response::{IntoResponse, Response},
     routing::get,
 };
 use palimpsest_application::{
@@ -13,9 +15,20 @@ use palimpsest_application::{
     MemoryService, S3ExportPackageStore, ServiceError, UnavailableEmbeddingProvider,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
-use palimpsest_http::{Authenticator, ContentLeaseCleanupCounters};
+use palimpsest_http::{
+    Authenticator, ContentLeaseCleanupCounters, ServerMetricsSnapshot, record_request_latency,
+};
 use palimpsest_postgres::{PostgresMemoryRepository, PostgresSubjectLifecycleRepository};
 use sqlx::PgPool;
+
+/// Times every request through the merged router into the content-free
+/// latency histogram (spec 010 R3: `/metrics` stays database-free).
+async fn record_request_latency_middleware(request: Request, next: middleware::Next) -> Response {
+    let start = Instant::now();
+    let response = next.run(request).await;
+    record_request_latency(start.elapsed());
+    response
+}
 
 pub fn app(
     runtime_pool: PgPool,
@@ -94,13 +107,21 @@ fn app_with_embedding_provider_and_workers(
         spawn_deletion_worker(service.clone());
         spawn_export_worker(service.clone());
     }
-    probes.merge(palimpsest_http::router(service, authenticator))
+    probes
+        .merge(palimpsest_http::router(service, authenticator))
+        .layer(middleware::from_fn(record_request_latency_middleware))
 }
 
 pub fn probe_router(runtime_pool: PgPool) -> Router {
     Router::new()
         .route("/healthz", get(health_status))
-        .route("/metrics", get(metrics_status))
+        .route(
+            "/metrics",
+            get({
+                let pool = runtime_pool.clone();
+                move || async move { metrics_status(Some(pool)).await }
+            }),
+        )
         .route(
             "/readyz",
             get(move || {
@@ -114,21 +135,43 @@ async fn health_status() -> impl IntoResponse {
     (StatusCode::OK, [(header::CACHE_CONTROL, "no-store")])
 }
 
-async fn metrics_status() -> impl IntoResponse {
+async fn metrics_status(pool: Option<PgPool>) -> impl IntoResponse {
     (
         StatusCode::OK,
         [
             (header::CACHE_CONTROL, "no-store"),
             (
                 header::CONTENT_TYPE,
-                "text/plain; version=0.0.4; charset=utf-8",
+                "text/plain; version=0.0.5; charset=utf-8",
             ),
         ],
-        metrics_body(palimpsest_http::content_lease_cleanup_counters()),
+        metrics_body(
+            palimpsest_http::content_lease_cleanup_counters(),
+            palimpsest_http::server_metrics_snapshot(),
+            pool.as_ref(),
+        ),
     )
 }
 
-fn metrics_body(counters: ContentLeaseCleanupCounters) -> String {
+fn metrics_body(
+    counters: ContentLeaseCleanupCounters,
+    snapshot: ServerMetricsSnapshot,
+    pool: Option<&PgPool>,
+) -> String {
+    let (pool_size, pool_idle) = match pool {
+        Some(pool) => (pool.size(), pool.num_idle()),
+        None => (0, 0),
+    };
+    let mut latency = String::new();
+    for (index, bound) in palimpsest_http::REQUEST_LATENCY_BUCKET_MS
+        .iter()
+        .enumerate()
+    {
+        latency.push_str(&format!(
+            "palimpsest_http_request_duration_milliseconds_bucket{{le=\"{bound}\"}} {}\n",
+            snapshot.latency_bucket_totals[index]
+        ));
+    }
     format!(
         "# HELP palimpsest_build_info Palimpsest build identity.\n\
 # TYPE palimpsest_build_info gauge\n\
@@ -147,13 +190,34 @@ palimpsest_content_lease_release_runtime_unavailable_total {}\n\
 palimpsest_content_lease_release_outstanding {}\n\
 # HELP palimpsest_content_lease_release_deferred_to_expiry_total Content lease releases deferred to lease expiry.\n\
 # TYPE palimpsest_content_lease_release_deferred_to_expiry_total counter\n\
-palimpsest_content_lease_release_deferred_to_expiry_total {}\n",
+palimpsest_content_lease_release_deferred_to_expiry_total {}\n\
+# HELP palimpsest_http_request_duration_milliseconds_bucket Request latency histogram (cumulative le buckets).\n\
+# TYPE palimpsest_http_request_duration_milliseconds_bucket counter\n\
+{latency}\
+# HELP palimpsest_http_request_duration_sum_microseconds Sum of request durations.\n\
+# TYPE palimpsest_http_request_duration_sum_microseconds counter\n\
+palimpsest_http_request_duration_sum_microseconds {}\n\
+# HELP palimpsest_embedding_projection_lease_policy_seconds Deployed embedding-projection lease policy (recorded at startup).\n\
+# TYPE palimpsest_embedding_projection_lease_policy_seconds gauge\n\
+palimpsest_embedding_projection_lease_policy_seconds{{interval=\"lease\"}} {}\n\
+palimpsest_embedding_projection_lease_policy_seconds{{interval=\"renewal\"}} {}\n\
+# HELP palimpsest_pgpool_size PostgreSQL pool size.\n\
+# TYPE palimpsest_pgpool_size gauge\n\
+palimpsest_pgpool_size {}\n\
+# HELP palimpsest_pgpool_idle PostgreSQL pool idle connections.\n\
+# TYPE palimpsest_pgpool_idle gauge\n\
+palimpsest_pgpool_idle {}\n",
         env!("CARGO_PKG_VERSION"),
         palimpsest_postgres::latest_migration_version(),
         counters.release_retries,
         counters.runtime_unavailable,
         counters.outstanding,
         counters.deferred_to_expiry,
+        snapshot.latency_sum_micros,
+        snapshot.projection_lease_seconds,
+        snapshot.projection_renewal_interval_seconds,
+        pool_size,
+        pool_idle,
     )
 }
 
@@ -303,12 +367,21 @@ mod tests {
 
     #[test]
     fn metrics_surface_is_fixed_and_content_free() {
-        let body = metrics_body(palimpsest_http::ContentLeaseCleanupCounters {
-            release_retries: 2,
-            runtime_unavailable: 3,
-            outstanding: 4,
-            deferred_to_expiry: 5,
-        });
+        let body = metrics_body(
+            palimpsest_http::ContentLeaseCleanupCounters {
+                release_retries: 2,
+                runtime_unavailable: 3,
+                outstanding: 4,
+                deferred_to_expiry: 5,
+            },
+            palimpsest_http::ServerMetricsSnapshot {
+                latency_bucket_totals: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                latency_sum_micros: 55_000,
+                projection_lease_seconds: 60,
+                projection_renewal_interval_seconds: 20,
+            },
+            None,
+        );
 
         assert!(body.contains("# TYPE palimpsest_build_info gauge\n"));
         assert!(body.contains("palimpsest_schema_version 20\n"));
@@ -316,6 +389,23 @@ mod tests {
         assert!(body.contains("palimpsest_content_lease_release_runtime_unavailable_total 3\n"));
         assert!(body.contains("palimpsest_content_lease_release_outstanding 4\n"));
         assert!(body.contains("palimpsest_content_lease_release_deferred_to_expiry_total 5\n"));
+        assert!(
+            body.contains("palimpsest_http_request_duration_milliseconds_bucket{le=\"10\"} 1\n")
+        );
+        assert!(
+            body.contains(
+                "palimpsest_http_request_duration_milliseconds_bucket{le=\"10000\"} 10\n"
+            )
+        );
+        assert!(body.contains("palimpsest_http_request_duration_sum_microseconds 55000\n"));
+        assert!(body.contains(
+            "palimpsest_embedding_projection_lease_policy_seconds{interval=\"lease\"} 60\n"
+        ));
+        assert!(body.contains(
+            "palimpsest_embedding_projection_lease_policy_seconds{interval=\"renewal\"} 20\n"
+        ));
+        assert!(body.contains("palimpsest_pgpool_size 0\n"));
+        assert!(body.contains("palimpsest_pgpool_idle 0\n"));
         assert!(!body.contains("tenant"));
         assert!(!body.contains("subject"));
         assert!(!body.contains("memory"));
@@ -324,12 +414,12 @@ mod tests {
 
     #[tokio::test]
     async fn metrics_endpoint_is_cache_free_and_does_not_need_database_access() {
-        let response = metrics_status().await.into_response();
+        let response = metrics_status(None).await.into_response();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
         assert_eq!(
             response.headers()[header::CONTENT_TYPE],
-            "text/plain; version=0.0.4; charset=utf-8"
+            "text/plain; version=0.0.5; charset=utf-8"
         );
     }
 }

@@ -44,12 +44,40 @@ static CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL: AtomicU64 = AtomicU64::n
 static CONTENT_LEASE_RELEASE_OUTSTANDING: AtomicU64 = AtomicU64::new(0);
 static CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+/// Fixed cumulative latency buckets (milliseconds), Prometheus `le`-style.
+/// `record_request_latency` increments every bucket whose upper bound the
+/// request duration does not exceed, so the last bucket is requests_total.
+pub const REQUEST_LATENCY_BUCKET_MS: &[u64] = &[10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+static REQUEST_LATENCY_LE_TOTAL: [AtomicU64; 10] = [
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+];
+static REQUEST_LATENCY_SUM_MICROS: AtomicU64 = AtomicU64::new(0);
+static PROJECTION_LEASE_SECONDS: AtomicU64 = AtomicU64::new(0);
+static PROJECTION_RENEWAL_INTERVAL_SECONDS: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ContentLeaseCleanupCounters {
     pub release_retries: u64,
     pub runtime_unavailable: u64,
     pub outstanding: u64,
     pub deferred_to_expiry: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ServerMetricsSnapshot {
+    pub latency_bucket_totals: [u64; 10],
+    pub latency_sum_micros: u64,
+    pub projection_lease_seconds: u64,
+    pub projection_renewal_interval_seconds: u64,
 }
 
 pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
@@ -59,6 +87,40 @@ pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
             .load(Ordering::Relaxed),
         outstanding: CONTENT_LEASE_RELEASE_OUTSTANDING.load(Ordering::Relaxed),
         deferred_to_expiry: CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL.load(Ordering::Relaxed),
+    }
+}
+
+/// Records one completed request's duration into the cumulative latency
+/// histogram. Content-free by construction: only a duration is stored.
+pub fn record_request_latency(duration: Duration) {
+    let micros = u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
+    REQUEST_LATENCY_SUM_MICROS.fetch_add(micros, Ordering::Relaxed);
+    let millis = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+    for (index, bound) in REQUEST_LATENCY_BUCKET_MS.iter().enumerate() {
+        if millis <= *bound {
+            REQUEST_LATENCY_LE_TOTAL[index].fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Records the deployed embedding-projection lease policy values so
+/// `/metrics` can expose them without database access (spec 010 R3).
+pub fn record_projection_lease_policy(lease_seconds: u64, renewal_interval_seconds: u64) {
+    PROJECTION_LEASE_SECONDS.store(lease_seconds, Ordering::Relaxed);
+    PROJECTION_RENEWAL_INTERVAL_SECONDS.store(renewal_interval_seconds, Ordering::Relaxed);
+}
+
+pub fn server_metrics_snapshot() -> ServerMetricsSnapshot {
+    let mut buckets = [0u64; 10];
+    for (index, cell) in REQUEST_LATENCY_LE_TOTAL.iter().enumerate() {
+        buckets[index] = cell.load(Ordering::Relaxed);
+    }
+    ServerMetricsSnapshot {
+        latency_bucket_totals: buckets,
+        latency_sum_micros: REQUEST_LATENCY_SUM_MICROS.load(Ordering::Relaxed),
+        projection_lease_seconds: PROJECTION_LEASE_SECONDS.load(Ordering::Relaxed),
+        projection_renewal_interval_seconds: PROJECTION_RENEWAL_INTERVAL_SECONDS
+            .load(Ordering::Relaxed),
     }
 }
 

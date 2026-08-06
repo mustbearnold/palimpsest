@@ -73,12 +73,34 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&bind)
         .await
         .with_context(|| format!("bind HTTP listener to {bind}"))?;
+    record_projection_lease_policy(&pool).await?;
     axum::serve(
         listener,
         palimpsest_server::app(pool, lifecycle_controller_pool, authenticator),
     )
     .await
     .context("serve HTTP API")?;
+    Ok(())
+}
+
+/// Records the deployed embedding-projection lease policy into the
+/// content-free `/metrics` gauges (spec 010 R3: metrics stay database-free;
+/// the policy is read once at startup and is CHECK-constrained).
+async fn record_projection_lease_policy(pool: &PgPool) -> Result<()> {
+    let policy = sqlx::query_as::<_, (i32, i32)>(
+        "SELECT lease_seconds, renewal_interval_seconds
+         FROM memory.embedding_projection_lease_policies
+         WHERE policy_id = 'embedding-projection-v1'",
+    )
+    .fetch_optional(pool)
+    .await
+    .context("read embedding-projection lease policy for metrics")?;
+    if let Some((lease_seconds, renewal_interval_seconds)) = policy {
+        palimpsest_http::record_projection_lease_policy(
+            u64::try_from(lease_seconds).unwrap_or_default(),
+            u64::try_from(renewal_interval_seconds).unwrap_or_default(),
+        );
+    }
     Ok(())
 }
 

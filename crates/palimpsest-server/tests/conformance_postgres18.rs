@@ -43,6 +43,8 @@ mod hybrid_setup;
 mod projection_helpers;
 #[path = "conformance_postgres18/projections.rs"]
 mod projections;
+#[path = "conformance_postgres18/property_idempotency.rs"]
+mod property_idempotency;
 #[path = "conformance_postgres18/restore.rs"]
 mod restore;
 #[path = "conformance_postgres18/temporal.rs"]

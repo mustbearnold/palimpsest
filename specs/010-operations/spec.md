@@ -21,8 +21,13 @@ scale probe.
   migrations, and report pending, failed, unknown, and checksum-mismatched
   versions as content-free JSON.
 - R3. `/metrics` MUST be unauthenticated, cache-free, database-free, and
-  content-free: fixed Prometheus text with build/schema identity and
-  content-lease cleanup counters only.
+  content-free: fixed Prometheus text with build/schema identity, content-lease
+  cleanup counters, a request-latency histogram (cumulative `le` buckets plus
+  sum), the deployed embedding-projection lease policy gauges (recorded at
+  startup), and PostgreSQL pool size/idle gauges. Adding a metric family is a
+  spec change (this requirement must be amended in the same change); the
+  content-free test asserts every family and the absence of tenant, subject,
+  memory, or credential text.
 - R4. The dev profile MUST use a user-owned local PostgreSQL cluster (or the
   pinned Docker image) with a synthetic non-superuser runtime role so forced
   row-level security remains active; `dev-up.sh` MUST never touch the system
