@@ -218,6 +218,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         self._config = config
         self._client = PalimpsestClient(config)
         self._hermes_home = hermes_home
+        self._config_mtime = self._file_mtime(self._config_path)
         self._session_id = session_id
         self._platform = str(kwargs.get("platform") or "")
         self._user_id = str(kwargs.get("user_id") or "")
@@ -251,6 +252,22 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         return [str(Path(home) / "palimpsest")]
 
     # -- configuration -----------------------------------------------------------
+
+    @property
+    def _config_path(self) -> Path:
+        home = (
+            self._hermes_home
+            or os.environ.get("HERMES_HOME")
+            or str(Path.home() / ".hermes")
+        )
+        return Path(home) / "palimpsest.json"
+
+    @staticmethod
+    def _file_mtime(path: Path) -> int | None:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return None
 
     def _resolve_config(self, hermes_home: str | None = None) -> PalimpsestConfig:
         if self._config is not None and hermes_home in (None, self._hermes_home):
@@ -333,6 +350,15 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
     def _require_client(self) -> PalimpsestClient:
         if self._client is None:
             raise PalimpsestError("palimpsest provider is not initialized")
+        mtime = self._file_mtime(self._config_path)
+        if mtime != self._config_mtime:
+            # Config edits (e.g. `hermes memory setup`) apply on the next tool
+            # call without a process restart (spec R7). Module-code changes
+            # still require a restart — inherent to Hermes plugin loading.
+            self._config = PalimpsestConfig.load(self._hermes_home or None)
+            self._client = PalimpsestClient(self._config)
+            self._config_mtime = mtime
+            logger.info("palimpsest config changed on disk; client rebuilt")
         return self._client
 
     def _tool_recall(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -387,8 +413,14 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         }
 
     def _tool_status(self) -> dict[str, Any]:
-        config = self._resolve_config(self._hermes_home or None)
-        client = self._client or PalimpsestClient(config)
+        # Read through the re-read path so a config edit is reflected even
+        # when status is the FIRST tool call after the edit (spec R7).
+        if self._client is None:
+            config = PalimpsestConfig.load(self._hermes_home or None)
+            client = PalimpsestClient(config)
+        else:
+            client = self._require_client()
+            config = client.config
         return {**config.public_dict(), "reachable": client.health()}
 
     # -- recall pre-warming --------------------------------------------------------
@@ -556,9 +588,7 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
             metadata=metadata,
             kind=kind,
             source_type=source_type,
-            namespace=(
-                self._config or self._resolve_config(self._hermes_home or None)
-            ).namespace,
+            namespace=client.config.namespace,
             sensitivity=sensitivity,
             retention_policy_id=retention_policy_id,
             idempotency_key=base,

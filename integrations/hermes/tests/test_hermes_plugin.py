@@ -561,6 +561,33 @@ class TestProviderLifecycle(PluginTestCase):
         self.assertIn("palimpsest_recall", block)
 
 
+class TestConfigReload(PluginTestCase):
+    """Spec R7: config edits apply on the next tool call without a restart."""
+
+    def test_config_edit_applies_on_status_first_call(self) -> None:
+        provider = self.make_provider()
+        first = json.loads(provider.handle_tool_call("palimpsest_status", {}))
+        self.assertEqual(first["result"]["base_url"], self.server.base_url)
+        os.environ.pop("PALIMPSEST_BASE_URL", None)  # the file must drive the reload
+        second = FakePalimpsestServer()
+        self.addCleanup(second.stop)
+        (self.hermes_home / "palimpsest.json").write_text(
+            json.dumps({"base_url": second.base_url})
+        )
+        status = json.loads(provider.handle_tool_call("palimpsest_status", {}))
+        self.assertEqual(status["result"]["base_url"], second.base_url)
+        self.assertTrue(status["result"]["reachable"])
+
+    def test_deleted_config_file_does_not_crash_reload(self) -> None:
+        provider = self.make_provider()
+        cfg = self.hermes_home / "palimpsest.json"
+        cfg.write_text(json.dumps({"namespace": "hermes-x"}))
+        cfg.unlink()
+        result = json.loads(provider.handle_tool_call("palimpsest_status", {}))
+        self.assertEqual(result["result"]["namespace"], "hermes")  # defaults restored
+        self.assertIn("reachable", result["result"])
+
+
 # -- tools --------------------------------------------------------------------
 
 
