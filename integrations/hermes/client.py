@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -73,7 +74,32 @@ class PalimpsestHttpError(PalimpsestError):
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    """RFC 3339 UTC ending in Z, at most six fractional digits (server contract)."""
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+_TS_Z_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$")
+
+
+def _normalize_timestamp(value: str) -> str:
+    """Return *value* as server-valid RFC 3339 UTC (Z suffix, <=6 fraction digits).
+
+    Legacy values with a ``+00:00`` offset are re-rendered, preserving the
+    exact instant; anything unparseable falls back to now. This keeps
+    already-buffered rows flushable after a format change (spec R4: a
+    committed turn must never be lost to a format defect).
+    """
+    if _TS_Z_RE.match(value):
+        return value
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return _utc_now()
+    return parsed.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _strip(value: str) -> str:
@@ -104,10 +130,20 @@ def _uuid_string(value: str, label: str) -> str:
     return value
 
 
-def _idempotency_key(value: str | None) -> str | None:
+def _idempotency_key(value: str | None) -> str:
+    """Normalize a caller-supplied key or auto-generate one (server contract).
+
+    The Palimpsest HTTP service requires a non-empty ``Idempotency-Key`` on
+    every durable operation (retrievals, episodes, facts). Auto-generated
+    keys are unique to one call, mirroring the first-party client; callers
+    that retry must pass the same key explicitly.
+    """
     if value is None:
-        return None
-    return _strip(value) or None
+        return f"palimpsest-hermes-{uuid.uuid4()}"
+    stripped = _strip(value)
+    if not stripped or len(stripped) > 255:
+        raise PalimpsestConfigError("idempotency_key must contain 1 to 255 characters")
+    return stripped
 
 
 @dataclass(frozen=True)
@@ -274,22 +310,41 @@ class PalimpsestClient:
     # -- operations -----------------------------------------------------------
 
     def health(self) -> bool:
-        """Content-free reachability probe (GET /healthz)."""
+        """Content-free liveness probe: /healthz answers 200 with an empty body."""
+        http_request = request.Request(
+            f"{self.config.base_url}/healthz",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
         try:
-            self._request("GET", "/healthz")
-            return True
-        except PalimpsestError:
+            with request.urlopen(
+                http_request, timeout=self.config.timeout_seconds
+            ) as response:
+                return response.status == 200
+        except error.HTTPError:
+            return False
+        except error.URLError:
             return False
 
     def recall(self, query: str, page_size: int = 10) -> dict:
-        """Create an authorized current retrieval receipt and return its items."""
+        """Create an authorized current retrieval receipt and return its items.
+
+        Retrievals are durable operations: the server requires an
+        Idempotency-Key (auto-generated per call when the caller does not
+        supply one, mirroring the first-party client).
+        """
         body = {
             "query": query,
             "perspective": {"kind": "current"},
             "page_size": page_size,
             "filters": {},
         }
-        return self._request("POST", f"{self._scope_path()}/retrievals", body=body)
+        return self._request(
+            "POST",
+            f"{self._scope_path()}/retrievals",
+            body=body,
+            idempotency_key=_idempotency_key(None),
+        )
 
     def append_episode(
         self,
@@ -305,7 +360,7 @@ class PalimpsestClient:
         body = {
             "case_id": self.config.case_id,
             "kind": kind,
-            "observed_at": observed_at,
+            "observed_at": _normalize_timestamp(observed_at),
             "provenance": dict(provenance),
             "sensitivity": sensitivity,
             "retention_policy_id": retention_policy_id,
@@ -338,7 +393,7 @@ class PalimpsestClient:
             "namespace": namespace,
             "key": key,
             "value": value,
-            "observed_at": observed_at,
+            "observed_at": _normalize_timestamp(observed_at),
             "valid_time": dict(valid_time),
             "evidence_episode_ids": list(evidence_episode_ids),
             "write_policy": dict(write_policy),
@@ -372,6 +427,7 @@ class PalimpsestClient:
     ) -> dict:
         """Append an immutable episode, then a governed direct-evidence fact."""
         observed_at = observed_at or _utc_now()
+        base_key = _idempotency_key(idempotency_key)  # one base for both writes
         episode = self.append_episode(
             kind=kind,
             observed_at=observed_at,
@@ -383,7 +439,7 @@ class PalimpsestClient:
             sensitivity=sensitivity,
             retention_policy_id=retention_policy_id,
             payload={"content": content, "metadata": dict(metadata or {})},
-            idempotency_key=f"{idempotency_key}:episode" if idempotency_key else None,
+            idempotency_key=f"{base_key}:episode",
         )
         episode_id = episode.get("episode_id")
         if not isinstance(episode_id, str) or not episode_id:
@@ -401,7 +457,7 @@ class PalimpsestClient:
             confidence=confidence,
             sensitivity=sensitivity,
             retention_policy_id=retention_policy_id,
-            idempotency_key=f"{idempotency_key}:fact" if idempotency_key else None,
+            idempotency_key=f"{base_key}:fact",
         )
         return {"episode": episode, "fact": fact}
 

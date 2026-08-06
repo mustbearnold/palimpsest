@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -29,6 +30,9 @@ _SUBJECT = "019be000-0000-7000-8000-000000000020"
 _CASE = "019be000-0000-7000-8000-000000000030"
 
 _SCOPE = f"/v1/tenants/{_TENANT}/subjects/{_SUBJECT}"
+
+# RFC 3339 UTC ending in Z with at most six fractional digits (server contract).
+_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$")
 
 
 def _load_plugin():
@@ -125,15 +129,59 @@ class FakePalimpsestServer:
                 self._record(self.rfile.read(length))
                 if self.path == "/healthz":
                     if server.health_ok:
-                        self._send(200, {"status": "ok"})
+                        self._send(200, None)  # real /healthz is content-free
                     else:
                         self._send(503, {"type": "unavailable"})
                     return
                 self._send(404, {"type": "not_found"})
 
+            def _require_idempotency_key(self) -> bool:
+                if "idempotency-key" in {k.lower() for k in self.headers}:
+                    return True
+                self._send(
+                    400,
+                    {
+                        "type": "https://palimpsest.dev/problems/idempotency-key-required",
+                        "title": "Idempotency key is required",
+                        "status": 400,
+                    },
+                )
+                return False
+
+            def _require_valid_timestamp(self, body: dict | None) -> bool:
+                observed = (body or {}).get("observed_at", "")
+                if isinstance(observed, str) and _TS_RE.match(observed):
+                    return True
+                self._send(
+                    400,
+                    {
+                        "type": "https://palimpsest.dev/problems/invalid-request",
+                        "title": "Timestamp is invalid",
+                        "status": 400,
+                        "code": "invalid_timestamp",
+                        "detail": "observed_at: timestamp must be RFC 3339 UTC ending in Z",
+                    },
+                )
+                return False
+
             def do_POST(self) -> None:
                 length = int(self.headers.get("Content-Length") or 0)
                 self._record(self.rfile.read(length))
+                if (
+                    self.path
+                    in {
+                        f"{_SCOPE}/retrievals",
+                        f"{_SCOPE}/episodes",
+                        f"{_SCOPE}/facts",
+                    }
+                    and not self._require_idempotency_key()
+                ):
+                    return  # the real server 400s durable calls without the key
+                if self.path in {
+                    f"{_SCOPE}/episodes",
+                    f"{_SCOPE}/facts",
+                } and not self._require_valid_timestamp(server.requests[-1]["body"]):
+                    return  # the real server validates observed_at strictly
                 if self.path == f"{_SCOPE}/retrievals":
                     if server.fail_recall:
                         self._send(503, {"type": "unavailable"})
@@ -336,6 +384,33 @@ class TestClient(PluginTestCase):
             request["headers"]["authorization"],
             "Bearer palimpsest-local-development-token",
         )
+        self.assertIn(
+            "idempotency-key",
+            request["headers"],
+            "the server requires an Idempotency-Key on durable calls",
+        )
+        self.assertTrue(
+            request["headers"]["idempotency-key"].startswith("palimpsest-hermes-")
+        )
+
+    def test_append_episode_normalizes_legacy_timestamp(self) -> None:
+        """Buffered rows with the legacy +00:00 format must still flush (spec R4)."""
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        client.append_episode(
+            kind="hermes_turn",
+            observed_at="2026-08-05T23:58:36.085+00:00",
+            provenance={
+                "source_type": "hermes.test",
+                "source_uri": None,
+                "external_id": None,
+            },
+            sensitivity="internal",
+            retention_policy_id="standard",
+            payload={"content": "legacy row"},
+            idempotency_key="ts-test-1",
+        )
+        request = self.server.requests_for("POST", "/episodes")[0]
+        self.assertEqual(request["body"]["observed_at"], "2026-08-05T23:58:36.085000Z")
 
     def test_remember_appends_episode_then_fact(self) -> None:
         client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
