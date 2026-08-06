@@ -61,6 +61,13 @@ generation; lexical and vector search rank within the authorized set.
       the remaining cost is the per-query full-set pipeline
       (materialization + governance join), not ranking, document join, cache
       temperature, or concurrency.
+- [ ] A5. Million-revision latency remediation (ADR-0032, issue #43): with the
+      precomputed authorized-current structure active, the 1,000,000-revision
+      profile measures p95 ≤ 200 ms / p99 ≤ 400 ms (same rollback-only,
+      content-free probe); the full authorized-retrieval conformance suite
+      (A1–A3) and tenant-isolation scenarios still pass unchanged; the
+      structure is incrementally maintained with bounded, observable staleness
+      and is reproducible from canonical records (constitution principle 12).
 
 ## Out of scope
 
@@ -78,9 +85,10 @@ generation; lexical and vector search rank within the authorized set.
   selective documents access is fast (43 ms for 31k rows); the measured
   floor is the per-query full-set pipeline (authorized-set materialization +
   governance join), which is selectivity-, cache-temperature-, and
-  concurrency-independent. Primary levers: precomputed authorized-current
-  structure or a loss-safe hot cache (issue #39), then a selectivity-modeled
-  gate. Measured remediation remains.
+  concurrency-independent. Remediation decision recorded in ADR-0032:
+  precomputed authorized-current structure (issue #43); a loss-safe hot
+  cache (#39) is a separate, later lever. A selectivity-modeled gate is
+  explicitly secondary and must not replace the ≤ 200 ms acceptance (A5).
 - Automatic per-request detection of arbitrary out-of-band projection
   corruption (owner-only rebuild exists; per-request comparison was measured
   at p95 4.609 s and rejected).
@@ -89,7 +97,7 @@ generation; lexical and vector search rank within the authorized set.
 
 Code: `crates/palimpsest-postgres` (retrieval path, projection, coverage)
 Tests: `conformance_postgres18.rs` · `lexical_receipt_upgrade_postgres18.rs`
-Decisions: 0005, 0006, 0007, 0027
+Decisions: 0005, 0006, 0007, 0027, 0032
 Evidence: `_attic/evaluations/2026-08-03-authorized-lexical-scale-probe.md` ·
 `_attic/evaluations/2026-07-29-retrieval-conformance-corpus.md`
 Probe: `scripts/palimpsest-scale-probe.sh`

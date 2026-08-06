@@ -27,6 +27,10 @@ The highest authority in this repository. Conflicts resolve in this order:
     policy.
 14. Retrieval quality, temporal correctness, isolation, and recovery claims
     need scenario tests or benchmarks.
+15. Palimpsest MUST NOT bias or force users toward any development framework,
+    agent runtime, or workflow: core contracts stay framework-agnostic,
+    integrations are opt-in, and no framework-specific behavior may leak into
+    canonical records or the HTTP contract.
 
 ## The SDD loop
 
