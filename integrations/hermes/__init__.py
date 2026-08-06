@@ -51,6 +51,9 @@ from .client import (
     _utc_now,
     format_receipt,
 )
+from .client import (
+    PalimpsestConfigError as PalimpsestConfigError,
+)
 from .queue import PalimpsestWriteQueue
 
 logger = logging.getLogger(__name__)

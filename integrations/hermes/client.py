@@ -130,6 +130,21 @@ def _uuid_string(value: str, label: str) -> str:
     return value
 
 
+def _non_empty_text(value: str, name: str, max_len: int = 4096) -> str:
+    """Validate non-empty text within a UTF-8 byte cap (server contract).
+
+    The Palimpsest HTTP service caps retrieval queries at 4096 UTF-8 bytes;
+    the first-party client enforces the same byte semantics. Validating
+    client-side turns the server's 422 into a clean ``PalimpsestConfigError``
+    before any network call.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise PalimpsestConfigError(f"{name} must be a non-empty string")
+    if len(value.encode("utf-8")) > max_len:
+        raise PalimpsestConfigError(f"{name} must be at most {max_len} UTF-8 bytes")
+    return value
+
+
 def _idempotency_key(value: str | None) -> str:
     """Normalize a caller-supplied key or auto-generate one (server contract).
 
@@ -333,6 +348,7 @@ class PalimpsestClient:
         Idempotency-Key (auto-generated per call when the caller does not
         supply one, mirroring the first-party client).
         """
+        query = _non_empty_text(query, "query")
         body = {
             "query": query,
             "perspective": {"kind": "current"},
@@ -426,6 +442,7 @@ class PalimpsestClient:
         idempotency_key: str | None = None,
     ) -> dict:
         """Append an immutable episode, then a governed direct-evidence fact."""
+        content = _non_empty_text(content, "content")
         observed_at = observed_at or _utc_now()
         base_key = _idempotency_key(idempotency_key)  # one base for both writes
         episode = self.append_episode(

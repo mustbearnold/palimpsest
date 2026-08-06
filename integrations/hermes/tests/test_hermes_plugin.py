@@ -54,6 +54,7 @@ plugin = _load_plugin()
 PalimpsestClient = plugin.PalimpsestClient
 PalimpsestConfig = plugin.PalimpsestConfig
 PalimpsestError = plugin.PalimpsestError
+PalimpsestConfigError = plugin.PalimpsestConfigError
 PalimpsestMemoryProvider = plugin.PalimpsestMemoryProvider
 PalimpsestWriteQueue = plugin.PalimpsestWriteQueue
 _content_key = plugin._content_key
@@ -411,6 +412,27 @@ class TestClient(PluginTestCase):
         )
         request = self.server.requests_for("POST", "/episodes")[0]
         self.assertEqual(request["body"]["observed_at"], "2026-08-05T23:58:36.085000Z")
+
+    def test_recall_rejects_empty_query(self) -> None:
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        with self.assertRaises(PalimpsestConfigError):
+            client.recall("   ")
+
+    def test_recall_rejects_overlong_query_ascii(self) -> None:
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        with self.assertRaises(PalimpsestConfigError):
+            client.recall("x" * 4097)
+
+    def test_recall_rejects_overlong_query_multibyte(self) -> None:
+        # 2049 x "é" = 4098 UTF-8 bytes; a char-count check would let it through
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        with self.assertRaises(PalimpsestConfigError):
+            client.recall("é" * 2049)
+
+    def test_remember_rejects_empty_content(self) -> None:
+        client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
+        with self.assertRaises(PalimpsestConfigError):
+            client.remember("   ", key="k")
 
     def test_remember_appends_episode_then_fact(self) -> None:
         client = PalimpsestClient(PalimpsestConfig.load(str(self.hermes_home)))
