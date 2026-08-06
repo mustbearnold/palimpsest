@@ -27,7 +27,7 @@ pub(crate) fn spawn_crash_server(
     command
         .arg("--ignored")
         .arg("--exact")
-        .arg("crash_after_checkpoint_commit_child")
+        .arg("deletion_ops::crash_after_checkpoint_commit_child")
         .arg("--test-threads=1")
         .env("PALIMPSEST_CRASH_CHILD", "1")
         .env("PALIMPSEST_TEST_CHILD_DATABASE_URL", database_url)
