@@ -89,6 +89,7 @@ class FakePalimpsestServer:
             "episodes": {},
             "facts": {},
         }
+        self.fail_after_store_countdown = 0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler_factory())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
@@ -125,6 +126,13 @@ class FakePalimpsestServer:
             return
         response = make_response()
         state[key] = (body, response)
+        if self.fail_after_store_countdown > 0:
+            # Emulate "committed but response lost": the server stores the
+            # receipt, then the response is dropped; a retry with the same
+            # key + body replays the stored receipt.
+            self.fail_after_store_countdown -= 1
+            send(503, {"type": "unavailable"})
+            return
         send(200, response)
 
     @property
@@ -1044,6 +1052,38 @@ class TestSessionAndMirror(PluginTestCase):
             "every retry must send a byte-identical body",
         )
 
+    def test_mirror_replay_after_lost_response(self) -> None:
+        """Server committed but the response was lost (fail-after-store): the
+        retry replays the original receipt (spec R5) instead of 409ing."""
+        original_backoff = plugin._MIRROR_BACKOFF_SECONDS  # type: ignore[attr-defined]
+        plugin._MIRROR_BACKOFF_SECONDS = 0.05  # type: ignore[attr-defined]
+        self.addCleanup(setattr, plugin, "_MIRROR_BACKOFF_SECONDS", original_backoff)
+        provider = self.make_provider()
+        # The episode write commits on the server but its response is lost;
+        # the fact write completes normally on the retry.
+        self.server.fail_after_store_countdown = 1
+        provider.on_memory_write("add", "memory", "lost response")
+        self.assertTrue(
+            _wait_until(
+                lambda: len(self.server.requests_for("POST", "/episodes")) == 2,
+                timeout=5.0,
+            )
+        )
+        episodes = self.server.requests_for("POST", "/episodes")
+        facts = self.server.requests_for("POST", "/facts")
+        self.assertEqual(len(episodes), 2, "one stored write + one replay")
+        self.assertEqual(len(facts), 1, "the fact completes on the retry")
+        self.assertEqual(
+            len({repr(request["body"]) for request in episodes}),
+            1,
+            "the replay must be byte-identical to the stored write",
+        )
+        self.assertEqual(
+            len({repr(request["body"]) for request in facts}),
+            1,
+            "the replay must be byte-identical to the stored write",
+        )
+
     def test_double_mirror_same_content_no_duplicate_fact(self) -> None:
         """A second mirror of the same content is a different request (fresh
         observed time) with the same base key: the server 409s and the mirror
@@ -1054,9 +1094,13 @@ class TestSessionAndMirror(PluginTestCase):
             _wait_until(lambda: len(self.server.requests_for("POST", "/facts")) == 1)
         )
         provider.on_memory_write("add", "memory", "mirror once")
-        time.sleep(0.5)
+        self.assertTrue(
+            _wait_until(
+                lambda: len(self.server.requests_for("POST", "/episodes")) == 2,
+                timeout=5.0,
+            )
+        )
         self.assertEqual(len(self.server.requests_for("POST", "/facts")), 1)
-        self.assertEqual(len(self.server.requests_for("POST", "/episodes")), 2)
 
 
 # -- invariants ---------------------------------------------------------------
