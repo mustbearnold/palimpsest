@@ -23,7 +23,8 @@ is claimed and the backlog for what is not.
 - [Constitution](specs/constitution.md) — project principles, the SDD loop,
   authority model, and domain vocabulary (read first)
 - [Conventions](specs/conventions.md) — formatting and style law
-- [Capability specs](specs/) — `001` memory service through `010` operations
+- [Capability specs](specs/) — `001` memory service through `013` hermes
+  memory plugin
 - [Backlog](specs/BACKLOG.md) — known-but-unspecced gaps
 - [Quickstart](docs/runbooks/quickstart.md) — run it locally
 - [Architecture](docs/architecture.md) — system shape

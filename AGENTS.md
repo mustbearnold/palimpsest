@@ -13,7 +13,7 @@ runbook / architecture — no fourth kind).
 
 Operational guidance: `docs/runbooks/issue-tracker.md` (GitHub Issues as the
 planning source of truth) and `docs/runbooks/triage-labels.md` (five canonical
-triage roles). Capability specs: `specs/` (`001`–`010`); known gaps:
+triage roles). Capability specs: `specs/` (`001`–`013`); known gaps:
 `specs/BACKLOG.md`.
 
 Also read `docs/architecture.md` before changing architecture, governance,

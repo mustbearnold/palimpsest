@@ -136,7 +136,7 @@ bash scripts/check-repo.sh
 cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace   # includes the MemoryService conformance suite
-python3 scripts/test_palimpsest_mcp.py
+python3 tools/test_palimpsest_mcp.py
 python3 -m unittest discover -s clients/python/tests -p 'test_*.py'
 node --test clients/typescript/test/*.test.mjs
 ```
