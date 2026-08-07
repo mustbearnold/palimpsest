@@ -13,6 +13,8 @@ Known-but-unspecced capabilities and gaps. One line each. Promote to a
   memory.
 - [scheduled → #40] Embedded/single-user mode for offline agents with the
   same domain semantics.
+- [scheduled → #45] Proactive surfacing (spec 012 finalization and a
+  surfacing seam; episodes and facts reach the user without a recall).
 - [deferred: needs a consistency ADR first] Multi-region active-active writes
   and a hosted control plane.
 - [deferred: until after the first production deployment] External identity
