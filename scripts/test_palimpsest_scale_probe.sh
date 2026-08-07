@@ -88,4 +88,14 @@ assert report["bands"] == [
         "max_ms": 0.3,
     },
 ]
+assert report["consolidation_episodes"] == 1000
+assert report["consolidation_window_ms"] == 4.2
+assert report["consolidation_cap_ok"] is True
+assert re.fullmatch(r"[0-9a-f]{64}", report["consolidation_plan_sha256"])
+assert (
+    report["consolidation_plan_summary"]["top_nodes"][0]["node_type"] == "Sort"
+    and report["consolidation_plan_summary"]["top_nodes"][1]["node_type"] == "Index Scan"
+    and report["consolidation_plan_summary"]["top_nodes"][1]["relation"]
+    == "memory.episodes"
+)
 PY

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use axum::{
@@ -11,8 +12,9 @@ use axum::{
     routing::get,
 };
 use palimpsest_application::{
-    EmbeddingProvider, ExportPackageStore, ExportWorkerAuthorizer, FileExportPackageStore,
-    MemoryService, S3ExportPackageStore, ServiceError, UnavailableEmbeddingProvider,
+    ConsolidationWorkerRunSummary, EmbeddingProvider, ExportPackageStore, ExportWorkerAuthorizer,
+    FileExportPackageStore, FixtureDeterministicInterpreter, InterpreterRegistry, MemoryService,
+    S3ExportPackageStore, ServiceError, UnavailableEmbeddingProvider,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
 use palimpsest_http::{
@@ -20,6 +22,8 @@ use palimpsest_http::{
 };
 use palimpsest_postgres::{PostgresMemoryRepository, PostgresSubjectLifecycleRepository};
 use sqlx::PgPool;
+
+static CONSOLIDATION_COUNTERS: OnceLock<Arc<ConsolidationWorkerCounters>> = OnceLock::new();
 
 /// Times every request through the merged router into the content-free
 /// latency histogram (spec 010 R3: `/metrics` stays database-free).
@@ -98,14 +102,21 @@ fn app_with_embedding_provider_and_workers(
         authenticator: authenticator.clone(),
     });
     let service = memory_service_with_embedding_provider(
-        runtime_pool,
+        runtime_pool.clone(),
         lifecycle_controller_pool,
         embedding_provider,
     )
-    .with_export_worker_authorizer(export_authorizer);
+    .with_export_worker_authorizer(export_authorizer)
+    .with_consolidation_components(
+        Arc::new(palimpsest_postgres::PostgresMemoryRepository::new(
+            runtime_pool,
+        )),
+        Arc::new(interpreter_registry()),
+    );
     if start_workers {
         spawn_deletion_worker(service.clone());
         spawn_export_worker(service.clone());
+        spawn_consolidation_worker(service.clone());
     }
     probes
         .merge(palimpsest_http::router(service, authenticator))
@@ -142,12 +153,13 @@ async fn metrics_status(pool: Option<PgPool>) -> impl IntoResponse {
             (header::CACHE_CONTROL, "no-store"),
             (
                 header::CONTENT_TYPE,
-                "text/plain; version=0.0.5; charset=utf-8",
+                "text/plain; version=0.0.6; charset=utf-8",
             ),
         ],
         metrics_body(
             palimpsest_http::content_lease_cleanup_counters(),
             palimpsest_http::server_metrics_snapshot(),
+            consolidation_counters(),
             pool.as_ref(),
         ),
     )
@@ -156,8 +168,11 @@ async fn metrics_status(pool: Option<PgPool>) -> impl IntoResponse {
 fn metrics_body(
     counters: ContentLeaseCleanupCounters,
     snapshot: ServerMetricsSnapshot,
+    consolidation: Arc<ConsolidationWorkerCounters>,
     pool: Option<&PgPool>,
 ) -> String {
+    let (jobs_processed, jobs_failed, claims_written, claims_done, claims_skipped) =
+        consolidation.load();
     let (pool_size, pool_idle) = match pool {
         Some(pool) => (pool.size(), pool.num_idle()),
         None => (0, 0),
@@ -206,7 +221,22 @@ palimpsest_embedding_projection_lease_policy_seconds{{interval=\"renewal\"}} {}\
 palimpsest_pgpool_size {}\n\
 # HELP palimpsest_pgpool_idle PostgreSQL pool idle connections.\n\
 # TYPE palimpsest_pgpool_idle gauge\n\
-palimpsest_pgpool_idle {}\n",
+palimpsest_pgpool_idle {}\n\
+# HELP palimpsest_consolidation_jobs_processed_total Consolidation jobs processed by the worker.\n\
+# TYPE palimpsest_consolidation_jobs_processed_total counter\n\
+palimpsest_consolidation_jobs_processed_total {}\n\
+# HELP palimpsest_consolidation_jobs_failed_total Consolidation jobs failed by the worker.\n\
+# TYPE palimpsest_consolidation_jobs_failed_total counter\n\
+palimpsest_consolidation_jobs_failed_total {}\n\
+# HELP palimpsest_consolidation_claims_written_total Consolidation claims written to job queues.\n\
+# TYPE palimpsest_consolidation_claims_written_total counter\n\
+palimpsest_consolidation_claims_written_total {}\n\
+# HELP palimpsest_consolidation_claims_done_total Consolidation claims materialized into facts.\n\
+# TYPE palimpsest_consolidation_claims_done_total counter\n\
+palimpsest_consolidation_claims_done_total {}\n\
+# HELP palimpsest_consolidation_claims_skipped_total Consolidation claims skipped by policy.\n\
+# TYPE palimpsest_consolidation_claims_skipped_total counter\n\
+palimpsest_consolidation_claims_skipped_total {}\n",
         env!("CARGO_PKG_VERSION"),
         palimpsest_postgres::latest_migration_version(),
         counters.release_retries,
@@ -218,6 +248,11 @@ palimpsest_pgpool_idle {}\n",
         snapshot.projection_renewal_interval_seconds,
         pool_size,
         pool_idle,
+        jobs_processed,
+        jobs_failed,
+        claims_written,
+        claims_done,
+        claims_skipped,
     )
 }
 
@@ -333,6 +368,69 @@ fn export_store() -> Arc<dyn ExportPackageStore> {
     }
 }
 
+fn interpreter_registry() -> InterpreterRegistry {
+    let mut registry = InterpreterRegistry::default();
+    registry.register(Box::new(FixtureDeterministicInterpreter));
+    registry
+}
+
+#[derive(Default)]
+struct ConsolidationWorkerCounters {
+    jobs_processed: AtomicU64,
+    jobs_failed: AtomicU64,
+    claims_written: AtomicU64,
+    claims_done: AtomicU64,
+    claims_skipped: AtomicU64,
+}
+
+impl ConsolidationWorkerCounters {
+    fn record(&self, summary: &ConsolidationWorkerRunSummary) {
+        self.jobs_processed
+            .fetch_add(summary.jobs_processed as u64, Ordering::Relaxed);
+        self.jobs_failed
+            .fetch_add(summary.failed_jobs as u64, Ordering::Relaxed);
+        self.claims_written
+            .fetch_add(summary.claims_written as u64, Ordering::Relaxed);
+        self.claims_done
+            .fetch_add(summary.claims_done as u64, Ordering::Relaxed);
+        self.claims_skipped
+            .fetch_add(summary.claims_skipped as u64, Ordering::Relaxed);
+    }
+
+    fn load(&self) -> (u64, u64, u64, u64, u64) {
+        (
+            self.jobs_processed.load(Ordering::Relaxed),
+            self.jobs_failed.load(Ordering::Relaxed),
+            self.claims_written.load(Ordering::Relaxed),
+            self.claims_done.load(Ordering::Relaxed),
+            self.claims_skipped.load(Ordering::Relaxed),
+        )
+    }
+}
+
+fn consolidation_counters() -> Arc<ConsolidationWorkerCounters> {
+    CONSOLIDATION_COUNTERS
+        .get_or_init(|| Arc::new(ConsolidationWorkerCounters::default()))
+        .clone()
+}
+
+fn spawn_consolidation_worker(service: MemoryService) {
+    let counters = consolidation_counters();
+    tokio::spawn(async move {
+        loop {
+            match service.run_consolidation_worker_once().await {
+                Ok(summary) => {
+                    counters.record(&summary);
+                    if summary.jobs_processed == 0 {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
+                }
+                Err(_error) => tokio::time::sleep(Duration::from_secs(1)).await,
+            }
+        }
+    });
+}
+
 fn spawn_deletion_worker(service: MemoryService) {
     tokio::spawn(async move {
         loop {
@@ -368,23 +466,24 @@ mod tests {
     #[test]
     fn metrics_surface_is_fixed_and_content_free() {
         let body = metrics_body(
-            palimpsest_http::ContentLeaseCleanupCounters {
+            ContentLeaseCleanupCounters {
                 release_retries: 2,
                 runtime_unavailable: 3,
                 outstanding: 4,
                 deferred_to_expiry: 5,
             },
-            palimpsest_http::ServerMetricsSnapshot {
+            ServerMetricsSnapshot {
                 latency_bucket_totals: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
                 latency_sum_micros: 55_000,
                 projection_lease_seconds: 60,
                 projection_renewal_interval_seconds: 20,
             },
+            consolidation_counters(),
             None,
         );
 
         assert!(body.contains("# TYPE palimpsest_build_info gauge\n"));
-        assert!(body.contains("palimpsest_schema_version 21\n"));
+        assert!(body.contains("palimpsest_schema_version 22\n"));
         assert!(body.contains("palimpsest_content_lease_release_retries_total 2\n"));
         assert!(body.contains("palimpsest_content_lease_release_runtime_unavailable_total 3\n"));
         assert!(body.contains("palimpsest_content_lease_release_outstanding 4\n"));
@@ -419,7 +518,7 @@ mod tests {
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
         assert_eq!(
             response.headers()[header::CONTENT_TYPE],
-            "text/plain; version=0.0.5; charset=utf-8"
+            "text/plain; version=0.0.6; charset=utf-8"
         );
     }
 }

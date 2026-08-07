@@ -30,11 +30,11 @@ async fn metrics_probe_is_public_content_free_and_database_independent() -> Resu
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            == Some("text/plain; version=0.0.5; charset=utf-8")
+            == Some("text/plain; version=0.0.6; charset=utf-8")
     );
     let body = response.text().await?;
     ensure!(body.contains("palimpsest_build_info"));
-    ensure!(body.contains("palimpsest_schema_version 21"));
+    ensure!(body.contains("palimpsest_schema_version 22"));
     ensure!(!body.contains("metrics-runtime"));
     ensure!(!body.contains("password"));
 

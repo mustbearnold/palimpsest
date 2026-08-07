@@ -190,7 +190,11 @@ pub(crate) async fn verify_crash_recovery_records(
     Ok(())
 }
 
-pub(crate) async fn verify_governed_write_records(pool: &PgPool, target: &Target) -> Result<()> {
+pub(crate) async fn verify_governed_write_records(
+    pool: &PgPool,
+    target: &Target,
+    scenario_case_id: Uuid,
+) -> Result<()> {
     let mut transaction = pool.begin().await?;
     sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
         .bind(target.tenant_id.to_string())
@@ -212,11 +216,12 @@ pub(crate) async fn verify_governed_write_records(pool: &PgPool, target: &Target
             count(*) FILTER (WHERE operation_id = 'supersedeFact') AS supersede_fact_count,
             count(*) AS total_count
         FROM memory.write_audit_receipts
-        WHERE tenant_id = $1 AND subject_id = $2
+        WHERE tenant_id = $1 AND subject_id = $2 AND case_id = $3
         "#,
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
+    .bind(scenario_case_id)
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(audit.try_get::<i64, _>("episode_count")? == 3);
@@ -232,11 +237,12 @@ pub(crate) async fn verify_governed_write_records(pool: &PgPool, target: &Target
             count(*) FILTER (WHERE event_type = 'memory.fact.superseded.v1') AS supersede_fact_count,
             count(*) AS total_count
         FROM memory.outbox_intents
-        WHERE tenant_id = $1 AND subject_id = $2
+        WHERE tenant_id = $1 AND subject_id = $2 AND case_id = $3
         "#,
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
+    .bind(scenario_case_id)
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(outbox.try_get::<i64, _>("episode_count")? == 3);
@@ -255,11 +261,12 @@ pub(crate) async fn verify_governed_write_records(pool: &PgPool, target: &Target
          AND outbox.resource_episode_id IS NOT DISTINCT FROM audit.resource_episode_id
          AND outbox.resource_fact_id IS NOT DISTINCT FROM audit.resource_fact_id
          AND outbox.resource_revision_id IS NOT DISTINCT FROM audit.resource_revision_id
-        WHERE audit.tenant_id = $1 AND audit.subject_id = $2
+        WHERE audit.tenant_id = $1 AND audit.subject_id = $2 AND audit.case_id = $3
         "#,
     )
     .bind(target.tenant_id)
     .bind(target.subject_id)
+    .bind(scenario_case_id)
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(
@@ -270,11 +277,23 @@ pub(crate) async fn verify_governed_write_records(pool: &PgPool, target: &Target
     let receipt_count: i64 = sqlx::query_scalar(
         r#"
         SELECT count(*)
-        FROM memory.idempotency_receipts
-        WHERE tenant_id = $1 AND principal_id = 'principal-a' AND state = 'completed'
+        FROM memory.idempotency_receipts AS receipt
+        JOIN memory.write_audit_receipts AS audit
+          ON audit.tenant_id = receipt.tenant_id
+         AND audit.subject_id = receipt.subject_id
+         AND audit.operation_id = receipt.operation_id
+         AND audit.resource_episode_id IS NOT DISTINCT FROM receipt.resource_episode_id
+         AND audit.resource_fact_id IS NOT DISTINCT FROM receipt.resource_fact_id
+        WHERE receipt.tenant_id = $1
+          AND receipt.subject_id = $2
+          AND receipt.principal_id = 'principal-a'
+          AND receipt.state = 'completed'
+          AND audit.case_id = $3
         "#,
     )
     .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(scenario_case_id)
     .fetch_one(&mut *transaction)
     .await?;
     ensure!(

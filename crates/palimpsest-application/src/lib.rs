@@ -7,11 +7,12 @@ use palimpsest_domain::{
     DeletionLiveDisposition, DeletionOperationId, DeletionOperationState, DeletionTargetCapability,
     DeletionTargetName, DeletionTargetState, DeletionTargetVerification, EffectId,
     EffectTransition, EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode,
-    EpisodeId, ExportId, FactId, FactView, NewCheckpointRevision, NewEffectTransition, NewEpisode,
-    NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval, OperationGrant, PrincipalId,
-    PrincipalScope, RetrievalFilters, RetrievalId, RetrievalPolicyId, RetrievalQuery,
-    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
-    SubjectLifecycle, SupersedeFact, TenantId, ThreadId,
+    EpisodeId, ExportId, FactId, FactKey, FactNamespace, FactView, NewCheckpointRevision,
+    NewEffectTransition, NewEpisode, NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval,
+    OperationGrant, PrincipalId, PrincipalScope, RetentionPolicyId, RetrievalFilters, RetrievalId,
+    RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity,
+    SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact, TenantId, ThreadId, ValidTime,
+    WritePolicy, WritePolicyId, WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -19,8 +20,23 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub mod consolidation;
 pub mod export;
 pub mod recovery;
+
+pub use consolidation::{
+    CONSOLIDATION_CLAIM_CAP, CONSOLIDATION_DERIVED_FACT_NAMESPACE,
+    CONSOLIDATION_MAX_CLAIMS_PER_RUN, CONSOLIDATION_PROVENANCE_KIND,
+    CONSOLIDATION_SKIP_REASON_LOW_CONFIDENCE, CONSOLIDATION_WORKER_LEASE_SECONDS,
+    CONSOLIDATION_WRITER_PRINCIPAL_ID, ClaimedConsolidationClaim, ClaimedConsolidationJob,
+    ConsolidationInterpreter, ConsolidationInterpreterConfigView, ConsolidationJobView,
+    ConsolidationPolicyView, ConsolidationRepository, ConsolidationWorkerRunSummary,
+    CreateConsolidationJobOutcome, FixtureDeterministicInterpreter, InterpreterContext,
+    InterpreterEpisode, InterpreterError, InterpreterRegistry, NewConsolidationInterpreterConfig,
+    NewConsolidationJob, NewConsolidationPolicy, PendingConsolidationClaim, WorkerPolicySnapshot,
+    consolidation_claim_id, consolidation_claim_idempotency_key, consolidation_content_hash,
+    consolidation_fact_key,
+};
 
 pub use export::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, EXPORT_RETENTION_HOURS,
@@ -598,6 +614,8 @@ pub struct MemoryService {
     checkpoints: Arc<dyn CheckpointRepository>,
     retrievals: Arc<dyn RetrievalRepository>,
     embeddings: Arc<dyn EmbeddingProvider>,
+    consolidations: Option<Arc<dyn ConsolidationRepository>>,
+    consolidation_interpreters: Option<Arc<InterpreterRegistry>>,
 }
 
 impl MemoryService {
@@ -618,7 +636,392 @@ impl MemoryService {
             checkpoints,
             retrievals,
             embeddings: Arc::new(UnavailableEmbeddingProvider),
+            consolidations: None,
+            consolidation_interpreters: None,
         }
+    }
+
+    pub fn with_consolidation_components(
+        mut self,
+        consolidations: Arc<dyn ConsolidationRepository>,
+        interpreters: Arc<InterpreterRegistry>,
+    ) -> Self {
+        self.consolidations = Some(consolidations);
+        self.consolidation_interpreters = Some(interpreters);
+        self
+    }
+
+    /// Registers an interpreter configuration for a tenant. The provider
+    /// kind must resolve in the registry; otherwise the request fails.
+    pub async fn register_consolidation_interpreter_config(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        request: NewConsolidationInterpreterConfig,
+    ) -> Result<ConsolidationInterpreterConfigView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        let Some(consolidations) = self.consolidations.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let Some(interpreters) = self.consolidation_interpreters.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        if interpreters.resolve(&request.provider_kind).is_err() {
+            return Err(ServiceError::Unprocessable(format!(
+                "interpreter provider is not registered: {}",
+                request.provider_kind
+            )));
+        }
+        consolidations
+            .register_interpreter_config(tenant_id, request)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Registers a consolidation policy for a tenant and source kind.
+    pub async fn register_consolidation_policy(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        request: NewConsolidationPolicy,
+    ) -> Result<ConsolidationPolicyView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        if !(0.0..=1.0).contains(&request.confidence_auto_promote_min) {
+            return Err(ServiceError::Invalid(
+                "confidence_auto_promote_min must be between 0.0 and 1.0".to_owned(),
+            ));
+        }
+        WritePolicyId::try_from(request.write_policy_id.clone())
+            .map_err(|_| ServiceError::Invalid("write_policy_id is invalid".to_owned()))?;
+        WritePolicyVersion::try_from(request.write_policy_version.clone())
+            .map_err(|_| ServiceError::Invalid("write_policy_version is invalid".to_owned()))?;
+        RetentionPolicyId::try_from(request.retention_policy_id.clone())
+            .map_err(|_| ServiceError::Invalid("retention_policy_id is invalid".to_owned()))?;
+        let Some(consolidations) = self.consolidations.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        // The interpreter config must exist before a policy can reference it.
+        let _ = consolidations
+            .get_interpreter_config(tenant_id, request.interpreter_config_id)
+            .await
+            .map_err(map_repository)?;
+        consolidations
+            .register_policy(tenant_id, request)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Reads one consolidation policy for a tenant and source kind.
+    pub async fn get_consolidation_policy(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        source_kind: &str,
+        policy_id: &str,
+    ) -> Result<ConsolidationPolicyView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        let Some(consolidations) = self.consolidations.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        consolidations
+            .get_policy(tenant_id, source_kind, policy_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Creates a durable consolidation job for a subject. The request fails
+    /// closed (R4) when the policy is missing, disabled, or unresolved.
+    pub async fn create_consolidation_job(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: NewConsolidationJob,
+        idempotency_key: String,
+    ) -> Result<CreateConsolidationJobOutcome, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        let Some(consolidations) = self.consolidations.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let policy = consolidations
+            .get_policy(tenant_id, &request.source_kind, &request.policy_id)
+            .await
+            .map_err(map_repository)?;
+        if !policy.enabled {
+            return Err(ServiceError::Unprocessable(format!(
+                "consolidation policy is disabled: {}",
+                request.policy_id
+            )));
+        }
+        let Some(interpreters) = self.consolidation_interpreters.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let config = consolidations
+            .get_interpreter_config(tenant_id, policy.interpreter_config_id)
+            .await
+            .map_err(map_repository)?;
+        if interpreters.resolve(&config.provider_kind).is_err() {
+            return Err(ServiceError::Unprocessable(format!(
+                "interpreter provider is not registered: {}",
+                config.provider_kind
+            )));
+        }
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&serde_json::json!({
+                "source_kind": request.source_kind,
+                "policy_id": request.policy_id,
+                "window_from": request.window_from.to_string(),
+                "window_until": request.window_until.to_string(),
+            }))
+            .expect("job fingerprint is serializable"),
+        ));
+        consolidations
+            .create_job(
+                tenant_id,
+                subject_id,
+                request,
+                IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+            )
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Reads one consolidation job for a subject.
+    pub async fn poll_consolidation_job(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        job_id: Uuid,
+    ) -> Result<ConsolidationJobView, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        let Some(consolidations) = self.consolidations.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        consolidations
+            .poll_job(tenant_id, subject_id, job_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// One worker pass: claim at most one batch of jobs, interpret each
+    /// window, materialize the claims through the governed fact path, and
+    /// complete or fail the job. Crash-resumable: every claim has a lease,
+    /// and the materialization is idempotent per claim (R3).
+    pub async fn run_consolidation_worker_once(
+        &self,
+    ) -> Result<ConsolidationWorkerRunSummary, ServiceError> {
+        let Some(consolidations) = self.consolidations.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let Some(interpreters) = self.consolidation_interpreters.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let worker_id = Uuid::now_v7();
+        let mut summary = ConsolidationWorkerRunSummary::default();
+        while summary.jobs_processed < CONSOLIDATION_MAX_CLAIMS_PER_RUN {
+            let Some(job) = consolidations
+                .claim_next_job(worker_id, CONSOLIDATION_WORKER_LEASE_SECONDS)
+                .await
+                .map_err(map_repository)?
+            else {
+                break;
+            };
+            summary.jobs_processed += 1;
+            let snapshot = match consolidations.worker_policy_snapshot(&job).await {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    let _ = consolidations
+                        .fail_job(&job, "policy or interpreter config missing")
+                        .await;
+                    summary.failed_jobs += 1;
+                    continue;
+                }
+            };
+            let interpreter = match interpreters.resolve(&snapshot.provider_kind) {
+                Ok(interpreter) => interpreter,
+                Err(_) => {
+                    let _ = consolidations
+                        .fail_job(&job, "interpreter provider not registered")
+                        .await;
+                    summary.failed_jobs += 1;
+                    continue;
+                }
+            };
+            let episodes = consolidations
+                .select_window_episodes(&job)
+                .await
+                .map_err(map_repository)?;
+            if episodes.is_empty() {
+                let _ = consolidations.complete_job(&job).await;
+                continue;
+            }
+            let model_identity = format!("{}:{}", snapshot.provider_kind, snapshot.config_digest);
+            let context = InterpreterContext {
+                tenant_id: job.tenant_id,
+                subject_id: job.subject_id,
+                source_kind: &job.source_kind,
+                policy_id: &job.policy_id,
+                policy_version: &job.policy_version,
+                model_identity: &model_identity,
+                prompt_policy_version: &snapshot.prompt_policy_version,
+            };
+            let claims = match interpreter.interpret(&context, &episodes).await {
+                Ok(claims) => claims,
+                Err(error) => {
+                    let _ = consolidations
+                        .fail_job(&job, &sanitize_failure_reason(&error.to_string()))
+                        .await;
+                    summary.failed_jobs += 1;
+                    continue;
+                }
+            };
+            let pending: Vec<PendingConsolidationClaim> = claims
+                .into_iter()
+                .take(job.claim_cap as usize)
+                .map(|claim| {
+                    let claim_id = consolidation_claim_id(
+                        job.tenant_id,
+                        job.subject_id,
+                        &job.source_kind,
+                        &job.policy_id,
+                        claim.episode_ids[0],
+                    );
+                    PendingConsolidationClaim {
+                        claim_id,
+                        case_id: claim.case_id,
+                        episode_ids: claim.episode_ids,
+                        content_hash: consolidation_content_hash(&claim.value),
+                        confidence: claim.confidence,
+                        sensitivity: claim.sensitivity,
+                        observed_at: claim.observed_at,
+                        valid_from: claim.valid_from,
+                        valid_until: claim.valid_until,
+                        model_identity: model_identity.clone(),
+                        prompt_policy_version: snapshot.prompt_policy_version.clone(),
+                        value: claim.value,
+                    }
+                })
+                .collect();
+            summary.claims_written += pending.len() as u32;
+            consolidations
+                .insert_claims(&job, &pending)
+                .await
+                .map_err(map_repository)?;
+            while let Some(claim) = consolidations
+                .claim_next_claim(&job, worker_id, CONSOLIDATION_WORKER_LEASE_SECONDS)
+                .await
+                .map_err(map_repository)?
+            {
+                if claim.confidence < snapshot.confidence_auto_promote_min {
+                    if consolidations
+                        .skip_claim(&claim, CONSOLIDATION_SKIP_REASON_LOW_CONFIDENCE)
+                        .await
+                        .map_err(map_repository)?
+                    {
+                        summary.claims_skipped += 1;
+                    }
+                    continue;
+                }
+                match self
+                    .materialize_consolidation_claim(&job, &claim, &snapshot)
+                    .await
+                {
+                    Ok((fact_id, revision_id)) => {
+                        if consolidations
+                            .complete_claim(&claim, fact_id, revision_id)
+                            .await
+                            .map_err(map_repository)?
+                        {
+                            summary.claims_done += 1;
+                        }
+                    }
+                    Err(_error @ (ServiceError::Invalid(_) | ServiceError::Unprocessable(_))) => {
+                        let _ = consolidations
+                            .skip_claim(&claim, "materialization_failed")
+                            .await;
+                    }
+                    Err(_error) => {
+                        let _ = consolidations.release_claim(&claim).await;
+                        break;
+                    }
+                }
+            }
+            if !consolidations
+                .complete_job(&job)
+                .await
+                .map_err(map_repository)?
+            {
+                let _ = consolidations.fail_job(&job, "claims incomplete").await;
+                summary.failed_jobs += 1;
+            }
+        }
+        Ok(summary)
+    }
+
+    async fn materialize_consolidation_claim(
+        &self,
+        job: &ClaimedConsolidationJob,
+        claim: &ClaimedConsolidationClaim,
+        snapshot: &WorkerPolicySnapshot,
+    ) -> Result<(FactId, RevisionId), ServiceError> {
+        let fact_id = FactId(Uuid::now_v7());
+        let revision_id = RevisionId(Uuid::now_v7());
+        let value_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(&claim.value).expect("claim value is serializable"),
+        ));
+        let new_fact = NewFact {
+            tenant_id: job.tenant_id,
+            subject_id: job.subject_id,
+            case_id: claim.case_id,
+            fact_id,
+            revision_id,
+            namespace: FactNamespace::try_from(CONSOLIDATION_DERIVED_FACT_NAMESPACE.to_owned())
+                .expect("derived namespace is valid"),
+            key: FactKey::try_from(consolidation_fact_key(&job.source_kind, claim.claim_id))
+                .expect("derived fact key is valid"),
+            value: claim.value.clone(),
+            observed_at: claim.observed_at,
+            valid_time: ValidTime {
+                from: claim.valid_from,
+                until: claim.valid_until,
+            },
+            evidence_episode_ids: claim.episode_ids.clone(),
+            write_policy: WritePolicy {
+                id: WritePolicyId::try_from(snapshot.write_policy_id.clone())
+                    .expect("registered policy id is valid"),
+                version: WritePolicyVersion::try_from(snapshot.write_policy_version.clone())
+                    .expect("registered policy version is valid"),
+            },
+            confidence: claim.confidence,
+            sensitivity: Sensitivity::try_from(claim.sensitivity.clone())
+                .expect("claim sensitivity is valid"),
+            retention_policy_id: RetentionPolicyId::try_from(snapshot.retention_policy_id.clone())
+                .expect("registered retention policy is valid"),
+            writer_principal_id: PrincipalId(CONSOLIDATION_WRITER_PRINCIPAL_ID.to_owned()),
+            schema_version: 1,
+            value_sha256: value_sha256.clone(),
+        };
+        let idempotency = IdempotencyRequest {
+            key: consolidation_claim_idempotency_key(
+                job.tenant_id,
+                job.subject_id,
+                &job.source_kind,
+                &job.policy_id,
+                claim.claim_id,
+            ),
+            fingerprint: value_sha256,
+        };
+        let outcome = self
+            .facts
+            .create(new_fact, idempotency)
+            .await
+            .map_err(map_repository)?;
+        Ok((outcome.view.fact_id, outcome.view.head_revision_id))
     }
 
     pub fn with_embedding_provider(mut self, embeddings: Arc<dyn EmbeddingProvider>) -> Self {
@@ -2129,6 +2532,22 @@ fn authorize(
     } else {
         Err(ServiceError::NotFound)
     }
+}
+
+fn authorize_tenant(principal: &PrincipalScope, tenant_id: TenantId) -> Result<(), ServiceError> {
+    if principal.tenant_id == tenant_id {
+        Ok(())
+    } else {
+        Err(ServiceError::NotFound)
+    }
+}
+
+fn sanitize_failure_reason(reason: &str) -> String {
+    reason
+        .chars()
+        .take(200)
+        .filter(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+        .collect()
 }
 
 fn authorize_content(

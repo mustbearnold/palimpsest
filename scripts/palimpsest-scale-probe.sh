@@ -9,13 +9,18 @@ fi
 
 scale_revisions="${PALIMPSEST_SCALE_REVISIONS:-100000}"
 scale_queries="${PALIMPSEST_SCALE_QUERIES:-20}"
+scale_episodes="${PALIMPSEST_SCALE_EPISODES:-100000}"
 
-if [[ "$scale_revisions" != +([0-9]) || "$scale_queries" != +([0-9]) ]]; then
-    echo "PALIMPSEST_SCALE_REVISIONS and PALIMPSEST_SCALE_QUERIES must be decimal integers" >&2
+if [[ "$scale_revisions" != +([0-9]) || "$scale_queries" != +([0-9]) || "$scale_episodes" != +([0-9]) ]]; then
+    echo "PALIMPSEST_SCALE_REVISIONS, PALIMPSEST_SCALE_QUERIES, and PALIMPSEST_SCALE_EPISODES must be decimal integers" >&2
     exit 2
 fi
 if ((scale_revisions < 1000 || scale_revisions > 1000000)); then
     echo "PALIMPSEST_SCALE_REVISIONS must be between 1000 and 1000000" >&2
+    exit 2
+fi
+if ((scale_episodes < 1000 || scale_episodes > 1000000)); then
+    echo "PALIMPSEST_SCALE_EPISODES must be between 1000 and 1000000" >&2
     exit 2
 fi
 if ((scale_queries < 5 || scale_queries > 100)); then
@@ -34,6 +39,7 @@ probe_dir="$(mktemp -d)"
 metrics_file="$probe_dir/metrics.txt"
 plan_file="$probe_dir/plan.txt"
 plan_selective_file="$probe_dir/plan_selective.txt"
+plan_consolidation_file="$probe_dir/plan_consolidation.txt"
 error_file="$probe_dir/error.txt"
 cleanup() {
     rm -rf -- "$probe_dir"
@@ -50,8 +56,10 @@ if ! psql \
     --set=ON_ERROR_STOP=1 \
     --set="scale_revisions=$scale_revisions" \
     --set="scale_queries=$scale_queries" \
+    --set="scale_episodes=$scale_episodes" \
     --set="plan_file=$plan_file" \
     --set="plan_selective_file=$plan_selective_file" \
+    --set="plan_consolidation_file=$plan_consolidation_file" \
     >"$metrics_file" \
     2>"$error_file" <<'SQL'; then
 BEGIN;
@@ -368,6 +376,149 @@ WHERE projection.tenant_id = :'tenant_id'::uuid
   AND projection.search_vector @@ websearch_to_tsquery('pg_catalog.simple', :'selective_query');
 \o
 
+-- Consolidation profile (spec 011 A6): seed a conversation window of
+-- content-free episodes, register an interpreter config and a write policy,
+-- insert one bounded job, and measure the worker's episode-window select.
+INSERT INTO memory.episodes (
+    tenant_id, subject_id, case_id, episode_id, kind, observed_at,
+    writer_principal_id, source_type, source_uri, external_id, sensitivity,
+    retention_policy_id, schema_version, payload, payload_sha256
+)
+SELECT
+    :'tenant_id'::uuid,
+    :'subject_id'::uuid,
+    :'case_id'::uuid,
+    md5('palimpsest-scale-conversation-episode-' || series)::uuid,
+    'scale_probe_conversation',
+    '2026-08-03T00:00:00Z'::timestamptz + (series * interval '1 second'),
+    'palimpsest-scale-probe',
+    'scale.probe.conversation',
+    NULL,
+    'palimpsest-scale-conversation-episode-' || series,
+    'internal',
+    'standard',
+    1,
+    jsonb_build_object('kind', 'scale-probe-conversation'),
+    encode(
+        sha256(convert_to('palimpsest-scale-conversation-episode-' || series, 'UTF8')),
+        'hex'
+    )
+FROM generate_series(1, :scale_episodes::bigint) AS generated(series);
+
+ANALYZE memory.episodes;
+
+INSERT INTO memory.consolidation_interpreter_configs (
+    tenant_id, interpreter_config_id, provider_kind, prompt_policy_version,
+    config_digest, created_by_principal_id
+)
+VALUES (
+    :'tenant_id'::uuid,
+    md5('palimpsest-scale-config')::uuid,
+    'fixture-deterministic-v1',
+    'scale-probe-1',
+    encode(sha256(convert_to('scale-probe-1', 'UTF8')), 'hex'),
+    'palimpsest-scale-probe'
+);
+
+INSERT INTO memory.consolidation_policies (
+    tenant_id, source_kind, policy_id, interpreter_config_id,
+    write_policy_id, write_policy_version, retention_policy_id,
+    confidence_auto_promote_min, created_by_principal_id
+)
+VALUES (
+    :'tenant_id'::uuid,
+    'scale.probe.conversation',
+    'scale-probe-consolidation-v1',
+    md5('palimpsest-scale-config')::uuid,
+    'scale-probe-write',
+    '1',
+    'standard',
+    0.9,
+    'palimpsest-scale-probe'
+);
+
+INSERT INTO memory.consolidation_jobs (
+    tenant_id, subject_id, job_id, source_kind, policy_id, policy_version,
+    window_from, window_until, lifecycle_state, claim_cap, principal_id,
+    idempotency_key_digest, request_fingerprint
+)
+VALUES (
+    :'tenant_id'::uuid,
+    :'subject_id'::uuid,
+    md5('palimpsest-scale-job')::uuid,
+    'scale.probe.conversation',
+    'scale-probe-consolidation-v1',
+    '1',
+    clock_timestamp() - interval '1 hour',
+    clock_timestamp() + interval '1 hour',
+    'pending',
+    100000,
+    'palimpsest-scale-probe',
+    encode(sha256(convert_to('palimpsest-scale-job-key', 'UTF8')), 'hex'),
+    encode(sha256(convert_to('palimpsest-scale-job-fingerprint', 'UTF8')), 'hex')
+);
+
+CREATE TEMP TABLE consolidation_probe_metrics (
+    episode_count bigint,
+    window_ms numeric,
+    cap_ok boolean
+);
+
+DO $measure$
+DECLARE
+    started_at timestamptz;
+    episode_count bigint;
+BEGIN
+    episode_count := (
+        SELECT count(*)
+        FROM memory.episodes
+        WHERE tenant_id = :'tenant_id'::uuid
+          AND subject_id = :'subject_id'::uuid
+          AND source_type = 'scale.probe.conversation'
+          AND recorded_at >= clock_timestamp() - interval '1 hour'
+          AND recorded_at < clock_timestamp() + interval '1 hour'
+    );
+    started_at := clock_timestamp();
+    PERFORM 1
+    FROM memory.episodes
+    WHERE tenant_id = :'tenant_id'::uuid
+      AND subject_id = :'subject_id'::uuid
+      AND source_type = 'scale.probe.conversation'
+      AND recorded_at >= clock_timestamp() - interval '1 hour'
+      AND recorded_at < clock_timestamp() + interval '1 hour';
+    INSERT INTO consolidation_probe_metrics
+    VALUES (
+        episode_count,
+        round(
+            extract(epoch FROM clock_timestamp() - started_at) * 1000.0,
+            3
+        ),
+        (
+            SELECT claim_cap = 100000 AND claims_total = 0 AND claims_done = 0
+            FROM memory.consolidation_jobs
+            WHERE tenant_id = :'tenant_id'::uuid
+              AND job_id = md5('palimpsest-scale-job')::uuid
+        )
+    );
+END
+$measure$;
+
+SELECT episode_count || '|' || window_ms || '|' || cap_ok
+FROM consolidation_probe_metrics;
+
+\o :plan_consolidation_file
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+SELECT episode_id, case_id, observed_at, source_type,
+    encode(sha256(convert_to(coalesce(payload::text, ''), 'UTF8')), 'hex') AS payload_digest
+FROM memory.episodes
+WHERE tenant_id = :'tenant_id'::uuid
+  AND subject_id = :'subject_id'::uuid
+  AND source_type = 'scale.probe.conversation'
+  AND recorded_at >= clock_timestamp() - interval '1 hour'
+  AND recorded_at < clock_timestamp() + interval '1 hour'
+ORDER BY episode_id;
+\o
+
 ROLLBACK;
 SQL
     echo "scale probe failed; no synthetic data was retained" >&2
@@ -424,20 +575,45 @@ selective_plan_summary="$(jq -c '
         )
     }
 ' "$plan_selective_file")"
+consolidation_plan_sha256="$(sha256sum "$plan_consolidation_file" | awk '{print $1}')"
+consolidation_plan_summary="$(jq -c '
+    .[0] as $root
+    | {
+        planning_time_ms: ($root["Planning Time"] // 0),
+        execution_time_ms: ($root["Execution Time"] // 0),
+        top_nodes: (
+            [$root.Plan | .. | objects | select(has("Node Type"))]
+            | sort_by(-(."Actual Total Time" // 0))
+            | .[:12]
+            | map({
+                node_type: .["Node Type"],
+                relation: (.["Relation Name"] // null),
+                actual_total_time_ms: (."Actual Total Time" // 0),
+                actual_rows: (."Actual Rows" // 0),
+                actual_loops: (."Actual Loops" // 0),
+                shared_hit_blocks: (."Shared Hit Blocks" // 0),
+                shared_read_blocks: (."Shared Read Blocks" // 0),
+                temp_read_blocks: (."Temp Read Blocks" // 0),
+                temp_written_blocks: (."Temp Written Blocks" // 0)
+            })
+        )
+    }
+' "$plan_consolidation_file")"
 IFS='|' read -r revision_count requested_queries measured_queries p50_ms p95_ms p99_ms mean_ms max_ms projection_count <<<"$(head -1 <<<"$psql_output")"
+IFS='|' read -r consolidation_episodes consolidation_window_ms consolidation_cap_ok _consolidation_rest <<<"$(tail -1 <<<"$psql_output")"
 
 bands_json="$(
-    tail -n +2 <<<"$psql_output" | while IFS='|' read -r band band_count b_p50 b_p95 b_p99 b_mean b_max; do
+    head -n -1 <<<"$psql_output" | tail -n +2 | while IFS='|' read -r band band_count b_p50 b_p95 b_p99 b_mean b_max; do
         printf '{"band":"%s","measured_queries":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"mean_ms":%s,"max_ms":%s},' \
             "$band" "$band_count" "$b_p50" "$b_p95" "$b_p99" "$b_mean" "$b_max"
     done | sed 's/,$//' | sed 's/^/[/; s/$/]/'
 )"
-total_measured="$(tail -n +2 <<<"$psql_output" | cut -d'|' -f2 | awk '{s += $1} END {print s}')"
+total_measured="$(head -n -1 <<<"$psql_output" | tail -n +2 | cut -d'|' -f2 | awk '{s += $1} END {print s}')"
 
-if [[ -z "${projection_count:-}" || -z "$bands_json" || "$bands_json" == "[]" || "$total_measured" != "$requested_queries" ]]; then
+if [[ -z "${projection_count:-}" || -z "$bands_json" || "$bands_json" == "[]" || "$total_measured" != "$requested_queries" || -z "${consolidation_episodes:-}" || "$consolidation_cap_ok" != "true" ]]; then
     echo "scale probe returned an incomplete measurement" >&2
     exit 1
 fi
 
-printf '{"profile":"authorized-lexical-retrieval-scale-v1","revision_count":%s,"projection_count":%s,"query_count":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"mean_ms":%s,"max_ms":%s,"bands":%s,"plan_sha256":"%s","plan_summary":%s,"selective_plan_sha256":"%s","selective_plan_summary":%s,"transaction_rolled_back":true}\n' \
-    "$revision_count" "$projection_count" "$measured_queries" "$p50_ms" "$p95_ms" "$p99_ms" "$mean_ms" "$max_ms" "$bands_json" "$plan_sha256" "$plan_summary" "$selective_plan_sha256" "$selective_plan_summary"
+printf '{"profile":"authorized-lexical-retrieval-scale-v1","revision_count":%s,"projection_count":%s,"query_count":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"mean_ms":%s,"max_ms":%s,"bands":%s,"plan_sha256":"%s","plan_summary":%s,"selective_plan_sha256":"%s","selective_plan_summary":%s,"consolidation_episodes":%s,"consolidation_window_ms":%s,"consolidation_cap_ok":%s,"consolidation_plan_sha256":"%s","consolidation_plan_summary":%s,"transaction_rolled_back":true}\n' \
+    "$revision_count" "$projection_count" "$measured_queries" "$p50_ms" "$p95_ms" "$p99_ms" "$mean_ms" "$max_ms" "$bands_json" "$plan_sha256" "$plan_summary" "$selective_plan_sha256" "$selective_plan_summary" "$consolidation_episodes" "$consolidation_window_ms" "$consolidation_cap_ok" "$consolidation_plan_sha256" "$consolidation_plan_summary"

@@ -27,6 +27,8 @@ use sqlx::{AssertSqlSafe, ConnectOptions, PgPool, Row, postgres::PgConnectOption
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
+#[path = "conformance_postgres18/consolidation.rs"]
+mod consolidation;
 #[path = "conformance_postgres18/corpus.rs"]
 mod corpus;
 #[path = "conformance_postgres18/crash.rs"]
@@ -49,6 +51,12 @@ mod property_idempotency;
 mod restore;
 #[path = "conformance_postgres18/temporal.rs"]
 mod temporal;
+use consolidation::{
+    consolidation_crash_resume_yields_no_duplicates_or_loss,
+    consolidation_fails_closed_without_registered_policy, consolidation_jobs_are_isolated_by_scope,
+    consolidation_jobs_enforce_bounded_queues,
+    consolidation_worker_materializes_attributable_facts,
+};
 use crash::{verify_checkpoint_governance, verify_governed_write_records};
 use deletion::{
     deletion_failed_operation_can_be_repaired_and_resumed,
@@ -429,7 +437,21 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             cross_scope_reads_fail_closed(&scenario_target).await?;
             rejects_cross_subject_idempotency_reuse(&scenario_target).await?;
             rejects_invalid_domain_and_timestamp_inputs(&scenario_target).await?;
-            verify_governed_write_records(&pool, &scenario_target).await?;
+            consolidation_worker_materializes_attributable_facts(&pool, &scenario_target).await?;
+            consolidation_fails_closed_without_registered_policy(&pool, &scenario_target).await?;
+            consolidation_jobs_are_isolated_by_scope(&pool, &scenario_target).await?;
+            consolidation_jobs_enforce_bounded_queues(&pool, &scenario_target).await?;
+            consolidation_crash_resume_yields_no_duplicates_or_loss(
+                &test_database_url,
+                &scenario_target,
+            )
+            .await?;
+            verify_governed_write_records(
+                &pool,
+                &scenario_target,
+                Uuid::parse_str("019be000-0000-7000-8000-000000000001")?,
+            )
+            .await?;
             rejects_unregistered_write_policies(&scenario_target).await?;
             let retrieval_isolation =
                 retrieval_candidates_are_authorized_before_ranking(&scenario_target).await?;

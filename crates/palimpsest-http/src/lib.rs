@@ -23,7 +23,8 @@ use axum::{
 };
 use http_body::{Frame, SizeHint};
 use palimpsest_application::{
-    ContentLeasePermit, ExportOperationState, FactAsOfCoordinates, MemoryService, ServiceError,
+    ContentLeasePermit, ExportOperationState, FactAsOfCoordinates, MemoryService,
+    NewConsolidationInterpreterConfig, NewConsolidationJob, NewConsolidationPolicy, ServiceError,
 };
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
@@ -403,6 +404,26 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
             get(get_export_content),
         )
         .route(
+            "/v1/tenants/{tenant_id}/consolidation-policies",
+            post(create_consolidation_policy),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/consolidation-interpreter-configs",
+            post(register_consolidation_interpreter_config),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/consolidation-policies/{source_kind}/{policy_id}",
+            get(get_consolidation_policy),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/consolidations",
+            post(create_consolidation),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/consolidations/{job_id}",
+            get(get_consolidation),
+        )
+        .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
             get(get_checkpoint).put(save_checkpoint),
         )
@@ -424,6 +445,27 @@ struct AppendEpisodeRequest {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateDeletionRequest {}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisterConsolidationPolicyRequest {
+    source_kind: String,
+    policy_id: String,
+    interpreter_config_id: Uuid,
+    write_policy_id: WritePolicyId,
+    write_policy_version: WritePolicyVersion,
+    retention_policy_id: RetentionPolicyId,
+    confidence_auto_promote_min: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateConsolidationRequest {
+    source_kind: String,
+    policy_id: String,
+    window_from: String,
+    window_until: String,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1285,6 +1327,182 @@ fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<PrincipalScope,
         .authenticator
         .authenticate(token)
         .ok_or_else(Problem::unauthorized)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisterInterpreterConfigRequest {
+    provider_kind: String,
+    prompt_policy_version: String,
+}
+
+async fn register_consolidation_interpreter_config(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegisterInterpreterConfigRequest>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .register_consolidation_interpreter_config(
+            &principal,
+            tenant_id,
+            NewConsolidationInterpreterConfig {
+                provider_kind: request.provider_kind,
+                prompt_policy_version: request.prompt_policy_version,
+                created_by_principal_id: principal.principal_id.clone(),
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/consolidation-interpreter-configs/{}",
+        tenant_id.0, view.interpreter_config_id
+    );
+    let body = serde_json::to_value(&view).map_err(|error| {
+        Problem::internal(format!("Interpreter config does not serialize: {error}"))
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        [(header::LOCATION, location)],
+        Json(body),
+    )
+        .into_response())
+}
+
+async fn create_consolidation_policy(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegisterConsolidationPolicyRequest>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .register_consolidation_policy(
+            &principal,
+            tenant_id,
+            NewConsolidationPolicy {
+                source_kind: request.source_kind,
+                policy_id: request.policy_id,
+                interpreter_config_id: request.interpreter_config_id,
+                write_policy_id: request.write_policy_id.as_str().to_owned(),
+                write_policy_version: request.write_policy_version.as_str().to_owned(),
+                retention_policy_id: request.retention_policy_id.as_str().to_owned(),
+                confidence_auto_promote_min: request.confidence_auto_promote_min,
+                created_by_principal_id: principal.principal_id.clone(),
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/consolidation-policies/{}/{}",
+        tenant_id.0, view.source_kind, view.policy_id
+    );
+    let body = serde_json::to_value(&view)
+        .map_err(|error| Problem::internal(format!("Policy view does not serialize: {error}")))?;
+    Ok((
+        StatusCode::CREATED,
+        [(header::LOCATION, location)],
+        Json(body),
+    )
+        .into_response())
+}
+
+async fn get_consolidation_policy(
+    State(state): State<AppState>,
+    Path((tenant_id, source_kind, policy_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .get_consolidation_policy(&principal, tenant_id, &source_kind, &policy_id)
+        .await
+        .map_err(Problem::from_service)?;
+    let body = serde_json::to_value(&view)
+        .map_err(|error| Problem::internal(format!("Policy view does not serialize: {error}")))?;
+    Ok(Json(body).into_response())
+}
+
+async fn create_consolidation(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(request): Json<CreateConsolidationRequest>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let window_from = parse_datetime("window_from", &request.window_from)?;
+    let window_until = parse_datetime("window_until", &request.window_until)?;
+    let outcome = state
+        .service
+        .create_consolidation_job(
+            &principal,
+            tenant_id,
+            subject_id,
+            NewConsolidationJob {
+                source_kind: request.source_kind,
+                policy_id: request.policy_id,
+                window_from,
+                window_until,
+                principal_id: principal.principal_id.clone(),
+            },
+            idempotency_key,
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/consolidations/{}",
+        tenant_id.0, subject_id.0, outcome.job_id
+    );
+    let body = serde_json::to_value(&outcome).map_err(|error| {
+        Problem::internal(format!("Consolidation outcome does not serialize: {error}"))
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        [(header::LOCATION, location)],
+        Json(body),
+    )
+        .into_response())
+}
+
+async fn get_consolidation(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, job_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let job_id = Uuid::parse_str(&job_id).map_err(|error| {
+        Problem::bad_request("invalid_job_id", "Job id is invalid", error.to_string())
+    })?;
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .poll_consolidation_job(&principal, tenant_id, subject_id, job_id)
+        .await
+        .map_err(Problem::from_service)?;
+    let body = serde_json::to_value(&view).map_err(|error| {
+        Problem::internal(format!("Consolidation view does not serialize: {error}"))
+    })?;
+    Ok(Json(body).into_response())
+}
+
+fn parse_datetime(field: &str, value: &str) -> Result<OffsetDateTime, Problem> {
+    parse_utc_microsecond_timestamp(value).map_err(|error| {
+        Problem::bad_request(
+            "invalid_datetime",
+            "Datetime is invalid",
+            format!("{field}: {error}"),
+        )
+    })
 }
 
 fn require_idempotency_key(headers: &HeaderMap) -> Result<&str, Problem> {

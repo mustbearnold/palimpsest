@@ -21,9 +21,11 @@ uuid.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+hex.workspace = true
 palimpsest-conformance = { path = "../palimpsest-conformance" }
 proptest = "1"
 reqwest.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 uuid.workspace = true

@@ -3,6 +3,7 @@ set -euo pipefail
 
 plan_file=''
 plan_selective_file=''
+plan_consolidation_file=''
 for argument in "$@"; do
     case "$argument" in
         --set=plan_file=*)
@@ -11,11 +12,14 @@ for argument in "$@"; do
         --set=plan_selective_file=*)
             plan_selective_file="${argument#--set=plan_selective_file=}"
             ;;
+        --set=plan_consolidation_file=*)
+            plan_consolidation_file="${argument#--set=plan_consolidation_file=}"
+            ;;
     esac
 done
 
-if [[ -z "$plan_file" || -z "$plan_selective_file" ]]; then
-    echo 'fake psql did not receive plan_file and plan_selective_file' >&2
+if [[ -z "$plan_file" || -z "$plan_selective_file" || -z "$plan_consolidation_file" ]]; then
+    echo 'fake psql did not receive plan_file, plan_selective_file, and plan_consolidation_file' >&2
     exit 1
 fi
 
@@ -24,5 +28,7 @@ printf 'all|2|1.000|2.000|3.000|1.500|4.000\n'
 printf 'quarter|1|0.500|0.600|0.700|0.550|0.700\n'
 printf 'sixteenth|1|0.300|0.350|0.400|0.320|0.400\n'
 printf 'thirtysecond|1|0.200|0.250|0.300|0.220|0.300\n'
+printf '1000|4.200|true\n'
 printf '%s\n' '[{"Plan":{"Node Type":"Aggregate","Actual Total Time":12.5,"Actual Rows":1,"Actual Loops":1,"Shared Hit Blocks":4,"Shared Read Blocks":2,"Temp Read Blocks":0,"Temp Written Blocks":0,"Plans":[{"Node Type":"Sort","Relation Name":"memory.fact_revisions","Actual Total Time":9.25,"Actual Rows":1000,"Actual Loops":1,"Shared Hit Blocks":2,"Shared Read Blocks":2,"Temp Read Blocks":1,"Temp Written Blocks":3}]},"Planning Time":1.25,"Execution Time":13.75}]' >"$plan_file"
 printf '%s\n' '[{"Plan":{"Node Type":"Aggregate","Actual Total Time":3.5,"Actual Rows":1,"Actual Loops":1,"Shared Hit Blocks":2,"Shared Read Blocks":1,"Temp Read Blocks":0,"Temp Written Blocks":0,"Plans":[{"Node Type":"Bitmap Heap Scan","Relation Name":"memory.fact_revision_search_documents","Actual Total Time":3.25,"Actual Rows":31250,"Actual Loops":1,"Shared Hit Blocks":2,"Shared Read Blocks":1,"Temp Read Blocks":0,"Temp Written Blocks":0,"Plans":[{"Node Type":"Bitmap Index Scan","Relation Name":"memory.fact_revision_search_documents","Actual Total Time":0.75,"Actual Rows":31250,"Actual Loops":1,"Shared Hit Blocks":1,"Shared Read Blocks":1,"Temp Read Blocks":0,"Temp Written Blocks":0}]}]},"Planning Time":0.25,"Execution Time":3.75}]' >"$plan_selective_file"
+printf '%s\n' '[{"Plan":{"Node Type":"Sort","Actual Total Time":5.2,"Actual Rows":1000,"Actual Loops":1,"Shared Hit Blocks":3,"Shared Read Blocks":1,"Temp Read Blocks":0,"Temp Written Blocks":0,"Plans":[{"Node Type":"Index Scan","Relation Name":"memory.episodes","Actual Total Time":4.9,"Actual Rows":1000,"Actual Loops":1,"Shared Hit Blocks":3,"Shared Read Blocks":1,"Temp Read Blocks":0,"Temp Written Blocks":0}]},"Planning Time":0.3,"Execution Time":5.5}]' >"$plan_consolidation_file"
