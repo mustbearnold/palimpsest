@@ -90,6 +90,7 @@ def make_review_payload() -> dict[str, object]:
 class FakeClient:
     def __init__(self) -> None:
         self.retrievals: list[tuple[str, int]] = []
+        self.surfaces: list[tuple[str, str, list[str], str]] = []
         self.project_retrievals: list[tuple[str, list[str], int]] = []
         self.project_comparisons: list[tuple[str, list[str], int]] = []
         self.project_reviews: list[tuple[dict[str, object], dict[str, object]]] = []
@@ -101,6 +102,21 @@ class FakeClient:
     def retrieve(self, query: str, page_size: int) -> dict[str, object]:
         self.retrievals.append((query, page_size))
         return {"status": "results", "items": [{"value": query}]}
+
+    def surface(
+        self,
+        host_id: str,
+        principal_id: str,
+        context_terms: list[str],
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        self.surfaces.append((host_id, principal_id, context_terms, idempotency_key))
+        return {
+            "surface_id": "surface-1",
+            "item_count": 1,
+            "truncated": False,
+            "items": [{"ordinal": 0, "value": "launch plan"}],
+        }
 
     def recall_by_project(
         self, query: str, project_ids: list[str], page_size: int
@@ -161,6 +177,7 @@ class McpAdapterTests(unittest.TestCase):
             [tool["name"] for tool in listing["result"]["tools"]],
             [
                 "palimpsest_retrieve",
+                "palimpsest_surface",
                 "palimpsest_recall_by_project",
                 "palimpsest_compare_by_project",
                 "palimpsest_validate_project_review",
@@ -184,6 +201,83 @@ class McpAdapterTests(unittest.TestCase):
         )
         self.assertEqual(self.client.retrievals, [("launch plan", 7)])
         self.assertNotIn("isError", response["result"])
+
+    def test_surface_returns_the_recall_receipt_shape(self) -> None:
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_surface",
+                    "arguments": {
+                        "host_id": "hermes-desktop",
+                        "principal_id": "principal-a-surface",
+                        "context_terms": ["launch", "plan"],
+                        "idempotency_key": "surface-key-1",
+                    },
+                },
+            },
+            self.client,
+        )
+        self.assertEqual(
+            self.client.surfaces,
+            [
+                (
+                    "hermes-desktop",
+                    "principal-a-surface",
+                    ["launch", "plan"],
+                    "surface-key-1",
+                )
+            ],
+        )
+        self.assertNotIn("isError", response["result"])
+        result = response["result"]["content"][0]["text"]
+        self.assertIn("surface_id", result)
+        self.assertIn("item_count", result)
+
+    def test_surface_generates_an_idempotency_key_when_absent(self) -> None:
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_surface",
+                    "arguments": {
+                        "host_id": "hermes-desktop",
+                        "principal_id": "principal-a-surface",
+                    },
+                },
+            },
+            self.client,
+        )
+        self.assertEqual(len(self.client.surfaces), 1)
+        self.assertTrue(
+            self.client.surfaces[0][3].startswith("palimpsest-mcp-"),
+            self.client.surfaces,
+        )
+        self.assertNotIn("isError", response["result"])
+
+    def test_surface_rejects_non_list_context_terms(self) -> None:
+        response = palimpsest_mcp.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": {
+                    "name": "palimpsest_surface",
+                    "arguments": {
+                        "host_id": "hermes-desktop",
+                        "principal_id": "principal-a-surface",
+                        "context_terms": "launch plan",
+                    },
+                },
+            },
+            self.client,
+        )
+        self.assertEqual(self.client.surfaces, [])
+        self.assertIn("isError", response["result"])
 
     def test_remember_requires_content_and_promotes_evidence(self) -> None:
         response = palimpsest_mcp.handle_message(

@@ -23,6 +23,7 @@ use uuid::Uuid;
 pub mod consolidation;
 pub mod export;
 pub mod recovery;
+pub mod surface;
 
 pub use consolidation::{
     CONSOLIDATION_CLAIM_CAP, CONSOLIDATION_DERIVED_FACT_NAMESPACE,
@@ -49,6 +50,12 @@ pub use export::{
 pub use recovery::{
     RESTORE_FENCE_LEDGER_PROFILE, RESTORE_FENCE_LEDGER_SCHEMA_VERSION, RestoreFenceEntry,
     RestoreFenceLedger, RestoreFenceLedgerError, verify_restore_fence_ledger,
+};
+pub use surface::{
+    CreateSurfaceOutcome, NewSurfacePolicy, NewSurfaceRequest, SURFACE_DEFAULT_MAX_CONTEXT_TOKENS,
+    SURFACE_DEFAULT_MAX_ITEMS, SURFACE_DEFAULT_MAX_RESULT_TOKENS, SURFACE_MAX_CONTEXT_TERMS,
+    SURFACE_MAX_ITEMS, SURFACE_MAX_TERM_LENGTH, SurfaceBundle, SurfaceBundleItem,
+    SurfacePolicyView, SurfaceRepository, surface_request_fingerprint,
 };
 
 const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
@@ -616,6 +623,7 @@ pub struct MemoryService {
     embeddings: Arc<dyn EmbeddingProvider>,
     consolidations: Option<Arc<dyn ConsolidationRepository>>,
     consolidation_interpreters: Option<Arc<InterpreterRegistry>>,
+    surfaces: Option<Arc<dyn SurfaceRepository>>,
 }
 
 impl MemoryService {
@@ -638,7 +646,13 @@ impl MemoryService {
             embeddings: Arc::new(UnavailableEmbeddingProvider),
             consolidations: None,
             consolidation_interpreters: None,
+            surfaces: None,
         }
+    }
+
+    pub fn with_surface_components(mut self, surfaces: Arc<dyn SurfaceRepository>) -> Self {
+        self.surfaces = Some(surfaces);
+        self
     }
 
     pub fn with_consolidation_components(
@@ -725,6 +739,134 @@ impl MemoryService {
         };
         consolidations
             .get_policy(tenant_id, source_kind, policy_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Registers a surface policy for a tenant, host, and principal (D2).
+    /// The registry follows the consolidation policy pattern: create or
+    /// keep; the view always reflects the stored row.
+    pub async fn register_surface_policy(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        request: NewSurfacePolicy,
+    ) -> Result<SurfacePolicyView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        validate_surface_identifier("host_id", &request.host_id)?;
+        validate_surface_identifier("principal_id", &request.principal_id)?;
+        if !(1..=SURFACE_MAX_ITEMS).contains(&request.max_items) {
+            return Err(ServiceError::Invalid(format!(
+                "max_items must be between 1 and {SURFACE_MAX_ITEMS}"
+            )));
+        }
+        if request.max_context_tokens <= 0 {
+            return Err(ServiceError::Invalid(
+                "max_context_tokens must be positive".to_owned(),
+            ));
+        }
+        if request.max_result_tokens <= 0 {
+            return Err(ServiceError::Invalid(
+                "max_result_tokens must be positive".to_owned(),
+            ));
+        }
+        if let Some(ceiling) = &request.sensitivity_ceiling {
+            Sensitivity::try_from(ceiling.clone())
+                .map_err(|_| ServiceError::Invalid("sensitivity_ceiling is invalid".to_owned()))?;
+        }
+        if let (Some(from), Some(until)) = (request.window_from, request.window_until)
+            && from >= until
+        {
+            return Err(ServiceError::Invalid(
+                "window_from must precede window_until".to_owned(),
+            ));
+        }
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        surfaces
+            .register_policy(tenant_id, request)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Reads one surface policy for a tenant, host, and principal.
+    pub async fn get_surface_policy(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        host_id: &str,
+        principal_id: &str,
+    ) -> Result<SurfacePolicyView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        surfaces
+            .get_policy(tenant_id, host_id, principal_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Evaluates a surface bundle (D1, D3). The request carries a bounded
+    /// context digest. A missing or disabled policy yields an empty bundle
+    /// (fail closed, R3). The response is stored for idempotent replay;
+    /// a reused key with a different body fails with
+    /// IdempotencyKeyReused (A8).
+    pub async fn create_surface(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: NewSurfaceRequest,
+        idempotency_key: String,
+    ) -> Result<CreateSurfaceOutcome, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        validate_surface_identifier("host_id", &request.host_id)?;
+        validate_surface_identifier("principal_id", &request.principal_id)?;
+        if request.context_terms.len() > SURFACE_MAX_CONTEXT_TERMS {
+            return Err(ServiceError::Invalid(format!(
+                "context_terms must contain at most {SURFACE_MAX_CONTEXT_TERMS} terms"
+            )));
+        }
+        for term in &request.context_terms {
+            validate_surface_identifier("context term", term)?;
+        }
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let fingerprint = surface_request_fingerprint(&request);
+        let outcome = surfaces
+            .create_surface(
+                tenant_id,
+                subject_id,
+                &request,
+                &principal.allowed_sensitivities,
+                IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+            )
+            .await
+            .map_err(map_repository)?;
+        Ok(outcome)
+    }
+
+    /// Reads one stored surface bundle by id (recall-receipt style).
+    pub async fn get_surface(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        surface_id: Uuid,
+    ) -> Result<SurfaceBundle, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        surfaces
+            .get_surface(tenant_id, subject_id, surface_id)
             .await
             .map_err(map_repository)
     }
@@ -2618,6 +2760,15 @@ fn validate_idempotency_key(idempotency_key: &str) -> Result<(), ServiceError> {
         return Err(ServiceError::Invalid(
             "idempotency_key must contain 1 to 255 characters".to_owned(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_surface_identifier(label: &str, value: &str) -> Result<(), ServiceError> {
+    if value.trim().is_empty() || value.chars().count() > 255 {
+        return Err(ServiceError::Invalid(format!(
+            "{label} must contain 1 to 255 characters"
+        )));
     }
     Ok(())
 }

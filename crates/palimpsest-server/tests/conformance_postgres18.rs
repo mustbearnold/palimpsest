@@ -49,6 +49,9 @@ mod projections;
 mod property_idempotency;
 #[path = "conformance_postgres18/restore.rs"]
 mod restore;
+
+#[path = "conformance_postgres18/surface.rs"]
+mod surface;
 #[path = "conformance_postgres18/temporal.rs"]
 mod temporal;
 use consolidation::{
@@ -87,6 +90,12 @@ use restore::{
     build_restore_fence_ledger, exercise_restore_fence_replay, populate_restore_corpus_over_http,
     rehearse_predeletion_restore_copy, seed_restore_fence_fixture,
     verify_restore_replay_is_hidden_over_http,
+};
+use surface::{
+    verify_surface_caps_and_explained_bundle, verify_surface_default_empty,
+    verify_surface_filters_before_ranking, verify_surface_idempotent_replay,
+    verify_surface_respects_fence_and_purge, verify_surface_revoked_principal_empty,
+    verify_surface_tenant_isolation,
 };
 
 #[tokio::test]
@@ -452,6 +461,14 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                 Uuid::parse_str("019be000-0000-7000-8000-000000000001")?,
             )
             .await?;
+            verify_surface_tenant_isolation(&scenario_target).await?;
+            verify_surface_caps_and_explained_bundle(&scenario_target).await?;
+            verify_surface_default_empty(&scenario_target).await?;
+            verify_surface_respects_fence_and_purge(&pool, &migration_pool, &scenario_target)
+                .await?;
+            verify_surface_revoked_principal_empty(&pool, &scenario_target).await?;
+            verify_surface_filters_before_ranking(&scenario_target).await?;
+            verify_surface_idempotent_replay(&scenario_target).await?;
             rejects_unregistered_write_policies(&scenario_target).await?;
             let retrieval_isolation =
                 retrieval_candidates_are_authorized_before_ranking(&scenario_target).await?;

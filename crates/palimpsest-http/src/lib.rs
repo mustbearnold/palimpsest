@@ -24,7 +24,9 @@ use axum::{
 use http_body::{Frame, SizeHint};
 use palimpsest_application::{
     ContentLeasePermit, ExportOperationState, FactAsOfCoordinates, MemoryService,
-    NewConsolidationInterpreterConfig, NewConsolidationJob, NewConsolidationPolicy, ServiceError,
+    NewConsolidationInterpreterConfig, NewConsolidationJob, NewConsolidationPolicy,
+    NewSurfacePolicy, NewSurfaceRequest, SURFACE_DEFAULT_MAX_CONTEXT_TOKENS,
+    SURFACE_DEFAULT_MAX_ITEMS, SURFACE_DEFAULT_MAX_RESULT_TOKENS, ServiceError,
 };
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
@@ -424,6 +426,22 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
             get(get_consolidation),
         )
         .route(
+            "/v1/tenants/{tenant_id}/surface-policies",
+            post(register_surface_policy),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/surface-policies/{host_id}/{principal_id}",
+            get(get_surface_policy),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/surfaces",
+            post(create_surface),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/surfaces/{surface_id}",
+            get(get_surface),
+        )
+        .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
             get(get_checkpoint).put(save_checkpoint),
         )
@@ -465,6 +483,36 @@ struct CreateConsolidationRequest {
     policy_id: String,
     window_from: String,
     window_until: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisterSurfacePolicyRequest {
+    host_id: String,
+    principal_id: String,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    max_items: Option<i16>,
+    #[serde(default)]
+    max_context_tokens: Option<i32>,
+    #[serde(default)]
+    max_result_tokens: Option<i32>,
+    #[serde(default)]
+    sensitivity_ceiling: Option<String>,
+    #[serde(default)]
+    window_from: Option<String>,
+    #[serde(default)]
+    window_until: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateSurfaceRequest {
+    host_id: String,
+    principal_id: String,
+    #[serde(default)]
+    context_terms: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1491,6 +1539,152 @@ async fn get_consolidation(
         .map_err(Problem::from_service)?;
     let body = serde_json::to_value(&view).map_err(|error| {
         Problem::internal(format!("Consolidation view does not serialize: {error}"))
+    })?;
+    Ok(Json(body).into_response())
+}
+
+async fn register_surface_policy(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegisterSurfacePolicyRequest>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let window_from = request
+        .window_from
+        .as_deref()
+        .map(|value| parse_datetime("window_from", value))
+        .transpose()?;
+    let window_until = request
+        .window_until
+        .as_deref()
+        .map(|value| parse_datetime("window_until", value))
+        .transpose()?;
+    let view = state
+        .service
+        .register_surface_policy(
+            &principal,
+            tenant_id,
+            NewSurfacePolicy {
+                host_id: request.host_id,
+                principal_id: request.principal_id,
+                enabled: request.enabled.unwrap_or(true),
+                max_items: request.max_items.unwrap_or(SURFACE_DEFAULT_MAX_ITEMS),
+                max_context_tokens: request
+                    .max_context_tokens
+                    .unwrap_or(SURFACE_DEFAULT_MAX_CONTEXT_TOKENS),
+                max_result_tokens: request
+                    .max_result_tokens
+                    .unwrap_or(SURFACE_DEFAULT_MAX_RESULT_TOKENS),
+                sensitivity_ceiling: request.sensitivity_ceiling,
+                window_from,
+                window_until,
+                created_by_principal_id: principal.principal_id.clone(),
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/surface-policies/{}/{}",
+        tenant_id.0, view.host_id, view.principal_id
+    );
+    let body = serde_json::to_value(&view)
+        .map_err(|error| Problem::internal(format!("Policy view does not serialize: {error}")))?;
+    Ok((
+        StatusCode::CREATED,
+        [(header::LOCATION, location)],
+        Json(body),
+    )
+        .into_response())
+}
+
+async fn get_surface_policy(
+    State(state): State<AppState>,
+    Path((tenant_id, host_id, principal_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let view = state
+        .service
+        .get_surface_policy(&principal, tenant_id, &host_id, &principal_id)
+        .await
+        .map_err(Problem::from_service)?;
+    let body = serde_json::to_value(&view)
+        .map_err(|error| Problem::internal(format!("Policy view does not serialize: {error}")))?;
+    Ok(Json(body).into_response())
+}
+
+async fn create_surface(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(request): Json<CreateSurfaceRequest>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let outcome = state
+        .service
+        .create_surface(
+            &principal,
+            tenant_id,
+            subject_id,
+            NewSurfaceRequest {
+                host_id: request.host_id,
+                principal_id: request.principal_id,
+                context_terms: request.context_terms,
+            },
+            idempotency_key,
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/surfaces/{}",
+        tenant_id.0, subject_id.0, outcome.bundle.surface_id
+    );
+    let body = serde_json::to_value(&outcome.bundle).map_err(|error| {
+        Problem::internal(format!("Surface bundle does not serialize: {error}"))
+    })?;
+    let mut response = (
+        StatusCode::CREATED,
+        [(header::LOCATION, location)],
+        Json(body),
+    )
+        .into_response();
+    if outcome.replayed {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("idempotency-replayed"),
+            HeaderValue::from_static("true"),
+        );
+    }
+    Ok(response)
+}
+
+async fn get_surface(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, surface_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let surface_id = Uuid::parse_str(&surface_id).map_err(|error| {
+        Problem::bad_request(
+            "invalid_surface_id",
+            "Surface id is invalid",
+            error.to_string(),
+        )
+    })?;
+    let principal = authenticate(&state, &headers)?;
+    let bundle = state
+        .service
+        .get_surface(&principal, tenant_id, subject_id, surface_id)
+        .await
+        .map_err(Problem::from_service)?;
+    let body = serde_json::to_value(&bundle).map_err(|error| {
+        Problem::internal(format!("Surface bundle does not serialize: {error}"))
     })?;
     Ok(Json(body).into_response())
 }

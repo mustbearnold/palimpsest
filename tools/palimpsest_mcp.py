@@ -133,6 +133,23 @@ class PalimpsestClient:
         except PalimpsestError as exc:
             raise AdapterError(str(exc)) from None
 
+    def surface(
+        self,
+        host_id: str,
+        principal_id: str,
+        context_terms: list[str],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            return self._client.surface(
+                host_id=host_id,
+                principal_id=principal_id,
+                context_terms=context_terms,
+                idempotency_key=idempotency_key,
+            )
+        except PalimpsestError as exc:
+            raise AdapterError(str(exc)) from None
+
     def recall_by_project(
         self, query: str, project_ids: list[str], page_size: int
     ) -> dict[str, Any]:
@@ -264,6 +281,44 @@ def _tool_definitions() -> list[dict[str, Any]]:
                         "minimum": 1,
                         "maximum": 50,
                         "default": 10,
+                    },
+                },
+            },
+        },
+        {
+            "name": "palimpsest_surface",
+            "description": (
+                "Evaluate one proactive surface bundle for the current subject: "
+                "the bounded, explained digest of relevant current facts for a "
+                "host principal, ranked lexically over the context terms. The "
+                "bundle is empty when no surface policy is registered or the "
+                "policy is disabled. Reuse the idempotency key with the same "
+                "body to replay the stored bundle."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["host_id", "principal_id"],
+                "properties": {
+                    "host_id": {"type": "string", "minLength": 1, "maxLength": 255},
+                    "principal_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
+                    },
+                    "context_terms": {
+                        "type": "array",
+                        "maxItems": 32,
+                        "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512,
+                        },
+                    },
+                    "idempotency_key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255,
                     },
                 },
             },
@@ -520,6 +575,34 @@ def _call_tool(client: PalimpsestClient, name: str, arguments: Any) -> dict[str,
                 raise AdapterError("query must contain at most 4096 UTF-8 bytes")
             page_size = _integer_argument(arguments, "page_size", 10, 1, 50)
             return _tool_result(client.retrieve(query, page_size))
+
+        if name == "palimpsest_surface":
+            host_id = _string_argument(arguments, "host_id", required=True)
+            principal_id = _string_argument(arguments, "principal_id", required=True)
+            raw_terms = arguments.get("context_terms")
+            if raw_terms is None:
+                raw_terms = []
+            if not isinstance(raw_terms, list) or not all(
+                isinstance(term, str) for term in raw_terms
+            ):
+                raise AdapterError("context_terms must be an array of strings")
+            context_terms = [
+                _string_argument({"term": term}, "term", required=True)
+                for term in raw_terms
+            ]
+            if len(context_terms) > 32:
+                raise AdapterError("context_terms must contain at most 32 entries")
+            idempotency_key = _string_argument(arguments, "idempotency_key")
+            if not idempotency_key:
+                idempotency_key = f"palimpsest-mcp-{uuid.uuid4()}"
+            return _tool_result(
+                client.surface(
+                    host_id,
+                    principal_id,
+                    context_terms,
+                    idempotency_key,
+                )
+            )
 
         if name == "palimpsest_recall_by_project":
             query = _string_argument(arguments, "query", required=True)

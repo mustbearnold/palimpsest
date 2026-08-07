@@ -17,6 +17,7 @@ mod lifecycle;
 mod projection;
 mod receipt_write;
 mod retrieval;
+mod surface;
 mod write_path;
 
 pub use projection::{EmbeddingProjectionCoordinator, ProjectionRebuildReport};
@@ -255,6 +256,6 @@ mod tests {
 
     #[test]
     fn latest_migration_version_matches_the_checked_in_schema() {
-        assert_eq!(latest_migration_version(), 22);
+        assert_eq!(latest_migration_version(), 23);
     }
 }

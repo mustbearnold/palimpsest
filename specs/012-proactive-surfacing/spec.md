@@ -55,14 +55,14 @@ Content-free counters: requests, items surfaced, caps applied, policy absence. T
 
 ## Acceptance criteria
 
-- [ ] A1. Tenant isolation: a surface for tenant A never returns tenant B content (scenario `verify_surface_tenant_isolation`).
-- [ ] A2. Boundedness: the response obeys the caps; receipts explain inclusion (scenario `verify_surface_caps_and_explained_bundle`).
-- [ ] A3. Opt-in: with no registered policy, the surface returns an empty bundle (scenario `verify_surface_default_empty`).
-- [ ] A4. Deletion: bundles never include fenced or purged subjects' content (scenario `verify_surface_respects_fence_and_purge`).
-- [ ] A5. MCP integration: the `surface` tool returns the recall receipt shape and passes the MCP test suite.
-- [ ] A6. Authorization revocation: a revoked principal gets an empty bundle, not an error that leaks existence (scenario `verify_surface_revoked_principal_empty`).
-- [ ] A7. Filters before ranking: sensitivity ceiling and temporal window exclude content before ranking; ranking never surfaces filtered content (scenario `verify_surface_filters_before_ranking`).
-- [ ] A8. Idempotency: the same key and body return the same bundle (scenario `verify_surface_idempotent_replay`). A different body with the same key returns 409.
+- [x] A1. Tenant isolation: a surface for tenant A never returns tenant B content (scenario `verify_surface_tenant_isolation`).
+- [x] A2. Boundedness: the response obeys the caps; receipts explain inclusion (scenario `verify_surface_caps_and_explained_bundle`).
+- [x] A3. Opt-in: with no registered policy, the surface returns an empty bundle (scenario `verify_surface_default_empty`).
+- [x] A4. Deletion: bundles never include fenced or purged subjects' content (scenario `verify_surface_respects_fence_and_purge`).
+- [x] A5. MCP integration: the `surface` tool returns the recall receipt shape and passes the MCP test suite.
+- [x] A6. Authorization revocation: a revoked principal gets an empty bundle, not an error that leaks existence (scenario `verify_surface_revoked_principal_empty`).
+- [x] A7. Filters before ranking: sensitivity ceiling and temporal window exclude content before ranking; ranking never surfaces filtered content (scenario `verify_surface_filters_before_ranking`).
+- [x] A8. Idempotency: the same key and body return the same bundle (scenario `verify_surface_idempotent_replay`). A different body with the same key returns 409.
 
 ## Out of scope
 

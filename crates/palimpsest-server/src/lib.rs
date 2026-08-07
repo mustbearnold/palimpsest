@@ -106,13 +106,16 @@ fn app_with_embedding_provider_and_workers(
         lifecycle_controller_pool,
         embedding_provider,
     )
-    .with_export_worker_authorizer(export_authorizer)
-    .with_consolidation_components(
-        Arc::new(palimpsest_postgres::PostgresMemoryRepository::new(
-            runtime_pool,
-        )),
-        Arc::new(interpreter_registry()),
-    );
+    .with_export_worker_authorizer(export_authorizer);
+    let postgres_repository = Arc::new(palimpsest_postgres::PostgresMemoryRepository::new(
+        runtime_pool,
+    ));
+    let service = service
+        .with_consolidation_components(
+            postgres_repository.clone(),
+            Arc::new(interpreter_registry()),
+        )
+        .with_surface_components(postgres_repository);
     if start_workers {
         spawn_deletion_worker(service.clone());
         spawn_export_worker(service.clone());
@@ -153,7 +156,7 @@ async fn metrics_status(pool: Option<PgPool>) -> impl IntoResponse {
             (header::CACHE_CONTROL, "no-store"),
             (
                 header::CONTENT_TYPE,
-                "text/plain; version=0.0.6; charset=utf-8",
+                "text/plain; version=0.0.7; charset=utf-8",
             ),
         ],
         metrics_body(
@@ -483,7 +486,7 @@ mod tests {
         );
 
         assert!(body.contains("# TYPE palimpsest_build_info gauge\n"));
-        assert!(body.contains("palimpsest_schema_version 22\n"));
+        assert!(body.contains("palimpsest_schema_version 23\n"));
         assert!(body.contains("palimpsest_content_lease_release_retries_total 2\n"));
         assert!(body.contains("palimpsest_content_lease_release_runtime_unavailable_total 3\n"));
         assert!(body.contains("palimpsest_content_lease_release_outstanding 4\n"));
@@ -518,7 +521,7 @@ mod tests {
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
         assert_eq!(
             response.headers()[header::CONTENT_TYPE],
-            "text/plain; version=0.0.6; charset=utf-8"
+            "text/plain; version=0.0.7; charset=utf-8"
         );
     }
 }

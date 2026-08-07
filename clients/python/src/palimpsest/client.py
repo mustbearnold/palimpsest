@@ -521,6 +521,54 @@ class PalimpsestClient:
 
     recall = retrieve
 
+    def surface(
+        self,
+        *,
+        host_id: str,
+        principal_id: str,
+        context_terms: Sequence[str] = (),
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        """Evaluate one proactive surface bundle for this subject.
+
+        The bundle is bounded by the registered surface policy for the
+        host principal, or empty when no policy exists. Reuse the
+        idempotency key with the same body to replay the stored bundle.
+        """
+
+        host_id = _non_empty_text(host_id, "host_id")
+        principal_id = _non_empty_text(principal_id, "principal_id")
+        if isinstance(context_terms, (str, bytes)):
+            raise PalimpsestConfigurationError(
+                "context_terms must be a sequence of strings"
+            )
+        terms: list[str] = []
+        for term in context_terms:
+            if not isinstance(term, str) or not term.strip():
+                raise PalimpsestConfigurationError(
+                    "context_terms must contain non-empty strings"
+                )
+            if len(term) > 512:
+                raise PalimpsestConfigurationError(
+                    "context_terms entries must contain at most 512 characters"
+                )
+            terms.append(term)
+        if len(terms) > 32:
+            raise PalimpsestConfigurationError(
+                "context_terms must contain at most 32 entries"
+            )
+        body: JsonObject = {
+            "host_id": host_id,
+            "principal_id": principal_id,
+            "context_terms": terms,
+        }
+        return self._json_request(
+            "POST",
+            f"{self._scope_path()}/surfaces",
+            body=body,
+            idempotency_key=_idempotency_key(idempotency_key),
+        )
+
     def recall_by_project(
         self,
         query: str,
