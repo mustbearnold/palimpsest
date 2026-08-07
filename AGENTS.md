@@ -4,7 +4,8 @@ Read the repository law before any work:
 
 1. **`specs/constitution.md`** — highest authority: principles, the SDD loop,
    authority model, GitHub workflow, quality bar, and domain vocabulary.
-2. **`specs/conventions.md`** — formatting and style law.
+2. **`specs/conventions.md`** — formatting and style law (all prose must
+   follow ASD-STE100 Simplified Technical English).
 
 Then follow the SDD loop: no code without a spec; update the spec in the same
 change when implementation diverges; a bug is a failing acceptance criterion.

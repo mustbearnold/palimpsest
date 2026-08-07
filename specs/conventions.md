@@ -16,6 +16,25 @@ specs: constitution → conventions → specs → code comments.
   (RFC 2119 MUST/SHOULD/MAY), Acceptance criteria (Given/When/Then), Out of
   scope, Open questions, Links. Inferred requirements are tagged `[inferred]`.
 
+## Simplified Technical English (STE-100)
+
+Founder directive (2026-08-07): all prose in this repo uses ASD-STE100
+Simplified Technical English. Scope: specs, ADRs, runbooks, READMEs, commit
+messages, issue comments, and agent replies about Palimpsest work.
+
+Core rules:
+
+- Use only the approved STE vocabulary. One word has one meaning.
+- A sentence has at most 20 words. A sentence has one idea.
+- Use active voice. Procedures use the imperative.
+- Use the simple present tense.
+- No gerunds, no synonyms, no "etc.", no "e.g.", no "i.e.".
+- Use "a", "an", and "the".
+- Technical names stay unchanged.
+
+Code is exempt: formatter output is law, and identifiers, test names,
+verbatim strings, and direct quotes keep their exact form.
+
 ## Code
 
 Formatter output is law. Never hand-format; never argue with the formatter.
