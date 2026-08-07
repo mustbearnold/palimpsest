@@ -68,7 +68,7 @@ scale.
    23+ min seed). The probe now ANALYZEs between the facts batch and the
    revisions batch (auto-analyze cannot see uncommitted rows inside the
    probe's single transaction; a maintained production DB always has
-   stats). 
+   stats).
 2. **O(n²) reconcile (round-1 reviewer F1).** The populate / governance
    sync / document sync triggers were row-level and issued their own
    structure statement per row, firing one full-scope reconcile per row.
