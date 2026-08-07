@@ -5,6 +5,8 @@ Make Palimpsest the long-term memory backend for Hermes Agent (CLI, gateway, and
 What the plugin gives Hermes:
 
 - `palimpsest_recall` — authorized current retrieval of saved facts. Recall targets the configured `namespace` (default `hermes`) by default; pass an explicit namespace list (tool arg `namespace`, CLI `--namespace`, repeatable) to search other namespaces (e.g. Codex project sessions). Subject-wide recall is intentionally unavailable: the server rejects empty filter arrays, and any non-empty list narrows the search.
+
+Recall query syntax: queries use the server's `retrieval-lexical-v1` policy (`websearch_to_tsquery` over `pg_catalog.simple`). Space-separated words are AND-ed; `+word` requires a word, `-word` excludes it, `"a phrase"` matches a phrase. **Hyphenated tokens (e.g. `re-check`) are parsed as phrase-adjacency operators**, so a query like `live-harness-marker` matches only documents containing those tokens contiguously — prefer space-separated words for plain keyword recall.
 - `palimpsest_remember` — explicitly user-approved save (episode + governed `direct-evidence` fact). The tool description requires explicit user approval before a write.
 - `palimpsest_status` — content-free endpoint/scope/reachability.
 - Automatic turn persistence: every completed turn is written as one immutable episode through a durable SQLite write-behind queue (crash-safe, idempotent, never blocks the agent loop). Turns become evidence only — facts are never auto-extracted without an attributable write policy.

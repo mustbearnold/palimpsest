@@ -700,10 +700,11 @@ class TestProviderTools(PluginTestCase):
         self.assertTrue(result["result"]["episode_id"])
         self.assertTrue(result["result"]["fact_id"])
 
-    def test_double_remember_same_content_returns_already_saved(self) -> None:
-        """Same session + same content reuses the base key: the second write is
-        a different request, so the server 409s and the tool reports it as an
-        idempotent duplicate instead of a raw HTTP error."""
+    def test_double_remember_same_content_replays_original_receipt(self) -> None:
+        """Same session + same content reuses the base key AND the frozen
+        observed-at, so the second call is byte-identical and the server
+        replays the original receipt (episode_id + fact_id) instead of
+        409ing (spec 013 R5)."""
         provider = self.make_provider()
         first = json.loads(
             provider.handle_tool_call(
@@ -716,13 +717,44 @@ class TestProviderTools(PluginTestCase):
                 "palimpsest_remember", {"content": "dup content", "key": "dup-key"}
             )
         )
-        self.assertEqual(second["result"]["status"], "already_saved")
-        self.assertIsNone(second["result"]["episode_id"])
+        self.assertEqual(second["result"]["status"], "saved")
+        self.assertEqual(second["result"]["episode_id"], first["result"]["episode_id"])
+        self.assertEqual(second["result"]["fact_id"], first["result"]["fact_id"])
         episodes = self.server.requests_for("POST", "/episodes")
         self.assertEqual(
             episodes[0]["body"]["provenance"]["source_type"], "hermes.remember"
         )
         self.assertIn("idempotency-key", episodes[0]["headers"])
+        # Both calls must have carried the SAME observed time (frozen body).
+        self.assertEqual(
+            episodes[0]["body"]["observed_at"], episodes[1]["body"]["observed_at"]
+        )
+        # And the server saw exactly one episode+fact pair (replay, not a new
+        # write): the second call's requests were replayed, not duplicated.
+        self.assertEqual(
+            len(episodes), 2, "a replay resends the request; it must not add rows"
+        )
+
+    def test_double_remember_after_restart_returns_already_saved(self) -> None:
+        """A fresh provider process has a cold observed-at freeze: the duplicate
+        diverges in observed_at, the server 409s, and the tool reports an
+        idempotent already_saved instead of a raw error (spec 013 R5)."""
+        provider = self.make_provider()
+        first = json.loads(
+            provider.handle_tool_call(
+                "palimpsest_remember", {"content": "cold dup", "key": "cold-key"}
+            )
+        )
+        self.assertEqual(first["result"]["status"], "saved")
+        restarted = self.make_provider()  # fresh process: freeze table is empty
+        second = json.loads(
+            restarted.handle_tool_call(
+                "palimpsest_remember", {"content": "cold dup", "key": "cold-key"}
+            )
+        )
+        self.assertEqual(second["result"]["status"], "already_saved")
+        self.assertIsNone(second["result"]["episode_id"])
+        self.assertIsNone(second["result"]["fact_id"])
 
     def test_status_tool(self) -> None:
         provider = self.make_provider()

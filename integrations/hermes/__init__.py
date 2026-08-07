@@ -57,7 +57,7 @@ from .client import (
 from .client import (
     PalimpsestHttpError as PalimpsestHttpError,
 )
-from .queue import PalimpsestWriteQueue
+from .pending_queue import PalimpsestWriteQueue
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,15 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         self._lock = threading.Lock()
         self._prefetch_cache = ""
         self._prefetch_thread: threading.Thread | None = None
+        # Per-logical-write observed-at freeze (spec 013 R5): the tool path
+        # derives its deterministic idempotency key from session + content, so
+        # a duplicate call must also resend a byte-identical body to replay the
+        # original receipt instead of 409ing. Values are generated once per
+        # (session, content) pair and reused for the process lifetime; a fresh
+        # process starts cold, so a cross-process duplicate still lands in the
+        # already_saved fallback. Growth is bounded by distinct remembered
+        # contents, which is negligible for a memory provider.
+        self._frozen_observed_at: dict[str, str] = {}
 
     # -- identity and lifecycle -------------------------------------------------
 
@@ -594,6 +603,14 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
             idempotency_base
             or f"hermes-remember:{self._session_id}:{_content_key(content)}"
         )
+        if observed_at is None:
+            # Tool path: freeze the observed time for this logical write so a
+            # duplicate call in the same process resends a byte-identical body
+            # and the server replays the original receipt (episode_id + fact_id)
+            # instead of 409ing. The mirror path already passes a frozen value
+            # per queue row; a cold process (restart) falls through to the
+            # already_saved branch below, which is still idempotent.
+            observed_at = self._frozen_observed_at.setdefault(base, _utc_now())
         try:
             observed = client.remember(
                 content,
@@ -610,10 +627,13 @@ class PalimpsestMemoryProvider(_MemoryProviderBase):  # type: ignore[misc, valid
         except PalimpsestHttpError as exc:
             if exc.status_code != 409:
                 raise
-            # Same session + same content reuses the deterministic base key:
-            # the second logical write is a different request, which the server
-            # rejects by design. Report it as an idempotent duplicate so the
-            # caller (tool or mirror) does not see a raw 409.
+            # Same session + same content reuses the deterministic base key and
+            # (since the freeze above) a byte-identical body, so in-process
+            # duplicates replay the original receipt before ever reaching this
+            # branch. A 409 here means the freeze was cold (fresh process) or
+            # the body diverged (e.g. different metadata): report it as an
+            # idempotent duplicate so the caller (tool or mirror) does not see
+            # a raw 409.
             return {"status": "already_saved", "episode_id": None, "fact_id": None}
         episode = observed["episode"]
         fact = observed["fact"]
