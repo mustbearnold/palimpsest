@@ -90,24 +90,24 @@ may enable the standard metrics surface with the local server (spec 010 R3).
 
 ## Acceptance criteria
 
-- [ ] A1. The authorized-retrieval conformance suite (spec 002 A1–A3) passes
+- [x] A1. The authorized-retrieval conformance suite (spec 002 A1–A3) passes
       unchanged against the embedded substrate (scenario
       `verify_embedded_retrieval_conformance`).
-- [ ] A2. Deletion fences and restore suppression pass in embedded mode,
+- [x] A2. Deletion fences and restore suppression pass in embedded mode,
       including the subject lifecycle fence and tombstone invariants
       (scenario `verify_embedded_lifecycle_fence_and_restore`).
-- [ ] A3. Embedded mode operates with no network listener by default; a local
+- [x] A3. Embedded mode operates with no network listener by default; a local
       embedded server MAY be enabled explicitly (scenario
       `verify_embedded_no_listener_default`).
-- [ ] A4. Canonical records and receipts match the HTTP surface; no
+- [x] A4. Canonical records and receipts match the HTTP surface; no
       framework-specific behavior leaks in (constitution principle 15;
       scenario `verify_embedded_contract_parity`).
-- [ ] A5. RLS-equivalent tenant isolation holds with multiple local tenants
+- [x] A5. RLS-equivalent tenant isolation holds with multiple local tenants
       configured (scenario `verify_embedded_tenant_isolation`).
-- [ ] A6. Derived indexes rebuild from canonical records on the embedded
+- [x] A6. Derived indexes rebuild from canonical records on the embedded
       substrate (constitution principle 12; scenario
       `verify_embedded_index_reproducible`).
-- [ ] A7. With a registered surface policy, the embedded surface returns the
+- [x] A7. With a registered surface policy, the embedded surface returns the
       same bounded bundle as the HTTP seam (spec 012; scenario
       `verify_embedded_surface_policy`).
 

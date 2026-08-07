@@ -1,0 +1,26 @@
+[package]
+name = "palimpsest-embedded"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+palimpsest-application = { path = "../palimpsest-application" }
+palimpsest-domain = { path = "../palimpsest-domain" }
+palimpsest-http = { path = "../palimpsest-http" }
+palimpsest-postgres = { path = "../palimpsest-postgres" }
+sqlx.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+palimpsest-conformance = { path = "../palimpsest-conformance" }
+reqwest.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+time.workspace = true
+uuid.workspace = true

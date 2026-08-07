@@ -1024,6 +1024,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "palimpsest-embedded"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "palimpsest-application",
+ "palimpsest-conformance",
+ "palimpsest-domain",
+ "palimpsest-http",
+ "palimpsest-postgres",
+ "reqwest",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "palimpsest-http"
 version = "0.1.0"
 dependencies = [

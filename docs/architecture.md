@@ -40,6 +40,10 @@ crates/palimpsest-http ─► crates/palimpsest-application ─► crates/palimp
   and persistence.
 - `palimpsest-server` — the binary: `serve`, `migrate status|plan|apply`,
   `doctor`, `restore verify|apply`; operation-grant validation.
+- `palimpsest-embedded` — library-first embedded mode (spec 014): applies
+  the canonical migrations and assembles the governed `MemoryService`; opens
+  no network listener by default and optionally serves the canonical HTTP
+  router on a loopback-only listener.
 
 ## Storage model
 

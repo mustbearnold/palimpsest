@@ -3,6 +3,7 @@ members = [
   "crates/palimpsest-application",
   "crates/palimpsest-conformance",
   "crates/palimpsest-domain",
+  "crates/palimpsest-embedded",
   "crates/palimpsest-http",
   "crates/palimpsest-postgres",
   "crates/palimpsest-server",
