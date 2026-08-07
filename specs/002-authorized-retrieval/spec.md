@@ -63,11 +63,20 @@ generation; lexical and vector search rank within the authorized set.
       temperature, or concurrency.
 - [ ] A5. Million-revision latency remediation (ADR-0032, issue #43): with the
       precomputed authorized-current structure active, the 1,000,000-revision
-      profile measures p95 ≤ 200 ms / p99 ≤ 400 ms (same rollback-only,
-      content-free probe); the full authorized-retrieval conformance suite
-      (A1–A3) and tenant-isolation scenarios still pass unchanged; the
-      structure is incrementally maintained with bounded, observable staleness
-      and is reproducible from canonical records (constitution principle 12).
+      profile (same rollback-only, content-free probe; per-band p95/p99 over
+      that band's five serial samples, pooled profile reported alongside)
+      measures p95 ≤ 200 ms / p99 ≤ 400 ms on the 1/32-selectivity band and
+      p95 ≤ 500 ms / p99 ≤ 1,000 ms on the 1/16-selectivity band — the
+      operational query surface; the unselective all-match band (a probe-only
+      construct in which every row matches the query, so exact deterministic
+      top-50 ranking must score and sort the full set) is a documented
+      characteristic, not an SLA: p95 ≤ 5,000 ms, ≥ 6x faster than the
+      pre-structure baseline cold start (19.288 s), with the measured floor
+      and hardware stated in the 2026-08-07 evaluation; the full
+      authorized-retrieval conformance suite (A1–A3) and tenant-isolation
+      scenarios still pass unchanged; the structure is incrementally
+      maintained with bounded, observable staleness and is reproducible from
+      canonical records (constitution principle 12).
 
 ## Out of scope
 
@@ -87,8 +96,14 @@ generation; lexical and vector search rank within the authorized set.
   governance join), which is selectivity-, cache-temperature-, and
   concurrency-independent. Remediation decision recorded in ADR-0032:
   precomputed authorized-current structure (issue #43); a loss-safe hot
-  cache (#39) is a separate, later lever. A selectivity-modeled gate is
-  explicitly secondary and must not replace the ≤ 200 ms acceptance (A5).
+  cache (#39) is a separate, later lever. A5 was amended 2026-08-07 by
+  owner decision (round-2 review of issue #43): band-separated criteria
+  (1/32 ≤ 200 ms / ≤ 400 ms, 1/16 ≤ 500 ms / ≤ 1,000 ms, per-band
+  wording) plus the all-match band documented as a bounded
+  characteristic rather than an SLA; the pre-structure position that a
+  selectivity-modeled gate must not replace the ≤ 200 ms acceptance was
+  superseded by the measured exact-ranking floor (all-match p95 2.86 s
+  at 1M on the dev instance — see the 2026-08-07 evaluation).
 - Automatic per-request detection of arbitrary out-of-band projection
   corruption (owner-only rebuild exists; per-request comparison was measured
   at p95 4.609 s and rejected).

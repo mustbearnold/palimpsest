@@ -14,6 +14,99 @@ use super::retrieval::{
 use super::write_path::hybrid_policy_plan;
 use super::{PostgresMemoryRepository, unexpected};
 
+/// Fast-path candidate query over the precomputed authorized-current
+/// structure (ADR-0032, migration 0021). Only used when the durable
+/// scope-local coverage marker is complete for the retrieval policy's
+/// projection schema; otherwise the canonical query below serves retrieval.
+/// The per-query full-set pipeline (authorized-set materialization,
+/// governance join, per-row projection verification) is replaced by a single
+/// filtered scan: lifecycle, retention, sensitivity, validity, and document
+/// readiness were applied at write time and are re-checked by cheap
+/// per-row predicates.
+const AUTHORIZED_CURRENT_PROJECTION_CANDIDATE_SQL: &str = r#"
+            WITH scored AS (
+                SELECT projection.tenant_id,
+                    projection.subject_id,
+                    projection.case_id,
+                    projection.fact_id,
+                    projection.revision_id,
+                    projection.namespace,
+                    projection.fact_key,
+                    projection.value,
+                    projection.sensitivity,
+                    projection.content_sha256,
+                    projection.projection_sha256,
+                    projection.search_vector,
+                    CASE
+                        WHEN lower(projection.namespace || ':' || projection.fact_key)
+                            = lower(btrim($13)) THEN 1::smallint
+                        WHEN lower(projection.fact_key) = lower(btrim($13)) THEN 2::smallint
+                        ELSE NULL::smallint
+                    END AS exact_identity_rank,
+                    projection.search_vector
+                        @@ websearch_to_tsquery('pg_catalog.simple', $13)
+                        AS lexical_match,
+                    ts_rank_cd(
+                        projection.search_vector,
+                        websearch_to_tsquery('pg_catalog.simple', $13),
+                        $14
+                    )::double precision AS lexical_score
+                FROM memory.authorized_current_projection AS projection
+                WHERE projection.tenant_id = $1
+                  AND projection.subject_id = $2
+                  AND projection.recorded_at <= $3
+                  AND projection.valid_during @> $4::timestamptz
+                  AND ($5::uuid[] IS NULL OR projection.case_id = ANY($5))
+                  AND ($6::text[] IS NULL OR projection.namespace = ANY($6))
+                  AND ($7::text[] IS NULL OR projection.fact_key = ANY($7))
+                  AND projection.lifecycle_state = 'active'
+                  AND (
+                      projection.retention_expires_at IS NULL
+                      OR projection.retention_expires_at > $8
+                  )
+                  AND projection.sensitivity = ANY($9::text[])
+                  AND ($10::text[] IS NULL OR projection.sensitivity = ANY($10))
+                  AND projection.projection_ready
+                  AND projection.projection_schema_version = $11
+                  AND projection.projection_schema_sha256 = $12
+            ),
+            ranked AS (
+                SELECT scored.case_id, scored.fact_id, scored.revision_id,
+                    scored.exact_identity_rank, scored.lexical_match,
+                    CASE WHEN scored.lexical_match THEN
+                        row_number() OVER (
+                            PARTITION BY scored.lexical_match
+                            ORDER BY scored.lexical_score DESC,
+                                scored.fact_id, scored.revision_id
+                        )
+                    END AS lexical_rank,
+                    scored.lexical_score,
+                    scored.content_sha256, scored.projection_sha256
+                FROM scored
+                WHERE scored.exact_identity_rank IS NOT NULL OR scored.lexical_match
+            ),
+            limited AS MATERIALIZED (
+                SELECT case_id, fact_id, revision_id, exact_identity_rank,
+                    lexical_rank,
+                    round(lexical_score::numeric, $15)::text AS lexical_score,
+                    content_sha256,
+                    projection_sha256
+                FROM ranked
+                ORDER BY exact_identity_rank ASC NULLS LAST,
+                    lexical_rank ASC NULLS LAST, fact_id, revision_id
+                LIMIT $16
+            )
+            SELECT candidate.case_id, candidate.fact_id, candidate.revision_id,
+                candidate.exact_identity_rank, candidate.lexical_rank,
+                candidate.lexical_score, candidate.content_sha256,
+                candidate.projection_sha256,
+                true AS candidate_present
+            FROM limited AS candidate
+            ORDER BY candidate.exact_identity_rank ASC NULLS LAST,
+                candidate.lexical_rank ASC NULLS LAST,
+                candidate.fact_id, candidate.revision_id
+            "#;
+
 impl PostgresMemoryRepository {
     pub(crate) async fn create_receipt_once(
         &self,
@@ -233,6 +326,17 @@ impl PostgresMemoryRepository {
             .try_get("fts_rank_normalization")
             .map_err(unexpected)?;
         let score_scale: i32 = policy.try_get("score_scale").map_err(unexpected)?;
+        let authorized_current_coverage = Self::authorized_current_projection_coverage_state(
+            &mut transaction,
+            retrieval.tenant_id,
+            retrieval.subject_id,
+            perspective,
+            evaluated_at,
+            projection_schema_version,
+            &projection_schema_sha256,
+        )
+        .await?;
+        let use_authorized_current = authorized_current_coverage == "complete";
 
         let case_ids = retrieval
             .filters
@@ -263,8 +367,30 @@ impl PostgresMemoryRepository {
             .map(|value| value.as_str().to_owned())
             .collect::<Vec<_>>();
         let candidate_started = std::time::Instant::now();
-        let rows = sqlx::query(
-            r#"
+        let rows = if use_authorized_current {
+            sqlx::query(AUTHORIZED_CURRENT_PROJECTION_CANDIDATE_SQL)
+                .bind(retrieval.tenant_id.0)
+                .bind(retrieval.subject_id.0)
+                .bind(recorded_at)
+                .bind(valid_at)
+                .bind(case_ids.clone())
+                .bind(namespaces.clone())
+                .bind(keys.clone())
+                .bind(evaluated_at)
+                .bind(allowed_sensitivities.clone())
+                .bind(requested_sensitivities.clone())
+                .bind(projection_schema_version)
+                .bind(&projection_schema_sha256)
+                .bind(retrieval.query.as_str())
+                .bind(fts_rank_normalization)
+                .bind(score_scale)
+                .bind(candidate_limit)
+                .fetch_all(&mut *transaction)
+                .await
+                .map_err(unexpected)?
+        } else {
+            sqlx::query(
+                r#"
             WITH current_projection AS MATERIALIZED (
                 SELECT projection.tenant_id,
                     projection.subject_id,
@@ -462,35 +588,39 @@ impl PostgresMemoryRepository {
                 candidate.lexical_rank ASC NULLS LAST,
                 candidate.fact_id, candidate.revision_id
             "#,
-        )
-        .bind(retrieval.tenant_id.0)
-        .bind(retrieval.subject_id.0)
-        .bind(recorded_at)
-        .bind(valid_at)
-        .bind(case_ids)
-        .bind(namespaces)
-        .bind(keys)
-        .bind(evaluated_at)
-        .bind(allowed_sensitivities)
-        .bind(requested_sensitivities)
-        .bind(projection_schema_version)
-        .bind(&projection_schema_sha256)
-        .bind(retrieval.query.as_str())
-        .bind(fts_rank_normalization)
-        .bind(score_scale)
-        .bind(candidate_limit)
-        .bind(perspective)
-        .bind(&current_projection_coverage)
-        .fetch_all(&mut *transaction)
-        .await
-        .map_err(unexpected)?;
-        let coverage_missing = rows
-            .first()
-            .ok_or_else(|| {
-                RepositoryError::Unexpected("retrieval query returned no rows".to_owned())
-            })?
-            .try_get::<bool, _>("coverage_missing")
-            .map_err(unexpected)?;
+            )
+            .bind(retrieval.tenant_id.0)
+            .bind(retrieval.subject_id.0)
+            .bind(recorded_at)
+            .bind(valid_at)
+            .bind(case_ids)
+            .bind(namespaces)
+            .bind(keys)
+            .bind(evaluated_at)
+            .bind(allowed_sensitivities)
+            .bind(requested_sensitivities)
+            .bind(projection_schema_version)
+            .bind(&projection_schema_sha256)
+            .bind(retrieval.query.as_str())
+            .bind(fts_rank_normalization)
+            .bind(score_scale)
+            .bind(candidate_limit)
+            .bind(perspective)
+            .bind(&current_projection_coverage)
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(unexpected)?
+        };
+        let coverage_missing = if use_authorized_current {
+            false
+        } else {
+            rows.first()
+                .ok_or_else(|| {
+                    RepositoryError::Unexpected("retrieval query returned no rows".to_owned())
+                })?
+                .try_get::<bool, _>("coverage_missing")
+                .map_err(unexpected)?
+        };
         if coverage_missing {
             return Err(RepositoryError::Unexpected(
                 "retrieval index is not ready".to_owned(),

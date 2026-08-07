@@ -12,6 +12,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Agent scratch (planning source of truth: GitHub Issues)
+.hermes/
+
 # Rust
 target/
 

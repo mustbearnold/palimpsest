@@ -69,7 +69,8 @@ use hybrid_setup::{
     verify_lexical_retrieval_policy,
 };
 use projection_helpers::{
-    rebuilds_the_current_fact_revision_projection, verify_retrieval_manifest_is_authorized,
+    rebuilds_the_current_fact_revision_projection, set_retrieval_test_scope,
+    verify_retrieval_manifest_is_authorized,
 };
 use projections::{
     verify_hybrid_retrieval_policy_and_profiles, verify_no_retrieval_artifacts_for_idempotency_key,
@@ -434,6 +435,44 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
                 retrieval_candidates_are_authorized_before_ranking(&scenario_target).await?;
             concurrent_retrievals_converge_on_one_receipt(&scenario_target).await?;
             rejects_cross_subject_retrieval_idempotency_reuse(&scenario_target).await?;
+            // ADR-0032 (issue #43): the precomputed authorized-current
+            // structure is maintained at write time and its durable coverage
+            // marker is complete, so the retrieval scenarios above (A1–A3 and
+            // tenant isolation) exercised the fast path (A5b/A5c).
+            let mut structure_scope = pool.begin().await?;
+            set_retrieval_test_scope(&mut structure_scope, &scenario_target).await?;
+            let structure_state: String = sqlx::query(
+                r#"
+                SELECT coverage_state
+                FROM memory.authorized_current_projection_coverage
+                WHERE tenant_id = $1 AND subject_id = $2
+                "#,
+            )
+            .bind(target.tenant_id)
+            .bind(target.subject_id)
+            .fetch_one(&mut *structure_scope)
+            .await?
+            .try_get(0)?;
+            ensure!(
+                structure_state == "complete",
+                "authorized-current structure is not complete: {structure_state}"
+            );
+            let structure_rows: i64 = sqlx::query(
+                r#"
+                SELECT count(*)::bigint
+                FROM memory.authorized_current_projection
+                WHERE tenant_id = $1 AND subject_id = $2
+                "#,
+            )
+            .bind(target.tenant_id)
+            .bind(target.subject_id)
+            .fetch_one(&mut *structure_scope)
+            .await?
+            .try_get(0)?;
+            ensure!(
+                structure_rows > 0,
+                "authorized-current structure is empty for the conformance scope"
+            );
             verify_retrieval_manifest_is_authorized(&pool, &target, &retrieval_isolation).await?;
             delete_retrieval_projection(&pool, &target, retrieval_isolation.allowed_revision_id)
                 .await?;

@@ -316,6 +316,65 @@ impl PostgresMemoryRepository {
             None => Ok("repair_required".to_owned()),
         }
     }
+
+    pub(crate) async fn authorized_current_projection_coverage_state(
+        transaction: &mut Transaction<'_, Postgres>,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        perspective: &str,
+        evaluated_at: OffsetDateTime,
+        projection_schema_version: i32,
+        projection_schema_sha256: &str,
+    ) -> Result<String, RepositoryError> {
+        if perspective != "current" {
+            return Ok("not_current".to_owned());
+        }
+        let coverage = sqlx::query(
+            r#"
+            SELECT coverage_state, coverage_valid_until,
+                projection_schema_version_min,
+                btrim(projection_schema_sha256::text) AS projection_schema_sha256
+            FROM memory.authorized_current_projection_coverage
+            WHERE tenant_id = $1 AND subject_id = $2
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(unexpected)?;
+        match coverage {
+            Some(coverage) => {
+                let state: String = coverage.try_get("coverage_state").map_err(unexpected)?;
+                let coverage_valid_until: Option<OffsetDateTime> = coverage
+                    .try_get("coverage_valid_until")
+                    .map_err(unexpected)?;
+                let schema_version_min: Option<i32> = coverage
+                    .try_get("projection_schema_version_min")
+                    .map_err(unexpected)?;
+                let schema_sha256: Option<String> = coverage
+                    .try_get("projection_schema_sha256")
+                    .map_err(unexpected)?;
+                let horizon_is_open = match coverage_valid_until {
+                    Some(coverage_valid_until) => coverage_valid_until > evaluated_at,
+                    None => true,
+                };
+                let schema_matches = match schema_version_min {
+                    Some(version) => {
+                        version == projection_schema_version
+                            && schema_sha256.as_deref() == Some(projection_schema_sha256)
+                    }
+                    None => false,
+                };
+                if state == "complete" && horizon_is_open && schema_matches {
+                    Ok("complete".to_owned())
+                } else {
+                    Ok("repair_required".to_owned())
+                }
+            }
+            None => Ok("repair_required".to_owned()),
+        }
+    }
 }
 
 impl PostgresMemoryRepository {

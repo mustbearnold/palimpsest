@@ -57,6 +57,10 @@ if ! psql \
 BEGIN;
 SET LOCAL statement_timeout = '15min';
 SET LOCAL lock_timeout = '15s';
+SET LOCAL work_mem = '256MB';
+SET LOCAL max_parallel_workers_per_gather = 8;
+SET LOCAL max_parallel_workers = 16;
+SET LOCAL max_parallel_maintenance_workers = 4;
 SET LOCAL synchronous_commit = off;
 
 \set tenant_id '019bca00-0000-7000-8000-000000000001'
@@ -131,6 +135,11 @@ SELECT
     1
 FROM generate_series(1, :scale_revisions::bigint) AS generated(series);
 
+-- ANALYZE after the facts batch so the fact_revisions FK check plans
+-- against real statistics. A maintained DB always has stats; on a cold
+-- unanalyzed table the RI check can pick a non-PK index and crawl.
+ANALYZE memory.facts;
+
 INSERT INTO memory.fact_revisions (
     tenant_id, subject_id, case_id, fact_id, revision_id, revision_no,
     supersedes_revision_id, observed_at, valid_during, value, confidence,
@@ -176,6 +185,42 @@ ANALYZE memory.fact_revisions;
 ANALYZE memory.fact_revision_current;
 ANALYZE memory.fact_revision_governance;
 ANALYZE memory.fact_revision_search_documents;
+ANALYZE memory.authorized_current_projection;
+
+-- The maintenance trigger functions SET LOCAL work_mem / enable_nestloop
+-- for their own execution and those settings leak into this transaction;
+-- re-assert the measurement settings so the reported conditions match the
+-- claim.
+SET LOCAL work_mem = '256MB';
+SET LOCAL max_parallel_workers_per_gather = 8;
+SET LOCAL max_parallel_workers = 16;
+
+\set evaluated_at `date -u +%Y-%m-%dT%H:%M:%SZ`
+SELECT set_config('palimpsest.evaluated_at', :'evaluated_at', true) AS ignored \gset
+
+DO $coverage_guard$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM memory.authorized_current_projection_coverage
+        WHERE tenant_id = current_setting('palimpsest.tenant_id')::uuid
+          AND subject_id = current_setting('palimpsest.subject_id')::uuid
+          AND coverage_state = 'complete'
+          AND projection_schema_version_min = 1
+          AND projection_schema_sha256 = (
+              SELECT projection_sha256
+              FROM memory.search_projection_schemas
+              WHERE projection_schema_version = 1
+          )
+          AND (
+              coverage_valid_until IS NULL
+              OR coverage_valid_until > current_setting('palimpsest.evaluated_at')::timestamptz
+          )
+    ) THEN
+        RAISE EXCEPTION 'authorized-current structure is not complete for the scale probe scope';
+    END IF;
+END
+$coverage_guard$;
 
 CREATE TEMP TABLE scale_probe_latencies (band text NOT NULL, elapsed_ms double precision NOT NULL);
 DO $measure$
@@ -193,123 +238,57 @@ BEGIN
             WHEN 2 THEN 'scale probe grp0 OR grp16'
             ELSE 'scale probe grp0'
         END;
-        WITH current_coverage AS MATERIALIZED (
-            SELECT COALESCE(
-                (
-                    SELECT coverage_state = 'complete'
-                        AND (
-                            coverage_valid_until IS NULL
-                            OR coverage_valid_until > '2026-08-03T00:00:00Z'::timestamptz
-                        )
-                    FROM memory.fact_revision_current_coverage
-                    WHERE tenant_id = current_setting('palimpsest.tenant_id')::uuid
-                      AND subject_id = current_setting('palimpsest.subject_id')::uuid
-                ),
-                false
-            ) AS projection_complete
-        ), current_projection AS MATERIALIZED (
-            SELECT projection.tenant_id,
-                projection.subject_id,
-                projection.case_id,
-                projection.fact_id,
+        WITH scored AS (
+            SELECT projection.fact_id,
                 projection.revision_id,
-                projection.namespace,
-                projection.fact_key,
-                projection.sensitivity,
-                projection.content_sha256
-            FROM memory.fact_revision_current AS projection
-            WHERE projection.tenant_id = current_setting('palimpsest.tenant_id')::uuid
-              AND projection.subject_id = current_setting('palimpsest.subject_id')::uuid
-              AND projection.recorded_at <= clock_timestamp()
-              AND projection.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
-        ), missing_facts AS MATERIALIZED (
-            SELECT fact.tenant_id,
-                fact.subject_id,
-                fact.case_id,
-                fact.fact_id,
-                fact.namespace,
-                fact.fact_key
-            FROM memory.facts AS fact
-            WHERE fact.tenant_id = current_setting('palimpsest.tenant_id')::uuid
-              AND fact.subject_id = current_setting('palimpsest.subject_id')::uuid
-              AND NOT (SELECT projection_complete FROM current_coverage)
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM current_projection AS current_row
-                  WHERE current_row.tenant_id = fact.tenant_id
-                    AND current_row.subject_id = fact.subject_id
-                    AND current_row.case_id = fact.case_id
-                    AND current_row.fact_id = fact.fact_id
-              )
-        ), fallback AS MATERIALIZED (
-            SELECT revision.tenant_id,
-                revision.subject_id,
-                revision.case_id,
-                revision.fact_id,
-                revision.revision_id,
-                missing.namespace,
-                missing.fact_key,
-                revision.sensitivity,
-                revision.content_sha256
-            FROM missing_facts AS missing
-            CROSS JOIN LATERAL (
-                SELECT revision.tenant_id,
-                    revision.subject_id,
-                    revision.case_id,
-                    revision.fact_id,
-                    revision.revision_id,
-                    revision.sensitivity,
-                    revision.content_sha256
-                FROM memory.fact_revisions AS revision
-                WHERE revision.tenant_id = missing.tenant_id
-                  AND revision.subject_id = missing.subject_id
-                  AND revision.case_id = missing.case_id
-                  AND revision.fact_id = missing.fact_id
-                  AND revision.recorded_at <= clock_timestamp()
-                  AND revision.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
-                ORDER BY revision.revision_no DESC, revision.revision_id
-                LIMIT 1
-            ) AS revision
-        ), effective AS MATERIALIZED (
-            SELECT * FROM current_projection
-            UNION ALL
-            SELECT * FROM fallback
-        ), authorized AS MATERIALIZED (
-            SELECT effective.*
-            FROM effective
-            JOIN memory.fact_revision_governance AS governance
-              ON governance.tenant_id = effective.tenant_id
-             AND governance.subject_id = effective.subject_id
-             AND governance.case_id = effective.case_id
-             AND governance.fact_id = effective.fact_id
-             AND governance.revision_id = effective.revision_id
-            WHERE governance.lifecycle_state = 'active'
-              AND (
-                  governance.retention_expires_at IS NULL
-                  OR governance.retention_expires_at > clock_timestamp()
-              )
-              AND effective.sensitivity = ANY (ARRAY['internal']::text[])
-        ), ranked AS (
-            SELECT authorized.fact_id, authorized.revision_id,
+                CASE
+                    WHEN lower(projection.namespace || ':' || projection.fact_key)
+                        = lower(btrim(band_query)) THEN 1::smallint
+                    WHEN lower(projection.fact_key) = lower(btrim(band_query)) THEN 2::smallint
+                    ELSE NULL::smallint
+                END AS exact_identity_rank,
+                projection.search_vector
+                    @@ websearch_to_tsquery('pg_catalog.simple', band_query)
+                    AS lexical_match,
                 ts_rank_cd(
-                    document.search_vector,
+                    projection.search_vector,
                     websearch_to_tsquery('pg_catalog.simple', band_query)
                 ) AS lexical_score
-            FROM authorized
-            JOIN memory.fact_revision_search_documents AS document
-              ON document.tenant_id = authorized.tenant_id
-             AND document.subject_id = authorized.subject_id
-             AND document.case_id = authorized.case_id
-             AND document.fact_id = authorized.fact_id
-             AND document.revision_id = authorized.revision_id
-             AND document.projection_schema_version = 1
-             AND document.source_content_sha256 = authorized.content_sha256
-            WHERE document.search_vector
-                @@ websearch_to_tsquery('pg_catalog.simple', band_query)
-            ORDER BY lexical_score DESC, authorized.fact_id, authorized.revision_id
+            FROM memory.authorized_current_projection AS projection
+            WHERE projection.tenant_id = current_setting('palimpsest.tenant_id')::uuid
+              AND projection.subject_id = current_setting('palimpsest.subject_id')::uuid
+              AND projection.recorded_at <= current_setting('palimpsest.evaluated_at')::timestamptz
+              AND projection.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
+              AND projection.lifecycle_state = 'active'
+              AND (
+                  projection.retention_expires_at IS NULL
+                  OR projection.retention_expires_at > current_setting('palimpsest.evaluated_at')::timestamptz
+              )
+              AND projection.sensitivity = ANY (ARRAY['internal']::text[])
+              AND projection.projection_ready
+              AND projection.projection_schema_version = 1
+              AND projection.search_vector
+                  @@ websearch_to_tsquery('pg_catalog.simple', band_query)
+        ), ranked AS (
+            SELECT scored.fact_id, scored.revision_id,
+                CASE WHEN scored.lexical_match THEN
+                    row_number() OVER (
+                        PARTITION BY scored.lexical_match
+                        ORDER BY scored.lexical_score DESC,
+                            scored.fact_id, scored.revision_id
+                    )
+                END AS lexical_rank,
+                scored.lexical_score
+            FROM scored
+            WHERE scored.exact_identity_rank IS NOT NULL OR scored.lexical_match
+        ), limited AS MATERIALIZED (
+            SELECT fact_id, revision_id, lexical_rank, lexical_score
+            FROM ranked
+            ORDER BY exact_identity_rank ASC NULLS LAST,
+                lexical_rank ASC NULLS LAST, fact_id, revision_id
             LIMIT 50
         )
-        SELECT count(*) INTO matched_rows FROM ranked;
+        SELECT count(*) INTO matched_rows FROM limited;
         INSERT INTO scale_probe_latencies (band, elapsed_ms)
         VALUES (
             CASE (iteration - 1) % 4
@@ -347,113 +326,32 @@ ORDER BY band;
 
 \o :plan_file
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-WITH current_coverage AS MATERIALIZED (
-    SELECT COALESCE(
-        (
-            SELECT coverage_state = 'complete'
-                AND (
-                    coverage_valid_until IS NULL
-                    OR coverage_valid_until > '2026-08-03T00:00:00Z'::timestamptz
-                )
-            FROM memory.fact_revision_current_coverage
-            WHERE tenant_id = :'tenant_id'::uuid
-              AND subject_id = :'subject_id'::uuid
-        ),
-        false
-    ) AS projection_complete
-), current_projection AS MATERIALIZED (
-    SELECT projection.tenant_id,
-        projection.subject_id,
-        projection.case_id,
-        projection.fact_id,
+WITH scored AS (
+    SELECT projection.fact_id,
         projection.revision_id,
-        projection.namespace,
-        projection.fact_key,
-        projection.sensitivity,
-        projection.content_sha256
-    FROM memory.fact_revision_current AS projection
+        ts_rank_cd(
+            projection.search_vector,
+            websearch_to_tsquery('pg_catalog.simple', 'scale probe')
+        ) AS lexical_score
+    FROM memory.authorized_current_projection AS projection
     WHERE projection.tenant_id = :'tenant_id'::uuid
       AND projection.subject_id = :'subject_id'::uuid
-      AND projection.recorded_at <= clock_timestamp()
+      AND projection.recorded_at <= current_setting('palimpsest.evaluated_at')::timestamptz
       AND projection.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
-), missing_facts AS MATERIALIZED (
-    SELECT fact.tenant_id,
-        fact.subject_id,
-        fact.case_id,
-        fact.fact_id,
-        fact.namespace,
-        fact.fact_key
-    FROM memory.facts AS fact
-    WHERE fact.tenant_id = :'tenant_id'::uuid
-      AND fact.subject_id = :'subject_id'::uuid
-      AND NOT (SELECT projection_complete FROM current_coverage)
-      AND NOT EXISTS (
-          SELECT 1
-          FROM current_projection AS current_row
-          WHERE current_row.tenant_id = fact.tenant_id
-            AND current_row.subject_id = fact.subject_id
-            AND current_row.case_id = fact.case_id
-            AND current_row.fact_id = fact.fact_id
+      AND projection.lifecycle_state = 'active'
+      AND (
+          projection.retention_expires_at IS NULL
+          OR projection.retention_expires_at > current_setting('palimpsest.evaluated_at')::timestamptz
       )
-), fallback AS MATERIALIZED (
-    SELECT revision.tenant_id,
-        revision.subject_id,
-        revision.case_id,
-        revision.fact_id,
-        revision.revision_id,
-        missing.namespace,
-        missing.fact_key,
-        revision.sensitivity,
-        revision.content_sha256
-    FROM missing_facts AS missing
-    CROSS JOIN LATERAL (
-        SELECT revision.tenant_id,
-            revision.subject_id,
-            revision.case_id,
-            revision.fact_id,
-            revision.revision_id,
-            revision.sensitivity,
-            revision.content_sha256
-        FROM memory.fact_revisions AS revision
-        WHERE revision.tenant_id = missing.tenant_id
-          AND revision.subject_id = missing.subject_id
-          AND revision.case_id = missing.case_id
-          AND revision.fact_id = missing.fact_id
-          AND revision.recorded_at <= clock_timestamp()
-          AND revision.valid_during @> '2026-08-03T00:00:00Z'::timestamptz
-        ORDER BY revision.revision_no DESC, revision.revision_id
-        LIMIT 1
-    ) AS revision
-), effective AS MATERIALIZED (
-    SELECT * FROM current_projection
-    UNION ALL
-    SELECT * FROM fallback
-), authorized AS MATERIALIZED (
-    SELECT effective.*
-    FROM effective
-    JOIN memory.fact_revision_governance AS governance
-      ON governance.tenant_id = effective.tenant_id
-     AND governance.subject_id = effective.subject_id
-     AND governance.case_id = effective.case_id
-     AND governance.fact_id = effective.fact_id
-     AND governance.revision_id = effective.revision_id
-    WHERE governance.lifecycle_state = 'active'
-      AND (governance.retention_expires_at IS NULL OR governance.retention_expires_at > clock_timestamp())
-      AND effective.sensitivity = ANY (ARRAY['internal']::text[])
+      AND projection.sensitivity = ANY (ARRAY['internal']::text[])
+      AND projection.projection_ready
+      AND projection.projection_schema_version = 1
+      AND projection.search_vector
+          @@ websearch_to_tsquery('pg_catalog.simple', 'scale probe')
 ), ranked AS (
-    SELECT authorized.fact_id, authorized.revision_id,
-        ts_rank_cd(document.search_vector, websearch_to_tsquery('pg_catalog.simple', 'scale probe')) AS lexical_score
-    FROM authorized
-    JOIN memory.fact_revision_search_documents AS document
-      ON document.tenant_id = authorized.tenant_id
-     AND document.subject_id = authorized.subject_id
-     AND document.case_id = authorized.case_id
-     AND document.fact_id = authorized.fact_id
-     AND document.revision_id = authorized.revision_id
-     AND document.projection_schema_version = 1
-     AND document.source_content_sha256 = authorized.content_sha256
-    WHERE document.search_vector @@ websearch_to_tsquery('pg_catalog.simple', :'probe_query')
-    ORDER BY lexical_score DESC, authorized.fact_id, authorized.revision_id
+    SELECT scored.fact_id, scored.revision_id, scored.lexical_score
+    FROM scored
+    ORDER BY scored.lexical_score DESC, scored.fact_id, scored.revision_id
     LIMIT 50
 )
 SELECT count(*) FROM ranked;
@@ -462,10 +360,12 @@ SELECT count(*) FROM ranked;
 \o :plan_selective_file
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
 SELECT count(*)
-FROM memory.fact_revision_search_documents AS document
-WHERE document.tenant_id = :'tenant_id'::uuid
-  AND document.subject_id = :'subject_id'::uuid
-  AND document.search_vector @@ websearch_to_tsquery('pg_catalog.simple', :'selective_query');
+FROM memory.authorized_current_projection AS projection
+WHERE projection.tenant_id = :'tenant_id'::uuid
+  AND projection.subject_id = :'subject_id'::uuid
+  AND projection.projection_ready
+  AND projection.projection_schema_version = 1
+  AND projection.search_vector @@ websearch_to_tsquery('pg_catalog.simple', :'selective_query');
 \o
 
 ROLLBACK;

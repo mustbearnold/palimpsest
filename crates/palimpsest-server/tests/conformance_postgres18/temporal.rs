@@ -421,6 +421,8 @@ pub(crate) async fn verify_nonbypass_temporal_runtime(
                  memory.fact_revision_evidence, \
                  memory.fact_revision_current, \
                  memory.fact_revision_current_coverage, \
+                 memory.authorized_current_projection, \
+                 memory.authorized_current_projection_coverage, \
                  memory.checkpoints, \
                  memory.checkpoint_revisions, \
                  memory.fact_revision_governance, \

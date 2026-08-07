@@ -52,9 +52,17 @@ on top of the precomputed structure once it lands.
   precomputed structure fails A5a and profiling shows a warm-cache-specific
   residual cost.
 - **Selectivity-modeled gate**: adjusting the gate to measured reality instead
-  of fixing the pipeline. Explicitly secondary and rejected as the primary
-  response — the constitution forbids weakening a failing acceptance
-  criterion to complete a task; the gate stays ≤ 200 ms / ≤ 400 ms.
+  of fixing the pipeline. Rejected as the primary response while the pipeline
+  was still the floor (see the 2026-08-05 profile). Once the precomputed
+  structure landed, the measured exact-ranking floor (all-match p95 2.86 s at
+  1M on the dev instance — scoring and top-50 sorting the full set) made the
+  ≤ 200 ms all-match gate physically unreachable without approximate ranking
+  (forbidden by the receipt determinism contract). Adopted 2026-08-07 as the
+  documented owner decision: A5 was amended to band-separated criteria (1/32
+  ≤ 200 ms / ≤ 400 ms, 1/16 ≤ 500 ms / ≤ 1,000 ms) with the all-match band
+  recorded as a bounded characteristic (p95 ≤ 5 s, ≥ 6x baseline cold start)
+  — an honest re-registration with evidence, not a silent weakening; see the
+  round-2 review of issue #43 and the 2026-08-07 evaluation.
 - **Per-request projection comparison** for corruption detection: measured at
   p95 4.609 s and rejected in spec 002; unaffected by this decision.
 
