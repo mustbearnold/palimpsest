@@ -14,28 +14,43 @@ fresh, cited result.
    `palimpsest-development` skill). This covers bitemporal lifecycle,
    authorized retrieval, subject deletion, export, restore, crash recovery,
    and governed writes.
-2. **Retrieval quality report**: a versioned report records recall, precision,
+2. **Migration hygiene**: migrations must run as the runtime role — the owner
+   of the `memory` objects (migrations contain no GRANT statements; a role
+   that does not own the objects it migrated cannot be migrated over). A
+   drifted database (any `memory` object owned by another role, e.g. an
+   early migration once run as a superuser) breaks later migrations:
+   `CREATE OR REPLACE` flips SECURITY DEFINER triggers to the migration
+   role, whose writes into RLS-FORCE tables then fail with `permission
+   denied`. Before migrating an existing database, run:
+   `SELECT c.relname FROM pg_class c WHERE c.relnamespace='memory'::regnamespace AND c.relowner::regrole::text != 'palimpsest_runtime'`
+   (tables/functions/indexes/sequences alike; zero rows expected) and
+   re-own any drift to the runtime role. The live-stack deploy that hit
+   this: `docs/decisions/0032` + the `palimpsest-development` skill's
+   live-ops reference (2026-08-07).
+3. **Retrieval quality report**: a versioned report records recall, precision,
    latency percentiles, and cost for the retrieval evaluation corpus
    (`evaluations/retrieval-corpus-v1/`, digest-pinned in its manifest).
    Latest: `_attic/evaluations/2026-07-29-retrieval-conformance-corpus.md`;
    scale evidence in spec 002 A4 (`_attic/evaluations/2026-08-03-authorized-lexical-scale-probe.md`).
-3. **Backup and restore verification**: the current and as-of views survive
+4. **Backup and restore verification**: the current and as-of views survive
    recovery — covered by the restore conformance scenarios
    (`verify_restore_replay_is_hidden_over_http`,
    `verify_restore_corpus_is_visible_over_http`, logical-backup rehearsal
    script `scripts/palimpsest-logical-backup-rehearsal.sh`) and spec 005.
-4. **Failure injection**: cache loss (restore/recovery), embedding-provider
+5. **Failure injection**: cache loss (restore/recovery), embedding-provider
    failure (provider-call cardinality conformance), process termination
    (crash-recovery scenario `recovers_a_committed_effect_after_response_loss`),
    and retryable consolidation failure (export/delete worker patterns). Each
    failure class has a named conformance scenario; none may be skipped for a
    release.
-5. **Non-claims stated**: every unproven boundary is written into the release
+6. **Non-claims stated**: every unproven boundary is written into the release
    report. Known today (2026-08-07):
-   - Million-revision retrieval latency: **NOT met** — p95 11.302 s / p99
-     11.787 s measured (2026-08-05, spec 002 A4) against the proposed gate
-     p95 ≤ 200 ms / p99 ≤ 400 ms; **no SLA claim**. Remediation tracked in
-     issue #43 (ADR-0032); the gate re-checks A5 on landing.
+   - Million-revision retrieval latency: the A5 band-separated gate (amended
+     2026-08-07, ADR-0032) is MET — 1/32 band p95 179.2 ms / p99 179.3 ms,
+     1/16 band p95 391.0 ms / p99 391.4 ms at 1,000,000 revisions
+     (`_attic/evaluations/2026-08-07-authorized-current-structure-scale-probe.md`);
+     the all-match band is a documented bounded characteristic
+     (p95 2.89 s, 6.7x faster than the 19.288 s cold baseline), not an SLA.
    - No throughput, cost, capacity, availability, or SLA evidence at the
      million-revision profile (non-claims, per #37 closing evidence).
    - Provider-managed backup/PITR orchestration: not yet (issue #38).

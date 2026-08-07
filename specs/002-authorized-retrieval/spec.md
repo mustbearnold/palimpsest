@@ -61,7 +61,7 @@ generation; lexical and vector search rank within the authorized set.
       the remaining cost is the per-query full-set pipeline
       (materialization + governance join), not ranking, document join, cache
       temperature, or concurrency.
-- [ ] A5. Million-revision latency remediation (ADR-0032, issue #43): with the
+- [x] A5. Million-revision latency remediation (ADR-0032, issue #43): with the
       precomputed authorized-current structure active, the 1,000,000-revision
       profile (same rollback-only, content-free probe; per-band p95/p99 over
       that band's five serial samples, pooled profile reported alongside)

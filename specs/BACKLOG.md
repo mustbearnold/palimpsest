@@ -5,12 +5,6 @@ Known-but-unspecced capabilities and gaps. One line each. Promote to a
 `scheduled → #N` (tracked in the issue frontier) or `deferred: reason`
 (intentionally parked; not a claim).
 
-- [scheduled → #43] Million-revision latency remediation: precomputed
-  authorized-current structure (ADR-0032; spec 002 A5). The 1M evidence
-  (#37, closed) stands: p95 11.302 s against the proposed ≤ 200 ms gate.
-- [scheduled → #43] Concurrent and cold-cache retrieval remediation evidence
-  (measured 2026-08-05: cold 19.288 s, 8-way concurrent p95 16.792 s — the
-  same full-set pipeline floor; remediation is the lever, not more profiles).
 - [scheduled → #38] Provider-managed backup/PITR orchestration, independent
   backup disposition, and full restore suppression against a real backup
   provider.
