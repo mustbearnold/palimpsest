@@ -114,7 +114,12 @@ if [[ -z "$s3_endpoint" ]]; then
     if ! command -v cargo >/dev/null 2>&1; then
         fail "required backup tool is unavailable: cargo"
     fi
-    cargo build --quiet -p palimpsest-server --example backup_s3_fixture
+    # The sqlx migrate! macro embeds migrations/ at palimpsest-postgres
+    # compile time, but cargo does not track the migrations directory in its
+    # fingerprint. Force the crate to recompile so the binary always carries
+    # the current migration set.
+    touch crates/palimpsest-postgres/src/lib.rs
+    cargo build --quiet --bins --examples
     fixture_binary="$(dirname "$binary")/examples/backup_s3_fixture"
     "$fixture_binary" "$fixture_port" >"$workdir/fixture.log" 2>&1 &
     fixture_pid="$!"
@@ -209,10 +214,10 @@ create_output="$(
 )"
 printf '%s\n' "$create_output" >"$workdir/a1-create.json"
 
-a1_base_sha256="$(printf '%s' "$create_output" | grep -o '"base_sha256": *"[^"]*"' | head -1 | sed 's/.*"\([0-9a-f]*\)".*/\1/')"
-a1_size="$(printf '%s' "$create_output" | grep -o '"base_size_bytes":[0-9]*' | head -1 | sed 's/.*://')"
-a1_rpo="$(printf '%s' "$create_output" | grep -o '"rpo_estimate_ms":[0-9]*' | head -1 | sed 's/.*://')"
-a1_entries="$(printf '%s' "$create_output" | grep -o '"fence_entry_count":[0-9]*' | head -1 | sed 's/.*://')"
+a1_base_sha256="$(printf '%s' "$create_output" | grep -o '"base_sha256": *"[^"]*"' | head -1 | sed 's/.*"\([0-9a-f]*\)".*/\1/' || true)"
+a1_size="$(printf '%s' "$create_output" | grep -o '"base_size_bytes":[0-9]*' | head -1 | sed 's/.*://' || true)"
+a1_rpo="$(printf '%s' "$create_output" | grep -o '"rpo_estimate_ms":[0-9]*' | head -1 | sed 's/.*://' || true)"
+a1_entries="$(printf '%s' "$create_output" | grep -o '"fence_entry_count":[0-9]*' | head -1 | sed 's/.*://' || true)"
 [[ "$a1_base_sha256" =~ ^[0-9a-f]{64}$ ]] || fail "A1 base_sha256 is not a 64-hex digest"
 (( a1_size > 0 )) || fail "A1 base_size_bytes is not positive"
 (( a1_rpo >= 0 )) || fail "A1 rpo_estimate_ms is negative"
@@ -226,26 +231,28 @@ fence_subject "$subject_two"
 [[ "$(episode_count "$subject_one" "$source_url")" == "1" ]] || fail "A2 source corpus missing subject one"
 [[ "$(episode_count "$subject_two" "$source_url")" == "1" ]] || fail "A2 source corpus missing subject two"
 
-restore_url="postgres://postgres@$superuser_host_port:$restore_port/$source_db"
+restore_url="postgres://postgres@${superuser_host_port%:*}:$restore_port/$source_db"
 restore_output="$(
     PALIMPSEST_BACKUP_RESTORE_URL="$restore_url" \
         PALIMPSEST_BACKUP_RESTORE_DATA_DIR="$restore_cluster_dir" \
         PALIMPSEST_BACKUP_RESTORE_PORT="$restore_port" \
         PALIMPSEST_RESTORE_FENCE_LEDGER_PATH="$workdir/fence-ledger.json" \
         PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256="$workdir/fence-ledger.sha256" \
-        scripts/palimpsest-backup.sh restore "$backup_one"
-)"
+        scripts/palimpsest-backup.sh restore "$backup_one" 2>&1
+)" || fail "A2 restore failed: $restore_output"
 printf '%s\n' "$restore_output" >"$workdir/a2-restore.out"
 
-a2_status="$(printf '%s' "$restore_output" | grep '"status":"complete"' | head -1)"
+a2_status="$(printf '%s' "$restore_output" | grep '"status":"complete"' | head -1 || true)"
 [[ -n "$a2_status" ]] || fail "A2 restore did not complete"
-a2_probe="$(printf '%s' "$restore_output" | grep -o '"lifecycle_probe":"[^"]*"' | head -1 | sed 's/.*"lifecycle_probe":"\([^"]*\)".*/\1/')"
-[[ "$a2_probe" == *"deleted:2"* ]] || fail "A2 restored lifecycle probe is not deleted:2"
+a2_probe="$(printf '%s' "$restore_output" | grep -o '"lifecycle_probe":"[^"]*"' | head -1 | sed 's/.*"lifecycle_probe":"\([^"]*\)".*/\1/' || true)"
+[[ "$a2_probe" == *"deleted:1"* ]] || fail "A2 restored lifecycle probe is not deleted:1: $a2_probe"
 
 [[ "$(episode_count "$subject_one" "$restore_url")" == "0" ]] || fail "A2 subject one survived the restore"
 [[ "$(episode_count "$subject_two" "$restore_url")" == "0" ]] || fail "A2 subject two survived the restore"
 [[ "$(lifecycle_state "$subject_one" "$restore_url")" == "deleted" ]] || fail "A2 subject one is not fenced after restore"
-[[ "$(lifecycle_state "$subject_two" "$restore_url")" == "deleted" ]] || fail "A2 subject two is not fenced after restore"
+# subject two was fenced after the backup: the restored copy predates the
+# fence, so the scope is vacuous and must be absent, not resurrected.
+[[ -z "$(lifecycle_state "$subject_two" "$restore_url")" ]] || fail "A2 subject two was resurrected by the restore"
 [[ "$(episode_count "$subject_one" "$source_url")" == "1" ]] || fail "A2 restore touched the source corpus"
 results="A1:pass A2:pass A3:skip A4:skip A5:pass"
 
@@ -256,44 +263,47 @@ echo "backup conformance: A3 backup expiry"
 
 expiry_output="$(
     PALIMPSEST_BACKUP_RETENTION_POLICY_ID="pitr-expiry-v1" \
-        scripts/palimpsest-backup.sh create "$backup_two"
-)"
+        scripts/palimpsest-backup.sh create "$backup_two" 2>&1
+)" || fail "A3 create failed: $expiry_output"
 sleep 2
 expire_output="$(
     PALIMPSEST_BACKUP_RETENTION_POLICY_ID="pitr-expiry-v1" \
         PALIMPSEST_BACKUP_RETENTION_SECONDS="1" \
-        scripts/palimpsest-backup.sh expire
-)"
-expire_removed="$(printf '%s' "$expire_output" | grep -o '"removed":\[[^]]*\]' | head -1)"
-[[ "$expire_removed" == *"$backup_two"* ]] || fail "A3 expired backup was not removed: $expire_output"
+        scripts/palimpsest-backup.sh expire 2>&1
+)" || fail "A3 expire failed: $expire_output"
+[[ "$expire_output" == *"$backup_two"* ]] || fail "A3 expired backup was not removed: $expire_output"
 
 fetch_after_expiry="$(
     "$binary" backup fetch-base "$backup_two" "$workdir/expired-base.tar.gz" 2>&1 || true
 )"
-[[ "$fetch_after_expiry" == *'"code":"base-not-indexed"'* ]] || fail "A3 expired backup is still fetchable: $fetch_after_expiry"
+[[ "$fetch_after_expiry" == *'"code": "base-not-indexed"'* ]] || fail "A3 expired backup is still fetchable: $fetch_after_expiry"
 results="A1:pass A2:pass A3:pass A4:skip A5:pass"
 
 echo "backup conformance: A4 failure injection"
 
 wipe_fixture
 missing_output="$("$binary" backup fetch-base "$backup_one" "$workdir/missing-base.tar.gz" 2>&1 || true)"
-[[ "$missing_output" == *'"code":"base-missing"'* ]] || fail "A4 missing base did not fail cleanly: $missing_output"
+[[ "$missing_output" == *'"code": "base-not-indexed"'* ]] || fail "A4 wiped store did not fail cleanly: $missing_output"
 
 create_output="$(
     PALIMPSEST_BACKUP_RETENTION_POLICY_ID="pitr-failure-v1" \
-        scripts/palimpsest-backup.sh create "$backup_three"
-)"
+        scripts/palimpsest-backup.sh create "$backup_three" 2>&1
+)" || fail "A4 create failed: $create_output"
+curl --silent --output /dev/null -X DELETE \
+    "$s3_endpoint/$s3_bucket/base/$backup_three.tar.gz"
+missing_base_output="$("$binary" backup fetch-base "$backup_three" "$workdir/missing-base.tar.gz" 2>&1 || true)"
+[[ "$missing_base_output" == *'"code": "base-missing"'* ]] || fail "A4 missing base did not fail cleanly: $missing_base_output"
 printf 'corrupt garbage bytes' | curl --silent --output /dev/null -X PUT \
-    --data-binary @- "http://127.0.0.1:${s3_endpoint##*://}/$s3_bucket/base/$backup_three.tar.gz"
+    --data-binary @- "$s3_endpoint/$s3_bucket/base/$backup_three.tar.gz"
 corrupt_output="$("$binary" backup fetch-base "$backup_three" "$workdir/corrupt-base.tar.gz" 2>&1 || true)"
-[[ "$corrupt_output" == *'"code":"base-corrupt"'* ]] || fail "A4 corrupt base did not fail cleanly: $corrupt_output"
+[[ "$corrupt_output" == *'"code": "base-corrupt"'* ]] || fail "A4 corrupt base did not fail cleanly: $corrupt_output"
 
 sleep 2
 stale_output="$("$binary" backup fetch-base "$backup_three" "$workdir/stale-base.tar.gz" 1 2>&1 || true)"
-[[ "$stale_output" == *'"code":"backup-stale"'* ]] || fail "A4 stale base did not fail cleanly: $stale_output"
+[[ "$stale_output" == *'"code": "backup-stale"'* ]] || fail "A4 stale base did not fail cleanly: $stale_output"
 
 wal_missing_output="$("$binary" backup fetch-wal "0000000100000000000000ff" "$workdir/missing-wal" 2>&1 || true)"
-[[ "$wal_missing_output" == *'"code":"wal-missing"'* ]] || fail "A4 missing WAL did not fail cleanly: $wal_missing_output"
+[[ "$wal_missing_output" == *'"code": "wal-missing"'* ]] || fail "A4 missing WAL did not fail cleanly: $wal_missing_output"
 results="A1:pass A2:pass A3:pass A4:pass A5:pass"
 
 echo "backup conformance: PASS $results"

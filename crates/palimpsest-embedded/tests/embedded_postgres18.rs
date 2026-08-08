@@ -396,7 +396,9 @@ async fn verify_embedded_lifecycle_fence_and_restore(
             .is_err(),
         "restore replay must reject a mismatched independent digest"
     );
-    // An unmatched scope fails closed without touching rows.
+    // An absent scope (fenced after the backup) is vacuously satisfied: the
+    // restored copy predates the fence, so there is nothing to suppress. The
+    // replay must succeed without touching rows (spec 016 A2).
     let unmatched_ledger = RestoreFenceLedger::build(
         now,
         vec![RestoreFenceEntry::new(
@@ -407,12 +409,36 @@ async fn verify_embedded_lifecycle_fence_and_restore(
         )?],
     )?;
     let unmatched_bytes = unmatched_ledger.to_bytes()?;
+    let unmatched_report = repository
+        .replay_restore_fence_ledger(&unmatched_bytes, &unmatched_ledger.ledger_sha256)
+        .await
+        .map_err(|error| anyhow::anyhow!("restore replay absent scope failed: {error}"))?;
+    assert_eq!(
+        unmatched_report.scopes_purged, 0,
+        "restore replay must treat an absent scope as vacuous"
+    );
+    ensure!(
+        restore_episode_count(migration_pool, fixture).await? == 1,
+        "vacuous restore replay mutated the corpus"
+    );
+    // A ledger produced by a rotated scope key cannot be re-derived in the
+    // restored copy. The replay must fail closed without touching rows.
+    let rotated_ledger = RestoreFenceLedger::build(
+        now,
+        vec![RestoreFenceEntry::new(
+            format!("v2:{}", "0".repeat(64)),
+            1,
+            now - TimeDuration::minutes(1),
+            now + TimeDuration::hours(1),
+        )?],
+    )?;
+    let rotated_bytes = rotated_ledger.to_bytes()?;
     assert!(
         repository
-            .replay_restore_fence_ledger(&unmatched_bytes, &unmatched_ledger.ledger_sha256)
+            .replay_restore_fence_ledger(&rotated_bytes, &rotated_ledger.ledger_sha256)
             .await
             .is_err(),
-        "restore replay must reject a ledger with an unmatched scope"
+        "restore replay must reject a ledger from a rotated scope key"
     );
     ensure!(
         restore_episode_count(migration_pool, fixture).await? == 1,

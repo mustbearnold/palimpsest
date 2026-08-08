@@ -303,32 +303,41 @@ EOF
 local all all trust
 host all all 127.0.0.1/32 trust
 EOF
+    # The base backup carries the source cluster's postgresql.auto.conf,
+    # which overrides this data dir and would re-enable archiving. The
+    # restored cluster must be a clean PITR target.
+    rm -f "$restore_data_dir/postgresql.auto.conf"
     touch "$restore_data_dir/recovery.signal"
 
-    local restore_log="$restore_tmp_root/restore.log"
-    pg_ctl --pgdata="$restore_data_dir" --log="$restore_log" --options="-c listen_addresses=127.0.0.1" -w start
+    local restore_log="${PALIMPSEST_BACKUP_RESTORE_LOG:-$restore_tmp_root/restore.log}"
+    pg_ctl --pgdata="$restore_data_dir" --log="$restore_log" --options="-c listen_addresses=127.0.0.1" -w start >/dev/null
 
     local recovered_wal=""
     local recovered_lsn=""
+    local recovery_state=""
     for _attempt in $(seq 1 60); do
-        if ! psql "$restore_url" --tuples-only --no-align --quiet --command \
-            "SELECT pg_is_in_recovery()" 2>/dev/null | grep -q '^f$'; then
-            pg_ctl --pgdata="$restore_data_dir" promote >/dev/null 2>&1 || true
-            sleep 1
-            continue
-        fi
-        recovered_lsn="$(psql "$restore_url" --tuples-only --no-align --quiet --command \
-            "SELECT pg_walfile_name(pg_current_wal_lsn()) || '|' || pg_current_wal_lsn()" \
-            2>/dev/null || true)"
-        if [[ -n "$recovered_lsn" ]]; then
-            recovered_wal="${recovered_lsn%%|*}"
-            recovered_lsn="${recovered_lsn##*|}"
+        recovery_state="$(psql "$restore_url" --tuples-only --no-align --quiet --command \
+            "SELECT pg_is_in_recovery()" 2>&1 || true)"
+        if [[ "$recovery_state" == "f" ]]; then
             break
         fi
+        pg_ctl --pgdata="$restore_data_dir" promote >/dev/null 2>&1 || true
         sleep 1
     done
+    if [[ "$recovery_state" != "f" ]]; then
+        echo "restored cluster did not finish recovery: $recovery_state" >&2
+        tail -20 "$restore_log" >&2 || true
+        exit 1
+    fi
+    recovered_lsn="$(psql "$restore_url" --tuples-only --no-align --quiet --command \
+        "SELECT pg_walfile_name(pg_current_wal_lsn()) || '|' || pg_current_wal_lsn()" \
+        2>&1 || true)"
+    if [[ -n "$recovered_lsn" ]]; then
+        recovered_wal="${recovered_lsn%%|*}"
+        recovered_lsn="${recovered_lsn##*|}"
+    fi
     if [[ -z "$recovered_wal" ]]; then
-        echo "restored cluster did not finish recovery" >&2
+        echo "restored cluster did not report a recovery position" >&2
         tail -20 "$restore_log" >&2 || true
         exit 1
     fi

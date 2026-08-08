@@ -256,6 +256,6 @@ mod tests {
 
     #[test]
     fn latest_migration_version_matches_the_checked_in_schema() {
-        assert_eq!(latest_migration_version(), 23);
+        assert_eq!(latest_migration_version(), 25);
     }
 }

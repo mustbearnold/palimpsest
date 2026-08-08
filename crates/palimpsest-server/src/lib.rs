@@ -486,7 +486,7 @@ mod tests {
         );
 
         assert!(body.contains("# TYPE palimpsest_build_info gauge\n"));
-        assert!(body.contains("palimpsest_schema_version 23\n"));
+        assert!(body.contains("palimpsest_schema_version 25\n"));
         assert!(body.contains("palimpsest_content_lease_release_retries_total 2\n"));
         assert!(body.contains("palimpsest_content_lease_release_runtime_unavailable_total 3\n"));
         assert!(body.contains("palimpsest_content_lease_release_outstanding 4\n"));

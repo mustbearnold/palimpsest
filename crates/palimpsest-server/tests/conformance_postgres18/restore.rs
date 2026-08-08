@@ -262,45 +262,24 @@ pub(crate) async fn exercise_restore_fence_replay(
         populated_durable_counts
     );
 
-    let unmatched_ledger = RestoreFenceLedger::build(
+    // A ledger produced under a rotated scope key fails closed without
+    // touching the restored store: the digests cannot be re-derived.
+    let rotated_ledger = RestoreFenceLedger::build(
         now,
-        vec![
-            RestoreFenceEntry::new(
-                scope_digest,
-                1,
-                now - TimeDuration::minutes(1),
-                now + TimeDuration::hours(1),
-            )?,
-            RestoreFenceEntry::new(
-                format!("v1:{}", "0".repeat(64)),
-                1,
-                now - TimeDuration::minutes(1),
-                now + TimeDuration::hours(1),
-            )?,
-        ],
+        vec![RestoreFenceEntry::new(
+            format!("v2:{}", "0".repeat(64)),
+            1,
+            now - TimeDuration::minutes(1),
+            now + TimeDuration::hours(1),
+        )?],
     )?;
-    let unmatched_bytes = unmatched_ledger.to_bytes()?;
+    let rotated_bytes = rotated_ledger.to_bytes()?;
     assert!(
         repository
-            .replay_restore_fence_ledger(&unmatched_bytes, &unmatched_ledger.ledger_sha256)
+            .replay_restore_fence_ledger(&rotated_bytes, &rotated_ledger.ledger_sha256)
             .await
             .is_err(),
-        "restore replay must reject a ledger with an unmatched scope"
-    );
-    let episode_count_after_unmatched_scope: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM memory.episodes WHERE tenant_id = $1 AND subject_id = $2",
-    )
-    .bind(tenant_id)
-    .bind(subject_id)
-    .fetch_one(migration_pool)
-    .await?;
-    assert_eq!(
-        episode_count_after_unmatched_scope,
-        populated_counts["episodes"]
-    );
-    assert_eq!(
-        durable_restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?,
-        populated_durable_counts
+        "restore replay must reject a ledger from a rotated scope key"
     );
 
     let wrong_startup_status =
@@ -377,6 +356,52 @@ pub(crate) async fn exercise_restore_fence_replay(
         .fetch_one(&mut *runtime_transaction)
         .await?;
     assert_eq!(runtime_episode_count, 0);
+    // A ledger entry whose scope is absent from the restored store is
+    // vacuously satisfied: the fence was recorded after the backup, so there
+    // is nothing to suppress. The replay purges the matched scope and ignores
+    // the absent one.
+    let unmatched_ledger = RestoreFenceLedger::build(
+        now,
+        vec![
+            RestoreFenceEntry::new(
+                scope_digest,
+                1,
+                now - TimeDuration::minutes(1),
+                now + TimeDuration::hours(1),
+            )?,
+            RestoreFenceEntry::new(
+                format!("v1:{}", "0".repeat(64)),
+                1,
+                now - TimeDuration::minutes(1),
+                now + TimeDuration::hours(1),
+            )?,
+        ],
+    )?;
+    let unmatched_bytes = unmatched_ledger.to_bytes()?;
+    let vacuous_report = repository
+        .replay_restore_fence_ledger(&unmatched_bytes, &unmatched_ledger.ledger_sha256)
+        .await
+        .map_err(|error| anyhow::anyhow!("restore replay absent scope failed: {error}"))?;
+    assert_eq!(vacuous_report.scopes_found, 1);
+    assert_eq!(vacuous_report.scopes_purged, 1);
+    assert_eq!(vacuous_report.residual_rows, 0);
+    let episode_count_after_unmatched_scope: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM memory.episodes WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(subject_id)
+    .fetch_one(migration_pool)
+    .await?;
+    assert_eq!(episode_count_after_unmatched_scope, 0);
+    let durable_counts_after_unmatched_scope =
+        durable_restore_scope_row_counts(migration_pool, tenant_id, subject_id).await?;
+    assert!(
+        durable_counts_after_unmatched_scope
+            .values()
+            .all(|count| *count == 0),
+        "restore replay left durable scope rows: {durable_counts_after_unmatched_scope:?}"
+    );
+
     runtime_transaction.rollback().await?;
     Ok(())
 }

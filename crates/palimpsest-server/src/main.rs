@@ -2,12 +2,12 @@ use std::{env, fs, io::Write, sync::Arc};
 
 use anyhow::{Context, Result, bail};
 use palimpsest_application::{
+    RestoreFenceEntry, RestoreFenceLedger,
     backup::{
         BackupIndexEntry, S3BackupObjectStore, S3BackupStoreError, base_object_key, wal_object_key,
     },
     export::sha256_hex,
     verify_restore_fence_ledger,
-    RestoreFenceEntry, RestoreFenceLedger,
 };
 use palimpsest_domain::{
     OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,
@@ -662,14 +662,13 @@ async fn run_backup_archive_wal(arguments: &mut impl Iterator<Item = String>) ->
 }
 
 async fn run_backup_fetch_base(arguments: &mut impl Iterator<Item = String>) -> Result<()> {
-    let (backup_id, out_path, max_age_seconds) = match (
-        arguments.next(),
-        arguments.next(),
-        arguments.next(),
-    ) {
-        (Some(backup_id), Some(out_path), max_age_seconds) => (backup_id, out_path, max_age_seconds),
-        _ => bail!("backup fetch-base requires <backup_id> <out_path> [max_age_seconds]"),
-    };
+    let (backup_id, out_path, max_age_seconds) =
+        match (arguments.next(), arguments.next(), arguments.next()) {
+            (Some(backup_id), Some(out_path), max_age_seconds) => {
+                (backup_id, out_path, max_age_seconds)
+            }
+            _ => bail!("backup fetch-base requires <backup_id> <out_path> [max_age_seconds]"),
+        };
     let max_age_seconds = match max_age_seconds.as_deref() {
         None => None,
         Some(value) => Some(
@@ -683,7 +682,11 @@ async fn run_backup_fetch_base(arguments: &mut impl Iterator<Item = String>) -> 
         .read_index()
         .await
         .map_err(|_| anyhow::anyhow!("backup index read failed"))?;
-    let entry = match index.entries.iter().find(|entry| entry.backup_id == backup_id) {
+    let entry = match index
+        .entries
+        .iter()
+        .find(|entry| entry.backup_id == backup_id)
+    {
         Some(entry) => entry,
         None => {
             write_backup_failure("fetch-base", "base-not-indexed")?;
@@ -691,8 +694,8 @@ async fn run_backup_fetch_base(arguments: &mut impl Iterator<Item = String>) -> 
         }
     };
     if let Some(max_age_seconds) = max_age_seconds {
-        let created_at = OffsetDateTime::parse(&entry.created_at, &Rfc3339)
-            .context("parse backup timestamp")?;
+        let created_at =
+            OffsetDateTime::parse(&entry.created_at, &Rfc3339).context("parse backup timestamp")?;
         if created_at + Duration::seconds(max_age_seconds) < OffsetDateTime::now_utc() {
             write_backup_failure("fetch-base", "backup-stale")?;
             bail!("backup fetch-base failed");
@@ -777,10 +780,7 @@ async fn run_backup_expire(arguments: &mut impl Iterator<Item = String>) -> Resu
             kept.push(entry);
         }
     }
-    let earliest_kept_wal_from = kept
-        .iter()
-        .map(|entry| entry.wal_from.clone())
-        .min();
+    let earliest_kept_wal_from = kept.iter().map(|entry| entry.wal_from.clone()).min();
     for entry in &expired {
         store
             .delete_object(&entry.base_object)
@@ -877,12 +877,13 @@ async fn run_restore_export_ledger() -> Result<()> {
         let subject_id: Uuid = row.try_get("subject_id")?;
         let state_version: i64 = row.try_get("state_version")?;
         let updated_at: OffsetDateTime = row.try_get("updated_at")?;
-        let scope_digest: String = sqlx::query_scalar("SELECT memory.deletion_scope_digest($1, $2)")
-            .bind(tenant_id)
-            .bind(subject_id)
-            .fetch_one(&pool)
-            .await
-            .context("compute scope digest")?;
+        let scope_digest: String =
+            sqlx::query_scalar("SELECT memory.deletion_scope_digest($1, $2)")
+                .bind(tenant_id)
+                .bind(subject_id)
+                .fetch_one(&pool)
+                .await
+                .context("compute scope digest")?;
         entries.push(
             RestoreFenceEntry::new(
                 scope_digest,
@@ -893,11 +894,12 @@ async fn run_restore_export_ledger() -> Result<()> {
             .context("build fence entry")?,
         );
     }
-    let ledger =
-        RestoreFenceLedger::build(OffsetDateTime::now_utc(), entries).context("build fence ledger")?;
+    let ledger = RestoreFenceLedger::build(OffsetDateTime::now_utc(), entries)
+        .context("build fence ledger")?;
     let bytes = ledger.to_bytes().context("encode fence ledger")?;
     fs::write(&ledger_path, &bytes).context("write fence ledger")?;
-    fs::write(&sha256_path, ledger.ledger_sha256.as_bytes()).context("write fence ledger digest")?;
+    fs::write(&sha256_path, ledger.ledger_sha256.as_bytes())
+        .context("write fence ledger digest")?;
     pool.close().await;
     write_stdout(&serde_json::to_string_pretty(&json!({
         "operation": "export-ledger",

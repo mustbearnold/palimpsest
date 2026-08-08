@@ -8,15 +8,19 @@
 //! The port defaults to 19000. The fixture prints "fixture-ready" once it
 //! listens. The conformance runner waits for that line.
 
-use std::{collections::HashMap, net::SocketAddr, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
 
 use axum::{
+    Router,
     body::to_bytes,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::any,
-    Router,
 };
 
 #[derive(Clone, Default)]
@@ -24,10 +28,7 @@ struct FixtureState {
     objects: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
-async fn handler(
-    State(state): State<FixtureState>,
-    request: axum::extract::Request,
-) -> Response {
+async fn handler(State(state): State<FixtureState>, request: axum::extract::Request) -> Response {
     let method = request.method().clone();
     let path = request.uri().path();
     if method.as_str() == "POST" && path == "/__wipe" {
@@ -35,6 +36,7 @@ async fn handler(
         return StatusCode::NO_CONTENT.into_response();
     }
     let key = path.trim_start_matches('/').to_owned();
+    println!("fixture-request {method} {key}");
     match method.as_str() {
         "PUT" => {
             let bytes = match to_bytes(request.into_body(), 256 * 1024 * 1024).await {
@@ -47,7 +49,11 @@ async fn handler(
         "GET" => match state.objects.lock().unwrap().get(&key) {
             Some(bytes) => {
                 let length = bytes.len().to_string();
-                (StatusCode::OK, [(axum::http::header::CONTENT_LENGTH, length)], bytes.clone())
+                (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_LENGTH, length)],
+                    bytes.clone(),
+                )
                     .into_response()
             }
             None => StatusCode::NOT_FOUND.into_response(),
@@ -74,5 +80,7 @@ async fn main() {
         .await
         .expect("fixture must bind its port");
     println!("fixture-ready");
-    axum::serve(listener, app).await.expect("fixture must serve");
+    axum::serve(listener, app)
+        .await
+        .expect("fixture must serve");
 }

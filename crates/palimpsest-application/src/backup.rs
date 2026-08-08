@@ -61,7 +61,8 @@ impl S3BackupObjectStoreConfig {
         secret_access_key: &str,
         session_token: Option<String>,
     ) -> Result<Self, S3BackupObjectStoreConfigError> {
-        let endpoint = Url::parse(endpoint).map_err(|_| S3BackupObjectStoreConfigError::InvalidEndpoint)?;
+        let endpoint =
+            Url::parse(endpoint).map_err(|_| S3BackupObjectStoreConfigError::InvalidEndpoint)?;
         if !matches!(endpoint.scheme(), "http" | "https") {
             return Err(S3BackupObjectStoreConfigError::InvalidEndpoint);
         }
@@ -154,8 +155,7 @@ impl S3BackupObjectStore {
     }
 
     pub fn from_environment() -> Result<Option<Self>, S3BackupObjectStoreConfigError> {
-        S3BackupObjectStoreConfig::from_environment()
-            .map(|config| config.map(Self::from_config))
+        S3BackupObjectStoreConfig::from_environment().map(|config| config.map(Self::from_config))
     }
 
     fn object_url(&self, key: &str) -> Url {
@@ -296,7 +296,9 @@ impl S3BackupObjectStore {
     /// Read the backup index. A missing index reads as an empty index.
     pub async fn read_index(&self) -> Result<BackupIndex, S3BackupStoreError> {
         match self.get_object(BACKUP_INDEX_OBJECT).await {
-            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_| S3BackupStoreError::InvalidIndex),
+            Ok(bytes) => {
+                serde_json::from_slice(&bytes).map_err(|_| S3BackupStoreError::InvalidIndex)
+            }
             Err(S3BackupStoreError::NotFound) => Ok(BackupIndex::default()),
             Err(error) => Err(error),
         }
@@ -321,7 +323,8 @@ impl BackupIndex {
     /// Insert an entry in deterministic order (by backup id).
     pub fn insert(&mut self, entry: BackupIndexEntry) {
         self.entries.push(entry);
-        self.entries.sort_by(|left, right| left.backup_id.cmp(&right.backup_id));
+        self.entries
+            .sort_by(|left, right| left.backup_id.cmp(&right.backup_id));
     }
 
     /// Remove an entry by backup id. Returns the removed entry.
@@ -534,7 +537,9 @@ mod tests {
         let state = std::sync::Arc::new(FakeS3State {
             objects: Mutex::new(std::collections::HashMap::new()),
         });
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
         let address = listener.local_addr().unwrap();
         let app = Router::new()
             .fallback(any(fake_s3_handler))

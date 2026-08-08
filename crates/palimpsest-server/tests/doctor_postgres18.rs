@@ -57,7 +57,7 @@ fn run_ready_doctor(database_url: &str) -> Result<()> {
         "doctor did not verify pgvector 0.8.5: {report}"
     );
     ensure!(
-        report["checks"]["migrations"]["latest_version"] == 23,
+        report["checks"]["migrations"]["latest_version"] == 25,
         "doctor did not verify the latest migration: {report}"
     );
     ensure!(
