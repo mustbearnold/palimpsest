@@ -10,10 +10,10 @@ use palimpsest_domain::{
     EpisodeId, ExportId, FactId, FactKey, FactNamespace, FactView, HotCache, HotCacheKind,
     NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
     NewPreparedEffect, NewRetrieval, NoopHotCache, OperationGrant, PrincipalId, PrincipalScope,
-    RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalFilters, RetrievalId,
-    RetrievalPolicy, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId,
-    SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact,
-    TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    RetentionPolicyId, RetrievalFilters, RetrievalId, RetrievalPolicyId, RetrievalQuery,
+    RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
+    SubjectLifecycle, SupersedeFact, TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId,
+    WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -453,11 +453,6 @@ pub enum RetrievalPreparation {
 /// advisory: an entry older than this TTL is a miss and the canonical read
 /// decides. Receipts are append-only, so within the TTL a hit is airtight.
 const HOT_CACHE_RECEIPT_TTL_SECONDS: u64 = 300;
-
-/// The per-kind canonical version for a receipt: its immutable `recorded_at`.
-fn receipt_cache_version(receipt: &RetrievalReceipt) -> u64 {
-    u64::try_from(receipt.recorded_at.unix_timestamp()).unwrap_or(0)
-}
 
 /// Serve a retrieval receipt from the hot cache when the hit is valid.
 ///
@@ -3150,7 +3145,7 @@ mod deletion_policy_tests {
 mod hot_cache_receipt_tests {
     use super::*;
     use palimpsest_cache::MemoryHotCache;
-    use std::sync::Arc;
+    use palimpsest_domain::{RetrievalAuthorizationReceipt, RetrievalPolicy};
 
     fn sample_receipt(scope_digest: &str) -> RetrievalReceipt {
         let tenant_id = TenantId(Uuid::from_u128(1));
@@ -3228,7 +3223,7 @@ mod hot_cache_receipt_tests {
     async fn scope_mismatch_is_a_miss() {
         let cache = MemoryHotCache::new();
         let receipt = sample_receipt("scope-a");
-        cached(&cache, &receipt);
+        cached(&cache, &receipt).await;
 
         let hit = cached_retrieval_receipt(
             &cache,
@@ -3249,7 +3244,7 @@ mod hot_cache_receipt_tests {
     async fn id_mismatch_is_a_miss() {
         let cache = MemoryHotCache::new();
         let receipt = sample_receipt("scope-a");
-        cached(&cache, &receipt);
+        cached(&cache, &receipt).await;
 
         let hit = cached_retrieval_receipt(
             &cache,
@@ -3266,13 +3261,15 @@ mod hot_cache_receipt_tests {
     #[tokio::test]
     async fn corrupt_bytes_are_a_miss() {
         let cache = MemoryHotCache::new();
-        cache.put(
-            TenantId(Uuid::from_u128(1)),
-            HotCacheKind::Receipt,
-            "3",
-            b"not-json",
-            300,
-        );
+        cache
+            .put(
+                TenantId(Uuid::from_u128(1)),
+                HotCacheKind::Receipt,
+                "3",
+                b"not-json",
+                300,
+            )
+            .await;
 
         let hit = cached_retrieval_receipt(
             &cache,
@@ -3287,12 +3284,5 @@ mod hot_cache_receipt_tests {
             hit.is_none(),
             "undecodable bytes must fall back to canonical"
         );
-    }
-
-    #[test]
-    fn receipt_cache_version_is_recorded_at_seconds() {
-        let receipt = sample_receipt("scope-a");
-        let expected = u64::try_from(receipt.recorded_at.unix_timestamp()).unwrap();
-        assert_eq!(receipt_cache_version(&receipt), expected);
     }
 }
