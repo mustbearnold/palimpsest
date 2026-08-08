@@ -84,3 +84,10 @@ jobs:
 
       - name: Run workspace tests
         run: cargo test --locked --workspace
+
+      - name: Run backup and PITR conformance
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-16
+          fi
+          bash scripts/test_palimpsest_backup_conformance.sh

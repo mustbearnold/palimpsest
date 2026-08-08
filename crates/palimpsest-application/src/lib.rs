@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub mod backup;
 pub mod consolidation;
 pub mod export;
 pub mod recovery;

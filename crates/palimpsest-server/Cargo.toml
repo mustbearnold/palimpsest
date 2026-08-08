@@ -21,6 +21,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+axum.workspace = true
 hex.workspace = true
 palimpsest-conformance = { path = "../palimpsest-conformance" }
 proptest = "1"

@@ -1,7 +1,14 @@
 use std::{env, fs, io::Write, sync::Arc};
 
 use anyhow::{Context, Result, bail};
-use palimpsest_application::verify_restore_fence_ledger;
+use palimpsest_application::{
+    backup::{
+        BackupIndexEntry, S3BackupObjectStore, S3BackupStoreError, base_object_key, wal_object_key,
+    },
+    export::sha256_hex,
+    verify_restore_fence_ledger,
+    RestoreFenceEntry, RestoreFenceLedger,
+};
 use palimpsest_domain::{
     OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,
 };
@@ -9,7 +16,7 @@ use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -19,9 +26,10 @@ async fn main() -> Result<()> {
         Some("doctor") => return run_doctor().await,
         Some("migrate") => return run_migrate().await,
         Some("restore") => return run_restore().await,
+        Some("backup") => return run_backup().await,
         Some("--help" | "-h") => {
             write_stdout(
-                "Usage: palimpsest-server [doctor|migrate|restore]\n  doctor  check PostgreSQL, pgvector, schema, and runtime-role prerequisites\n  migrate status|plan|apply  inspect or apply checked-in SQLx migrations\n  restore verify|apply  verify a fence ledger or replay it against the restore database",
+                "Usage: palimpsest-server [doctor|migrate|restore|backup]\n  doctor  check PostgreSQL, pgvector, schema, and runtime-role prerequisites\n  migrate status|plan|apply  inspect or apply checked-in SQLx migrations\n  restore verify|apply|export-ledger  verify a fence ledger, replay it against the restore database, or export the live fence ledger\n  backup push-base|archive-wal|fetch-base|fetch-wal|expire  manage base backups, WAL segments, and backup expiry",
             )?;
             return Ok(());
         }
@@ -108,7 +116,7 @@ async fn run_restore() -> Result<()> {
     let operation = env::args().nth(2);
     if matches!(operation.as_deref(), Some("--help" | "-h") | None) {
         write_stdout(
-            "Usage: palimpsest-server restore <verify|apply>\n  restore verify  validate the independent fence ledger without database access\n  restore apply   replay the verified fence ledger against PALIMPSEST_RESTORE_DATABASE_URL",
+            "Usage: palimpsest-server restore <verify|apply|export-ledger>\n  restore verify  validate the independent fence ledger without database access\n  restore apply   replay the verified fence ledger against PALIMPSEST_RESTORE_DATABASE_URL\n  restore export-ledger  export the live fence ledger from PALIMPSEST_RESTORE_EXPORT_DATABASE_URL",
         )?;
         if operation.is_none() {
             bail!("restore operation is required");
@@ -118,6 +126,7 @@ async fn run_restore() -> Result<()> {
     match operation.as_deref() {
         Some("verify") => run_restore_verify().await,
         Some("apply") => run_restore_mode().await,
+        Some("export-ledger") => run_restore_export_ledger().await,
         Some(operation) => bail!("unknown restore operation {operation}"),
         None => unreachable!("restore operation was checked above"),
     }
@@ -533,6 +542,371 @@ fn parse_uuid(name: &str) -> Result<Uuid> {
     required(name)?
         .parse()
         .with_context(|| format!("{name} must be a UUID"))
+}
+
+async fn run_backup() -> Result<()> {
+    let operation = env::args().nth(2);
+    if matches!(operation.as_deref(), Some("--help" | "-h") | None) {
+        write_stdout(
+            "Usage: palimpsest-server backup <push-base|archive-wal|fetch-base|fetch-wal|expire>\n  backup push-base <backup_id> <base_path> <retention_policy_id> <wal_from> <wal_to>  upload a base archive and record its index entry\n  backup archive-wal <wal_name> <wal_path>  upload one WAL segment\n  backup fetch-base <backup_id> <out_path> [max_age_seconds]  fetch, verify, and refuse stale base archives\n  backup fetch-wal <wal_name> <out_path>  fetch one WAL segment\n  backup expire <retention_policy_id> <retention_seconds>  remove expired backups and their WAL ranges",
+        )?;
+        if operation.is_none() {
+            bail!("backup operation is required");
+        }
+        return Ok(());
+    }
+    let mut arguments = env::args().skip(3);
+    match operation.as_deref() {
+        Some("push-base") => run_backup_push_base(&mut arguments).await,
+        Some("archive-wal") => run_backup_archive_wal(&mut arguments).await,
+        Some("fetch-base") => run_backup_fetch_base(&mut arguments).await,
+        Some("fetch-wal") => run_backup_fetch_wal(&mut arguments).await,
+        Some("expire") => run_backup_expire(&mut arguments).await,
+        Some(operation) => bail!("unknown backup operation {operation}"),
+        None => unreachable!("backup operation was checked above"),
+    }
+}
+
+fn backup_store() -> Result<S3BackupObjectStore> {
+    S3BackupObjectStore::from_environment()
+        .map_err(|_| anyhow::anyhow!("backup object store configuration is invalid"))?
+        .ok_or_else(|| anyhow::anyhow!("PALIMPSEST_BACKUP_S3_* configuration is missing"))
+}
+
+fn write_backup_failure(operation: &str, code: &str) -> Result<()> {
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": operation,
+        "status": "blocked",
+        "error": {"code": code}
+    }))?)
+}
+
+async fn run_backup_push_base(arguments: &mut impl Iterator<Item = String>) -> Result<()> {
+    let (backup_id, base_path, retention_policy_id, wal_from, wal_to) = match (
+        arguments.next(),
+        arguments.next(),
+        arguments.next(),
+        arguments.next(),
+        arguments.next(),
+    ) {
+        (
+            Some(backup_id),
+            Some(base_path),
+            Some(retention_policy_id),
+            Some(wal_from),
+            Some(wal_to),
+        ) => (backup_id, base_path, retention_policy_id, wal_from, wal_to),
+        _ => bail!(
+            "backup push-base requires <backup_id> <base_path> <retention_policy_id> <wal_from> <wal_to>"
+        ),
+    };
+    let store = backup_store()?;
+    let bytes = fs::read(&base_path).context("read base archive")?;
+    let base_sha256 = sha256_hex(&bytes);
+    let base_size_bytes = u64::try_from(bytes.len()).context("base archive is too large")?;
+    let base_object = base_object_key(&backup_id);
+    let uploaded_at = OffsetDateTime::now_utc();
+    store
+        .put_object(&base_object, &bytes)
+        .await
+        .map_err(|_| anyhow::anyhow!("base archive upload failed"))?;
+    let mut index = store
+        .read_index()
+        .await
+        .map_err(|_| anyhow::anyhow!("backup index read failed"))?;
+    index.insert(BackupIndexEntry {
+        backup_id: backup_id.clone(),
+        retention_policy_id,
+        created_at: uploaded_at
+            .format(&Rfc3339)
+            .context("format backup timestamp")?,
+        base_object: base_object.clone(),
+        base_sha256: base_sha256.clone(),
+        base_size_bytes,
+        wal_from,
+        wal_to,
+    });
+    store
+        .write_index(&index)
+        .await
+        .map_err(|_| anyhow::anyhow!("backup index write failed"))?;
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "push-base",
+        "status": "pushed",
+        "backup_id": backup_id,
+        "base_object": base_object,
+        "base_sha256": base_sha256,
+        "base_size_bytes": base_size_bytes
+    }))?)
+}
+
+async fn run_backup_archive_wal(arguments: &mut impl Iterator<Item = String>) -> Result<()> {
+    let (wal_name, wal_path) = match (arguments.next(), arguments.next()) {
+        (Some(wal_name), Some(wal_path)) => (wal_name, wal_path),
+        _ => bail!("backup archive-wal requires <wal_name> <wal_path>"),
+    };
+    let store = backup_store()?;
+    let bytes = fs::read(&wal_path).context("read WAL segment")?;
+    let object = wal_object_key(&wal_name);
+    store
+        .put_object(&object, &bytes)
+        .await
+        .map_err(|_| anyhow::anyhow!("WAL segment upload failed"))?;
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "archive-wal",
+        "status": "archived",
+        "wal_name": wal_name,
+        "object": object,
+        "size_bytes": bytes.len()
+    }))?)
+}
+
+async fn run_backup_fetch_base(arguments: &mut impl Iterator<Item = String>) -> Result<()> {
+    let (backup_id, out_path, max_age_seconds) = match (
+        arguments.next(),
+        arguments.next(),
+        arguments.next(),
+    ) {
+        (Some(backup_id), Some(out_path), max_age_seconds) => (backup_id, out_path, max_age_seconds),
+        _ => bail!("backup fetch-base requires <backup_id> <out_path> [max_age_seconds]"),
+    };
+    let max_age_seconds = match max_age_seconds.as_deref() {
+        None => None,
+        Some(value) => Some(
+            value
+                .parse::<i64>()
+                .context("max_age_seconds must be an integer")?,
+        ),
+    };
+    let store = backup_store()?;
+    let index = store
+        .read_index()
+        .await
+        .map_err(|_| anyhow::anyhow!("backup index read failed"))?;
+    let entry = match index.entries.iter().find(|entry| entry.backup_id == backup_id) {
+        Some(entry) => entry,
+        None => {
+            write_backup_failure("fetch-base", "base-not-indexed")?;
+            bail!("backup fetch-base failed");
+        }
+    };
+    if let Some(max_age_seconds) = max_age_seconds {
+        let created_at = OffsetDateTime::parse(&entry.created_at, &Rfc3339)
+            .context("parse backup timestamp")?;
+        if created_at + Duration::seconds(max_age_seconds) < OffsetDateTime::now_utc() {
+            write_backup_failure("fetch-base", "backup-stale")?;
+            bail!("backup fetch-base failed");
+        }
+    }
+    let bytes = match store.get_object(&entry.base_object).await {
+        Ok(bytes) => bytes,
+        Err(S3BackupStoreError::NotFound) => {
+            write_backup_failure("fetch-base", "base-missing")?;
+            bail!("backup fetch-base failed");
+        }
+        Err(_) => bail!("backup fetch-base failed"),
+    };
+    if sha256_hex(&bytes) != entry.base_sha256 {
+        write_backup_failure("fetch-base", "base-corrupt")?;
+        bail!("backup fetch-base failed");
+    }
+    fs::write(&out_path, &bytes).context("write base archive")?;
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "fetch-base",
+        "status": "verified",
+        "backup_id": backup_id,
+        "base_sha256": entry.base_sha256,
+        "base_size_bytes": entry.base_size_bytes,
+        "wal_from": entry.wal_from,
+        "wal_to": entry.wal_to
+    }))?)
+}
+
+async fn run_backup_fetch_wal(arguments: &mut impl Iterator<Item = String>) -> Result<()> {
+    let (wal_name, out_path) = match (arguments.next(), arguments.next()) {
+        (Some(wal_name), Some(out_path)) => (wal_name, out_path),
+        _ => bail!("backup fetch-wal requires <wal_name> <out_path>"),
+    };
+    let store = backup_store()?;
+    let bytes = match store.get_object(&wal_object_key(&wal_name)).await {
+        Ok(bytes) => bytes,
+        Err(S3BackupStoreError::NotFound) => {
+            write_backup_failure("fetch-wal", "wal-missing")?;
+            bail!("backup fetch-wal failed");
+        }
+        Err(_) => bail!("backup fetch-wal failed"),
+    };
+    fs::write(&out_path, &bytes).context("write WAL segment")?;
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "fetch-wal",
+        "status": "fetched",
+        "wal_name": wal_name,
+        "size_bytes": bytes.len()
+    }))?)
+}
+
+async fn run_backup_expire(arguments: &mut impl Iterator<Item = String>) -> Result<()> {
+    let (retention_policy_id, retention_seconds) = match (arguments.next(), arguments.next()) {
+        (Some(retention_policy_id), Some(retention_seconds)) => {
+            let retention_seconds = retention_seconds
+                .parse::<i64>()
+                .context("retention_seconds must be an integer")?;
+            if retention_seconds < 0 {
+                bail!("retention_seconds must not be negative");
+            }
+            (retention_policy_id, retention_seconds)
+        }
+        _ => bail!("backup expire requires <retention_policy_id> <retention_seconds>"),
+    };
+    let store = backup_store()?;
+    let mut index = store
+        .read_index()
+        .await
+        .map_err(|_| anyhow::anyhow!("backup index read failed"))?;
+    let now = OffsetDateTime::now_utc();
+    let mut expired = Vec::new();
+    let mut kept = Vec::new();
+    for entry in index.entries {
+        let created_at = OffsetDateTime::parse(&entry.created_at, &Rfc3339)
+            .map_err(|_| anyhow::anyhow!("backup index contains an invalid timestamp"))?;
+        if entry.retention_policy_id == retention_policy_id
+            && created_at + Duration::seconds(retention_seconds) < now
+        {
+            expired.push(entry);
+        } else {
+            kept.push(entry);
+        }
+    }
+    let earliest_kept_wal_from = kept
+        .iter()
+        .map(|entry| entry.wal_from.clone())
+        .min();
+    for entry in &expired {
+        store
+            .delete_object(&entry.base_object)
+            .await
+            .map_err(|_| anyhow::anyhow!("base archive removal failed"))?;
+        let wal_upper = match &earliest_kept_wal_from {
+            Some(first_kept) => min_wal_name(&entry.wal_to, &previous_wal_name(first_kept)),
+            None => entry.wal_to.clone(),
+        };
+        for wal_name in wal_name_range(&entry.wal_from, &wal_upper) {
+            store
+                .delete_object(&wal_object_key(&wal_name))
+                .await
+                .map_err(|_| anyhow::anyhow!("WAL segment removal failed"))?;
+        }
+    }
+    index.entries = kept;
+    store
+        .write_index(&index)
+        .await
+        .map_err(|_| anyhow::anyhow!("backup index write failed"))?;
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "expire",
+        "status": "expired",
+        "retention_policy_id": retention_policy_id,
+        "retention_seconds": retention_seconds,
+        "removed": expired.iter().map(|entry| entry.backup_id.clone()).collect::<Vec<_>>(),
+        "remaining": index.entries.len()
+    }))?)
+}
+
+fn wal_segment_number(name: &str) -> Option<u64> {
+    let suffix = name.get(name.len().saturating_sub(16)..)?;
+    u64::from_str_radix(suffix, 16).ok()
+}
+
+fn wal_timeline(name: &str) -> &str {
+    name.get(..8.min(name.len())).unwrap_or(name)
+}
+
+fn previous_wal_name(name: &str) -> String {
+    format!(
+        "{}{:016x}",
+        wal_timeline(name),
+        wal_segment_number(name).unwrap_or(0).saturating_sub(1)
+    )
+}
+
+fn min_wal_name(left: &str, right: &str) -> String {
+    if wal_segment_number(left).unwrap_or(0) <= wal_segment_number(right).unwrap_or(0) {
+        left.to_owned()
+    } else {
+        right.to_owned()
+    }
+}
+
+fn wal_name_range(from: &str, to: &str) -> Vec<String> {
+    let timeline = wal_timeline(from);
+    let start = wal_segment_number(from).unwrap_or(0);
+    let end = wal_segment_number(to).unwrap_or(0);
+    (start..=end)
+        .map(|number| format!("{timeline}{number:016x}"))
+        .collect()
+}
+
+async fn run_restore_export_ledger() -> Result<()> {
+    let database_url = env::var("PALIMPSEST_RESTORE_EXPORT_DATABASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .context("PALIMPSEST_RESTORE_EXPORT_DATABASE_URL must be set")?;
+    let ledger_path = required("PALIMPSEST_RESTORE_FENCE_LEDGER_PATH")?;
+    let sha256_path = required("PALIMPSEST_RESTORE_FENCE_LEDGER_SHA256")?;
+    let expiry_hours = match env::var("PALIMPSEST_RESTORE_FENCE_EXPIRY_HOURS") {
+        Ok(value) if !value.trim().is_empty() => value
+            .parse::<i64>()
+            .context("PALIMPSEST_RESTORE_FENCE_EXPIRY_HOURS must be an integer")?,
+        _ => 24,
+    };
+    let pool = PgPool::connect(&database_url)
+        .await
+        .context("connect to PALIMPSEST_RESTORE_EXPORT_DATABASE_URL")?;
+    let rows = sqlx::query(
+        "SELECT tenant_id, subject_id, state_version, updated_at
+         FROM memory.subject_lifecycles
+         WHERE lifecycle_state <> 'active'
+         ORDER BY tenant_id, subject_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .context("read live fence state")?;
+    let mut entries = Vec::with_capacity(rows.len());
+    for row in rows {
+        let tenant_id: Uuid = row.try_get("tenant_id")?;
+        let subject_id: Uuid = row.try_get("subject_id")?;
+        let state_version: i64 = row.try_get("state_version")?;
+        let updated_at: OffsetDateTime = row.try_get("updated_at")?;
+        let scope_digest: String = sqlx::query_scalar("SELECT memory.deletion_scope_digest($1, $2)")
+            .bind(tenant_id)
+            .bind(subject_id)
+            .fetch_one(&pool)
+            .await
+            .context("compute scope digest")?;
+        entries.push(
+            RestoreFenceEntry::new(
+                scope_digest,
+                u64::try_from(state_version).context("state version must not be negative")?,
+                updated_at,
+                updated_at + Duration::hours(expiry_hours),
+            )
+            .context("build fence entry")?,
+        );
+    }
+    let ledger =
+        RestoreFenceLedger::build(OffsetDateTime::now_utc(), entries).context("build fence ledger")?;
+    let bytes = ledger.to_bytes().context("encode fence ledger")?;
+    fs::write(&ledger_path, &bytes).context("write fence ledger")?;
+    fs::write(&sha256_path, ledger.ledger_sha256.as_bytes()).context("write fence ledger digest")?;
+    pool.close().await;
+    write_stdout(&serde_json::to_string_pretty(&json!({
+        "operation": "export-ledger",
+        "status": "exported",
+        "entry_count": ledger.entries.len(),
+        "ledger_sha256": ledger.ledger_sha256,
+        "ledger_path": ledger_path,
+        "sha256_path": sha256_path
+    }))?)
 }
 
 #[cfg(test)]

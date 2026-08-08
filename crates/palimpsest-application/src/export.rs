@@ -583,7 +583,7 @@ impl ExportPackageStore for S3ExportPackageStore {
     }
 }
 
-fn canonical_uri(url: &Url) -> String {
+pub(crate) fn canonical_uri(url: &Url) -> String {
     let path = url.path();
     if path.is_empty() {
         "/".to_owned()
@@ -592,7 +592,7 @@ fn canonical_uri(url: &Url) -> String {
     }
 }
 
-fn host_header(url: &Url) -> String {
+pub(crate) fn host_header(url: &Url) -> String {
     let mut host = url.host_str().unwrap_or_default().to_owned();
     if let Some(port) = url.port() {
         host.push(':');
@@ -601,11 +601,11 @@ fn host_header(url: &Url) -> String {
     host
 }
 
-fn canonical_header_value(value: &str) -> String {
+pub(crate) fn canonical_header_value(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn aws_timestamp(timestamp: OffsetDateTime) -> String {
+pub(crate) fn aws_timestamp(timestamp: OffsetDateTime) -> String {
     format!(
         "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
         timestamp.year(),
@@ -617,7 +617,7 @@ fn aws_timestamp(timestamp: OffsetDateTime) -> String {
     )
 }
 
-fn hmac_sha256(key: &[u8], value: &[u8]) -> Vec<u8> {
+pub(crate) fn hmac_sha256(key: &[u8], value: &[u8]) -> Vec<u8> {
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts every key length");
     mac.update(value);
     mac.finalize().into_bytes().to_vec()
@@ -1173,7 +1173,7 @@ fn schema_bytes() -> Vec<u8> {
     .expect("the static package schema is valid JSON")
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
