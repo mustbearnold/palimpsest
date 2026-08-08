@@ -1047,6 +1047,7 @@ dependencies = [
  "axum",
  "hex",
  "hmac 0.12.1",
+ "palimpsest-cache",
  "palimpsest-domain",
  "reqwest",
  "serde",
