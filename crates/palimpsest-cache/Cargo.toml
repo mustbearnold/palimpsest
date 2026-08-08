@@ -1,0 +1,17 @@
+[package]
+name = "palimpsest-cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+palimpsest-domain = { path = "../palimpsest-domain" }
+redis.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+uuid.workspace = true

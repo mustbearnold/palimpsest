@@ -7,12 +7,12 @@ use palimpsest_domain::{
     DeletionLiveDisposition, DeletionOperationId, DeletionOperationState, DeletionTargetCapability,
     DeletionTargetName, DeletionTargetState, DeletionTargetVerification, EffectId,
     EffectTransition, EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode,
-    EpisodeId, ExportId, FactId, FactKey, FactNamespace, FactView, NewCheckpointRevision,
+    EpisodeId, ExportId, FactId, FactKey, FactNamespace, FactView, HotCache, NewCheckpointRevision,
     NewEffectTransition, NewEpisode, NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval,
-    OperationGrant, PrincipalId, PrincipalScope, RetentionPolicyId, RetrievalFilters, RetrievalId,
-    RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity,
-    SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact, TenantId, ThreadId, ValidTime,
-    WritePolicy, WritePolicyId, WritePolicyVersion,
+    NoopHotCache, OperationGrant, PrincipalId, PrincipalScope, RetentionPolicyId, RetrievalFilters,
+    RetrievalId, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint,
+    Sensitivity, SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact, TenantId,
+    ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -624,6 +624,7 @@ pub struct MemoryService {
     consolidations: Option<Arc<dyn ConsolidationRepository>>,
     consolidation_interpreters: Option<Arc<InterpreterRegistry>>,
     surfaces: Option<Arc<dyn SurfaceRepository>>,
+    cache: Arc<dyn HotCache>,
 }
 
 impl MemoryService {
@@ -647,7 +648,19 @@ impl MemoryService {
             consolidations: None,
             consolidation_interpreters: None,
             surfaces: None,
+            cache: Arc::new(NoopHotCache),
         }
+    }
+
+    /// Select the hot cache implementation (spec 015 R10). The default is the
+    /// no-op cache: caching is off unless the caller configures it.
+    pub fn with_hot_cache(mut self, cache: Arc<dyn HotCache>) -> Self {
+        self.cache = cache;
+        self
+    }
+
+    pub fn hot_cache(&self) -> Arc<dyn HotCache> {
+        self.cache.clone()
     }
 
     pub fn with_surface_components(mut self, surfaces: Arc<dyn SurfaceRepository>) -> Self {

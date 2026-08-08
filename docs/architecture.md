@@ -44,6 +44,10 @@ crates/palimpsest-http ─► crates/palimpsest-application ─► crates/palimp
   the canonical migrations and assembles the governed `MemoryService`; opens
   no network listener by default and optionally serves the canonical HTTP
   router on a loopback-only listener.
+- `palimpsest-cache` — optional hot cache (spec 015): `HotCache` trait
+  implementations — `ValkeyHotCache` (Redis protocol) and `MemoryHotCache`
+  (deterministic in-process double); the domain contract lives in
+  `palimpsest-domain`; the default service assembly uses `NoopHotCache`.
 
 ## Storage model
 

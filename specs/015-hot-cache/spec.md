@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. Spec review round 1 FAIL; fixes applied 2026-08-08 (per-kind validation, cache-wrong rule, at-or-below TTL, RFC 2119 tags).
+Draft. Spec review round 1 FAIL; fixes applied 2026-08-08 (per-kind validation, cache-wrong rule, at-or-below TTL, RFC 2119 tags). Round 2 review PASS (8/8 conditions fixed, no new blockers).
 
 ## Owner
 
@@ -32,7 +32,7 @@ Provide an optional Valkey/Redis hot cache for checkpoints, locks, and recent re
 - R3. Recent retrieval receipts cached. Authorized retrieval receipts MUST be cached for a bounded window with an explicit TTL.
 - R4. Loss safety. Eviction, restart, or total cache wipe MUST leave retrieval correct. Every cache hit MUST be validated against canonical state before it is trusted.
 - R5. Rebuild. A full rebuild MUST repopulate every cache entry from canonical records and restore cache correctness.
-- R6. Content-free. No raw private memory MAY appear as a routine cache field. Cache values are receipts, hashes, and markers only.
+- R6. Content-free. No raw private memory MUST NOT appear as a routine cache field. Cache values are receipts, hashes, and markers only.
 - R7. Tenancy. Every cache key MUST embed the tenant id. One tenant MUST NOT read or overwrite another tenant's entries.
 - R8. Failure injection. With the cache unavailable during writes and reads, canonical state MUST stay correct and reads MUST return correct results via fallback.
 - R9. Invalidation. Validation MUST use per-kind canonical state:

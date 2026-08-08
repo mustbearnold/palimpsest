@@ -1788,3 +1788,172 @@ mod temporal_score_tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Optional hot cache contract (spec 015).
+// ---------------------------------------------------------------------------
+
+/// Kind of cache entry. Mirrors the spec 015 key schema.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HotCacheKind {
+    Checkpoint,
+    Lock,
+    Receipt,
+}
+
+/// Optional hot cache for checkpoints, locks, and recent retrieval receipts.
+///
+/// The cache is never a source of truth. A miss must always fall back to the
+/// canonical path. Implementations must be safe to lose: eviction, restart,
+/// or a total wipe must leave retrieval correct.
+#[async_trait::async_trait]
+pub trait HotCache: Send + Sync {
+    /// Read a value for the tenant, kind, and scope.
+    /// Returns None on a miss.
+    async fn get(&self, tenant: TenantId, kind: HotCacheKind, scope: &str) -> Option<Vec<u8>>;
+
+    /// Write a value with a TTL in seconds.
+    /// The caller embeds any coverage-version marker in the value.
+    async fn put(
+        &self,
+        tenant: TenantId,
+        kind: HotCacheKind,
+        scope: &str,
+        value: &[u8],
+        ttl_seconds: u64,
+    );
+
+    /// Delete a value for the tenant, kind, and scope.
+    async fn delete(&self, tenant: TenantId, kind: HotCacheKind, scope: &str);
+}
+
+/// The default cache implementation. Every operation is a no-op.
+/// All reads are misses, so all paths fall back to the canonical store.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopHotCache;
+
+#[async_trait::async_trait]
+impl HotCache for NoopHotCache {
+    async fn get(&self, _tenant: TenantId, _kind: HotCacheKind, _scope: &str) -> Option<Vec<u8>> {
+        None
+    }
+
+    async fn put(
+        &self,
+        _tenant: TenantId,
+        _kind: HotCacheKind,
+        _scope: &str,
+        _value: &[u8],
+        _ttl_seconds: u64,
+    ) {
+    }
+
+    async fn delete(&self, _tenant: TenantId, _kind: HotCacheKind, _scope: &str) {}
+}
+
+#[cfg(test)]
+mod hot_cache_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn noop_cache_is_always_a_miss() {
+        let cache = NoopHotCache;
+        let tenant = TenantId::from(Uuid::from_u128(1));
+        assert!(
+            cache
+                .get(tenant, HotCacheKind::Checkpoint, "scope")
+                .await
+                .is_none()
+        );
+        assert!(
+            cache
+                .get(tenant, HotCacheKind::Lock, "scope")
+                .await
+                .is_none()
+        );
+        assert!(
+            cache
+                .get(tenant, HotCacheKind::Receipt, "scope")
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn noop_cache_accepts_writes_and_deletes() {
+        let cache = NoopHotCache;
+        let tenant = TenantId::from(Uuid::from_u128(2));
+        cache
+            .put(tenant, HotCacheKind::Checkpoint, "scope", b"value", 60)
+            .await;
+        cache
+            .delete(tenant, HotCacheKind::Checkpoint, "scope")
+            .await;
+        assert!(
+            cache
+                .get(tenant, HotCacheKind::Checkpoint, "scope")
+                .await
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn hot_cache_kinds_are_distinct() {
+        assert_ne!(HotCacheKind::Checkpoint, HotCacheKind::Lock);
+        assert_ne!(HotCacheKind::Lock, HotCacheKind::Receipt);
+    }
+}
+
+/// Versioned cache wrapper (spec 015 R7).
+///
+/// Values are stored as an 8-byte little-endian coverage version followed by
+/// the payload. A get for a version that differs from the stored version is a
+/// miss. A cache entry written under an older coverage marker therefore fails
+/// validation and is lazily refreshed from the canonical path.
+#[derive(Clone, Debug)]
+pub struct VersionedHotCache<C> {
+    inner: C,
+}
+
+impl<C: HotCache> VersionedHotCache<C> {
+    pub fn new(inner: C) -> Self {
+        Self { inner }
+    }
+
+    pub fn inner(&self) -> &C {
+        &self.inner
+    }
+
+    pub async fn get(
+        &self,
+        tenant: TenantId,
+        kind: HotCacheKind,
+        scope: &str,
+        coverage_version: u64,
+    ) -> Option<Vec<u8>> {
+        let raw = self.inner.get(tenant, kind, scope).await?;
+        if raw.len() < 8 {
+            return None;
+        }
+        let stored = u64::from_le_bytes(raw[..8].try_into().ok()?);
+        if stored != coverage_version {
+            return None;
+        }
+        Some(raw[8..].to_vec())
+    }
+
+    pub async fn put(
+        &self,
+        tenant: TenantId,
+        kind: HotCacheKind,
+        scope: &str,
+        coverage_version: u64,
+        payload: &[u8],
+        ttl_seconds: u64,
+    ) {
+        let mut raw = Vec::with_capacity(8 + payload.len());
+        raw.extend_from_slice(&coverage_version.to_le_bytes());
+        raw.extend_from_slice(payload);
+        self.inner.put(tenant, kind, scope, &raw, ttl_seconds).await;
+    }
+}

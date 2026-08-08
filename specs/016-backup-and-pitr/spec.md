@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. Spec review round 1 FAIL; fixes applied 2026-08-08 (fence-ledger source pinned, fixture contract named, retention mechanism named, restore sequence pinned).
+Draft. Spec review round 1 FAIL; fixes applied 2026-08-08 (fence-ledger source pinned, fixture contract named, retention mechanism named, restore sequence pinned). Round 2 review PASS (8/8 conditions fixed, no new blockers).
 
 ## Owner
 

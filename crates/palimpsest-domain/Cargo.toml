@@ -11,3 +11,9 @@ serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
 uuid.workspace = true
+
+[dependencies.async-trait]
+workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
