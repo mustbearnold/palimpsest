@@ -129,10 +129,16 @@ if [[ -z "$s3_endpoint" ]]; then
     fi
     # The sqlx migrate! macro embeds migrations/ at palimpsest-postgres
     # compile time, but cargo does not track the migrations directory in its
-    # fingerprint. Force the crate to recompile so the binary always carries
-    # the current migration set.
-    touch crates/palimpsest-postgres/src/lib.rs
+    # fingerprint. Force a recompile only when the migration set changed
+    # since the last forced build, so repeated runs stay fast. The stamp
+    # lives under target/ and stays out of the repository.
+    migration_hash="$(find migrations -mindepth 1 -name '*.sql' -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+    migration_stamp="$(dirname -- "$binary")/.palimpsest-migrations.sha256"
+    if [[ ! -f "$migration_stamp" || "$(cat "$migration_stamp" 2>/dev/null)" != "$migration_hash" ]]; then
+        touch crates/palimpsest-postgres/src/lib.rs
+    fi
     cargo build --quiet --bins --examples
+    printf '%s' "$migration_hash" >"$migration_stamp"
     fixture_binary="$(dirname "$binary")/examples/backup_s3_fixture"
     "$fixture_binary" "$fixture_port" >"$workdir/fixture.log" 2>&1 &
     fixture_pid="$!"
