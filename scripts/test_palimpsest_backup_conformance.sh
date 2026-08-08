@@ -72,6 +72,16 @@ fail() {
     exit 1
 }
 
+# Distributions such as Debian and Ubuntu install PostgreSQL helper binaries
+# outside PATH (example: /usr/lib/postgresql/<version>/bin). Add the newest
+# such directory to PATH so this gate finds initdb, pg_ctl, and pg_basebackup.
+# PALIMPSEST_PG_TOOL_ROOT is a test seam for that lookup.
+pg_tool_root="${PALIMPSEST_PG_TOOL_ROOT:-/usr/lib/postgresql}"
+pg_bin_dir="$(find "$pg_tool_root" -mindepth 2 -maxdepth 2 -type d -name bin 2>/dev/null | LC_ALL=C sort -V | tail -n 1)" || pg_bin_dir=""
+if [[ -n "$pg_bin_dir" && -x "$pg_bin_dir/initdb" && -x "$pg_bin_dir/pg_ctl" && -x "$pg_bin_dir/pg_basebackup" ]]; then
+    export PATH="$pg_bin_dir:$PATH"
+fi
+
 for command_name in psql sha256sum curl pg_basebackup pg_ctl tar; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         fail "required backup tool is unavailable: $command_name"
