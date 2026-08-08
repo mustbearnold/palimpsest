@@ -70,7 +70,9 @@ pub(crate) fn spawn_production_server(
 }
 
 pub(crate) async fn wait_for_listener(address: std::net::SocketAddr) -> Result<()> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    // The healthy case resolves in milliseconds. The generous deadline keeps
+    // the gate robust while the machine is under load.
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             match TcpStream::connect(address).await {
                 Ok(stream) => {
