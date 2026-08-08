@@ -300,7 +300,13 @@ class ClientTests(unittest.TestCase):
         FakeApi.deletion_calls = 0
         FakeApi.export_calls = 0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        # A small poll interval keeps shutdown() fast without changing
+        # request handling.
+        self.thread = threading.Thread(
+            target=self.server.serve_forever,
+            kwargs={"poll_interval": 0.01},
+            daemon=True,
+        )
         self.thread.start()
         self.client = PalimpsestClient(
             base_url=f"http://127.0.0.1:{self.server.server_port}",
