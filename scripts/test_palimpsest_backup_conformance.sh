@@ -232,9 +232,9 @@ a1_size="$(printf '%s' "$create_output" | grep -o '"base_size_bytes":[0-9]*' | h
 a1_rpo="$(printf '%s' "$create_output" | grep -o '"rpo_estimate_ms":[0-9]*' | head -1 | sed 's/.*://' || true)"
 a1_entries="$(printf '%s' "$create_output" | grep -o '"fence_entry_count":[0-9]*' | head -1 | sed 's/.*://' || true)"
 [[ "$a1_base_sha256" =~ ^[0-9a-f]{64}$ ]] || fail "A1 base_sha256 is not a 64-hex digest"
-(( a1_size > 0 )) || fail "A1 base_size_bytes is not positive"
-(( a1_rpo >= 0 )) || fail "A1 rpo_estimate_ms is negative"
-(( a1_entries == 1 )) || fail "A1 fence_entry_count is not 1"
+((a1_size > 0)) || fail "A1 base_size_bytes is not positive"
+((a1_rpo >= 0)) || fail "A1 rpo_estimate_ms is negative"
+((a1_entries == 1)) || fail "A1 fence_entry_count is not 1"
 results="A1:pass A2:skip A3:skip A4:skip A5:pass"
 
 echo "backup conformance: A2 restore suppression with fences before and after the backup"
