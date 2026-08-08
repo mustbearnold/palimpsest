@@ -127,7 +127,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-08 22:19 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-08 22:54 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
@@ -135,3 +135,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | --- | --- | --- |
 | 2026-08-08 | AI CEO (prime agent) | Created `SOUL.md` and `INDEX.md`. Bound the per-turn refresh in `AGENTS.md` and `scripts/check-repo.sh`. |
 | 2026-08-08 | AI CEO (prime agent) | Fixed the backup gate PATH bug and the CI PostgreSQL toolchain. Added `scripts/dev-check.sh` and the local verification runbook. Local checks replace CI as the feedback loop. |
+| 2026-08-08 | AI CEO (prime agent) | Optimized the checks. Python suite 9.1s to 0.3s. Backup conformance 295s to 37s. |
