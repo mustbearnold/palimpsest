@@ -18,6 +18,10 @@ change when implementation diverges; a bug is a failing acceptance criterion.
 New documents follow the decision tree in the constitution (spec / ADR /
 runbook / architecture — no fourth kind).
 
+Verify changes with `scripts/dev-check.sh` before you push. The development
+feedback loop is local. Never block development on GitHub Actions. See
+`docs/runbooks/local-verification.md`.
+
 Operational guidance: `docs/runbooks/issue-tracker.md` (GitHub Issues as the
 planning source of truth) and `docs/runbooks/triage-labels.md` (five canonical
 triage roles). Capability specs: `specs/` (`001`–`016`); known gaps:

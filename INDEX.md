@@ -101,11 +101,14 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
   Read it before any architecture, governance, security, storage, or public
   contract change.
 - `docs/decisions/` — 33 architecture decision records (`0001`–`0033`).
-- `docs/runbooks/` — 7 runbooks: quickstart, contributing, issue tracker,
-  triage labels, release gate, security, skills provenance.
+- `docs/runbooks/` — 8 runbooks: quickstart, local verification,
+  contributing, issue tracker, triage labels, release gate, security, skills
+  provenance.
 
 ## Operations
 
+- `scripts/dev-check.sh` — the local development gate. Run it before every
+  push. GitHub Actions never blocks development.
 - `compose.yaml` — pinned PostgreSQL 18 + pgvector 0.8.5 for local use.
 - `scripts/` — dev-up, repository contract check, backups, restore rehearsal,
   ingest service, scale probe.
@@ -124,10 +127,11 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-08 21:35 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-08 22:19 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
 | Date (UTC) | Agent | Change |
 | --- | --- | --- |
 | 2026-08-08 | AI CEO (prime agent) | Created `SOUL.md` and `INDEX.md`. Bound the per-turn refresh in `AGENTS.md` and `scripts/check-repo.sh`. |
+| 2026-08-08 | AI CEO (prime agent) | Fixed the backup gate PATH bug and the CI PostgreSQL toolchain. Added `scripts/dev-check.sh` and the local verification runbook. Local checks replace CI as the feedback loop. |
