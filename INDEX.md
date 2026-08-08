@@ -48,6 +48,7 @@ verifies that this file and `SOUL.md` exist and are not empty.
 | 014 | Embedded/single-user mode | active |
 | 015 | Optional hot cache (Valkey/Redis) | draft, review round 2 PASS |
 | 016 | Provider-managed backup and PITR | active |
+| 018 | Accelerated temporal conformance | draft, issue #48 |
 
 Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 
@@ -127,7 +128,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-08 23:48 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-08 23:55 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
@@ -137,3 +138,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | 2026-08-08 | AI CEO (prime agent) | Fixed the backup gate PATH bug and the CI PostgreSQL toolchain. Added `scripts/dev-check.sh` and the local verification runbook. Local checks replace CI as the feedback loop. |
 | 2026-08-08 | AI CEO (prime agent) | Optimized the checks. Python suite 9.1s to 0.3s. Backup conformance 295s to 37s. |
 | 2026-08-08 | AI CEO (prime agent) | Deep optimization. Workspace suite 155s to 109s. Full gate --all now 136s. Fixed an ambient-URL leak and a restart flake. |
+| 2026-08-08 | AI CEO (prime agent) | Drafted spec 018, accelerated temporal conformance. GitHub issue #48 awaits founder review. |
