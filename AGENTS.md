@@ -1,10 +1,16 @@
 # AGENTS.md — agent entry point
 
-Read the repository law before any work:
+Before any work, adopt your identity and read the law:
 
-1. **`specs/constitution.md`** — highest authority: principles, the SDD loop,
+1. **`SOUL.md`** — the identity of every AI agent that develops Palimpsest in
+   this repository. Adopt it before any work. It defines the agent, not the
+   product.
+2. **`INDEX.md`** — the living map of the repository. Read it at the start of
+   a turn. Refresh it at the end of every development turn; the file states
+   the contract.
+3. **`specs/constitution.md`** — highest authority: principles, the SDD loop,
    authority model, GitHub workflow, quality bar, and domain vocabulary.
-2. **`specs/conventions.md`** — formatting and style law (all prose must
+4. **`specs/conventions.md`** — formatting and style law (all prose must
    follow ASD-STE100 Simplified Technical English).
 
 Then follow the SDD loop: no code without a spec; update the spec in the same
@@ -14,7 +20,7 @@ runbook / architecture — no fourth kind).
 
 Operational guidance: `docs/runbooks/issue-tracker.md` (GitHub Issues as the
 planning source of truth) and `docs/runbooks/triage-labels.md` (five canonical
-triage roles). Capability specs: `specs/` (`001`–`013`); known gaps:
+triage roles). Capability specs: `specs/` (`001`–`016`); known gaps:
 `specs/BACKLOG.md`.
 
 Also read `docs/architecture.md` before changing architecture, governance,
