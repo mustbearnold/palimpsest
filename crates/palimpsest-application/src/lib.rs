@@ -7,12 +7,13 @@ use palimpsest_domain::{
     DeletionLiveDisposition, DeletionOperationId, DeletionOperationState, DeletionTargetCapability,
     DeletionTargetName, DeletionTargetState, DeletionTargetVerification, EffectId,
     EffectTransition, EmbeddingInput, EmbeddingOutput, EmbeddingProfile, EmbeddingTask, Episode,
-    EpisodeId, ExportId, FactId, FactKey, FactNamespace, FactView, HotCache, NewCheckpointRevision,
-    NewEffectTransition, NewEpisode, NewFact, NewFactRevision, NewPreparedEffect, NewRetrieval,
-    NoopHotCache, OperationGrant, PrincipalId, PrincipalScope, RetentionPolicyId, RetrievalFilters,
-    RetrievalId, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId, SaveCheckpoint,
-    Sensitivity, SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact, TenantId,
-    ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
+    EpisodeId, ExportId, FactId, FactKey, FactNamespace, FactView, HotCache, HotCacheKind,
+    NewCheckpointRevision, NewEffectTransition, NewEpisode, NewFact, NewFactRevision,
+    NewPreparedEffect, NewRetrieval, NoopHotCache, OperationGrant, PrincipalId, PrincipalScope,
+    RetentionPolicyId, RetrievalAuthorizationReceipt, RetrievalFilters, RetrievalId,
+    RetrievalPolicy, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId,
+    SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId, SubjectLifecycle, SupersedeFact,
+    TenantId, ThreadId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -446,6 +447,49 @@ pub enum RetrievalPreparation {
     Execute {
         embedding_profile: Option<EmbeddingProfile>,
     },
+}
+
+/// Bounded window for recent retrieval receipts (spec 015 R3). The cache is
+/// advisory: an entry older than this TTL is a miss and the canonical read
+/// decides. Receipts are append-only, so within the TTL a hit is airtight.
+const HOT_CACHE_RECEIPT_TTL_SECONDS: u64 = 300;
+
+/// The per-kind canonical version for a receipt: its immutable `recorded_at`.
+fn receipt_cache_version(receipt: &RetrievalReceipt) -> u64 {
+    u64::try_from(receipt.recorded_at.unix_timestamp()).unwrap_or(0)
+}
+
+/// Serve a retrieval receipt from the hot cache when the hit is valid.
+///
+/// The gate mirrors the canonical read (spec 015 R9): tenant, subject, and
+/// retrieval id must match, the authorization scope digest must equal the
+/// caller's freshly computed scope, and only the initial (cursor-less) read
+/// is cached — paged reads always go canonical because the receipt's items
+/// depend on the cursor position.
+async fn cached_retrieval_receipt(
+    cache: &dyn HotCache,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    retrieval_id: RetrievalId,
+    cursor: Option<&str>,
+    scope_sha256: &str,
+) -> Option<RetrievalReceipt> {
+    if cursor.is_some() {
+        return None;
+    }
+    let bytes = cache
+        .get(
+            tenant_id,
+            HotCacheKind::Receipt,
+            retrieval_id.0.to_string().as_str(),
+        )
+        .await?;
+    let receipt: RetrievalReceipt = serde_json::from_slice(&bytes).ok()?;
+    let valid = receipt.tenant_id == tenant_id
+        && receipt.subject_id == subject_id
+        && receipt.retrieval_id == retrieval_id
+        && receipt.authorization.scope_digest == scope_sha256;
+    if valid { Some(receipt) } else { None }
 }
 
 #[derive(Clone, Debug)]
@@ -2486,43 +2530,68 @@ impl MemoryService {
                 .map_err(map_repository)
         })
         .await?;
-        let embedding_profile = match preparation {
-            RetrievalPreparation::Replay(outcome) => return Ok(outcome),
-            RetrievalPreparation::Execute { embedding_profile } => embedding_profile,
-        };
-        let query_embedding = if let Some(profile) = embedding_profile {
-            let response = await_content_operation(permit, async {
-                self.embeddings
-                    .embed(EmbeddingRequest {
-                        profile: profile.clone(),
-                        task: EmbeddingTask::Query,
-                        inputs: vec![EmbeddingInput {
-                            input_sha256: retrieval.query_sha256.clone(),
-                            content: retrieval.query.as_str().to_owned(),
-                        }],
+        let outcome = match preparation {
+            RetrievalPreparation::Replay(outcome) => outcome,
+            RetrievalPreparation::Execute { embedding_profile } => {
+                let query_embedding = if let Some(profile) = embedding_profile {
+                    let response = await_content_operation(permit, async {
+                        self.embeddings
+                            .embed(EmbeddingRequest {
+                                profile: profile.clone(),
+                                task: EmbeddingTask::Query,
+                                inputs: vec![EmbeddingInput {
+                                    input_sha256: retrieval.query_sha256.clone(),
+                                    content: retrieval.query.as_str().to_owned(),
+                                }],
+                            })
+                            .await
+                            .map_err(|_| ServiceError::Unavailable)
                     })
-                    .await
-                    .map_err(|_| ServiceError::Unavailable)
-            })
-            .await?;
-            let mut outputs =
-                validate_embedding_response(&profile, &[retrieval.query_sha256.as_str()], response)
+                    .await?;
+                    let mut outputs = validate_embedding_response(
+                        &profile,
+                        &[retrieval.query_sha256.as_str()],
+                        response,
+                    )
                     .map_err(|_| ServiceError::Unavailable)?;
-            Some(RetrievalQueryEmbedding {
-                profile,
-                output: outputs.remove(0),
-            })
-        } else {
-            None
+                    Some(RetrievalQueryEmbedding {
+                        profile,
+                        output: outputs.remove(0),
+                    })
+                } else {
+                    None
+                };
+                await_content_operation(permit, async {
+                    self.retrievals
+                        .create_receipt(retrieval, idempotency, query_embedding)
+                        .await
+                        .map_err(map_repository)
+                })
+                .await?
+            }
         };
+        self.cache_receipt(command.tenant_id, &outcome.receipt)
+            .await;
+        Ok(outcome)
+    }
 
-        await_content_operation(permit, async {
-            self.retrievals
-                .create_receipt(retrieval, idempotency, query_embedding)
-                .await
-                .map_err(map_repository)
-        })
-        .await
+    /// Best-effort advisory write (spec 015). The cache never gates the
+    /// canonical outcome; a failure here is not a retrieval failure.
+    async fn cache_receipt(&self, tenant_id: TenantId, receipt: &RetrievalReceipt) {
+        let Ok(bytes) = serde_json::to_vec(receipt) else {
+            return;
+        };
+        let scope = receipt.retrieval_id.0.to_string();
+        let _ = self
+            .cache
+            .put(
+                tenant_id,
+                HotCacheKind::Receipt,
+                scope.as_str(),
+                &bytes,
+                HOT_CACHE_RECEIPT_TTL_SECONDS,
+            )
+            .await;
     }
 
     pub async fn get_retrieval(
@@ -2552,7 +2621,19 @@ impl MemoryService {
             subject_id,
             &allowed_sensitivities,
         )?;
-        await_content_operation(permit, async {
+        if let Some(receipt) = cached_retrieval_receipt(
+            self.cache.as_ref(),
+            tenant_id,
+            subject_id,
+            retrieval_id,
+            cursor.as_deref(),
+            &authorization_scope_sha256,
+        )
+        .await
+        {
+            return Ok(receipt);
+        }
+        let receipt = await_content_operation(permit, async {
             self.retrievals
                 .get_receipt(
                     principal,
@@ -2565,7 +2646,9 @@ impl MemoryService {
                 .await
                 .map_err(map_repository)
         })
-        .await
+        .await?;
+        self.cache_receipt(tenant_id, &receipt).await;
+        Ok(receipt)
     }
 }
 
@@ -3060,5 +3143,156 @@ mod deletion_policy_tests {
                 DeletionTargetName::Exports,
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod hot_cache_receipt_tests {
+    use super::*;
+    use palimpsest_cache::MemoryHotCache;
+    use std::sync::Arc;
+
+    fn sample_receipt(scope_digest: &str) -> RetrievalReceipt {
+        let tenant_id = TenantId(Uuid::from_u128(1));
+        let subject_id = SubjectId(Uuid::from_u128(2));
+        let retrieval_id = RetrievalId(Uuid::from_u128(3));
+        RetrievalReceipt {
+            tenant_id,
+            subject_id,
+            retrieval_id,
+            status: "authorized".to_owned(),
+            evaluated_at: time::OffsetDateTime::now_utc(),
+            valid_at: time::OffsetDateTime::now_utc(),
+            recorded_at: time::OffsetDateTime::now_utc(),
+            policy: RetrievalPolicy {
+                id: RetrievalPolicyId::try_from("retrieval-lexical-v1".to_owned()).unwrap(),
+                version: "1".to_owned(),
+                digest: "test".to_owned(),
+            },
+            authorization: RetrievalAuthorizationReceipt {
+                decision: "allowed".to_owned(),
+                scope_digest: scope_digest.to_owned(),
+            },
+            document_schema_version: 1,
+            query_embedding: None,
+            items: vec![],
+            next_cursor: None,
+        }
+    }
+
+    async fn cached(cache: &MemoryHotCache, receipt: &RetrievalReceipt) {
+        cache
+            .put(
+                receipt.tenant_id,
+                HotCacheKind::Receipt,
+                receipt.retrieval_id.0.to_string().as_str(),
+                &serde_json::to_vec(receipt).unwrap(),
+                300,
+            )
+            .await;
+    }
+
+    #[tokio::test]
+    async fn matching_hit_is_served_only_without_a_cursor() {
+        let cache = MemoryHotCache::new();
+        let receipt = sample_receipt("scope-a");
+        cached(&cache, &receipt).await;
+
+        let hit = cached_retrieval_receipt(
+            &cache,
+            receipt.tenant_id,
+            receipt.subject_id,
+            receipt.retrieval_id,
+            None,
+            "scope-a",
+        )
+        .await;
+        assert!(hit.is_some(), "a matching cursor-less read must hit");
+
+        let paged = cached_retrieval_receipt(
+            &cache,
+            receipt.tenant_id,
+            receipt.subject_id,
+            receipt.retrieval_id,
+            Some("page-2"),
+            "scope-a",
+        )
+        .await;
+        assert!(
+            paged.is_none(),
+            "a paged read must never come from the cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn scope_mismatch_is_a_miss() {
+        let cache = MemoryHotCache::new();
+        let receipt = sample_receipt("scope-a");
+        cached(&cache, &receipt);
+
+        let hit = cached_retrieval_receipt(
+            &cache,
+            receipt.tenant_id,
+            receipt.subject_id,
+            receipt.retrieval_id,
+            None,
+            "scope-b",
+        )
+        .await;
+        assert!(
+            hit.is_none(),
+            "a different authorization scope must not hit"
+        );
+    }
+
+    #[tokio::test]
+    async fn id_mismatch_is_a_miss() {
+        let cache = MemoryHotCache::new();
+        let receipt = sample_receipt("scope-a");
+        cached(&cache, &receipt);
+
+        let hit = cached_retrieval_receipt(
+            &cache,
+            receipt.tenant_id,
+            receipt.subject_id,
+            RetrievalId(Uuid::from_u128(99)),
+            None,
+            "scope-a",
+        )
+        .await;
+        assert!(hit.is_none(), "a different retrieval id must not hit");
+    }
+
+    #[tokio::test]
+    async fn corrupt_bytes_are_a_miss() {
+        let cache = MemoryHotCache::new();
+        cache.put(
+            TenantId(Uuid::from_u128(1)),
+            HotCacheKind::Receipt,
+            "3",
+            b"not-json",
+            300,
+        );
+
+        let hit = cached_retrieval_receipt(
+            &cache,
+            TenantId(Uuid::from_u128(1)),
+            SubjectId(Uuid::from_u128(2)),
+            RetrievalId(Uuid::from_u128(3)),
+            None,
+            "scope-a",
+        )
+        .await;
+        assert!(
+            hit.is_none(),
+            "undecodable bytes must fall back to canonical"
+        );
+    }
+
+    #[test]
+    fn receipt_cache_version_is_recorded_at_seconds() {
+        let receipt = sample_receipt("scope-a");
+        let expected = u64::try_from(receipt.recorded_at.unix_timestamp()).unwrap();
+        assert_eq!(receipt_cache_version(&receipt), expected);
     }
 }

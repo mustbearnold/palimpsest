@@ -51,6 +51,7 @@ Provide an optional Valkey/Redis hot cache for checkpoints, locks, and recent re
 - Versioned envelope. Values carry an 8-byte little-endian version prefix. The caller supplies the per-kind canonical validator. A version mismatch is a miss.
 - Rebuild. Enumerate canonical checkpoint, lock, and receipt records; write each entry; verify counts against canonical totals.
 - Cache-wrong rule. A hit that passes validation but is stale in another dimension is harmless: the canonical write path never consults the cache.
+- First wiring (2026-08-08). Retrieval receipts: `create_retrieval` and `get_retrieval` cache the receipt for a bounded 300 s window. Only the initial cursor-less read is cached, because the receipt's `items` depend on the cursor position; paged reads always go canonical. The cached path re-runs the authorization scope digest check (the receipt's `authorization.scope_digest` must equal the caller's freshly computed scope) — the cache never bypasses authorization. Receipts are append-only, so a TTL-bounded hit cannot be stale in the row-existence dimension.
 
 ## Acceptance criteria
 
@@ -71,7 +72,7 @@ Provide an optional Valkey/Redis hot cache for checkpoints, locks, and recent re
 
 ## Open questions
 
-- Which hot path receives the first wiring: checkpoints, locks, or receipts (needs #37 scale evidence review).
+- Which hot path receives the second wiring: checkpoints (head-CAS validated) or locks (advisory only). The first wiring targets retrieval receipts (decision 2026-08-08: R7 evidence from issue #37 — the authorized lexical core is the measured bottleneck; receipts are its repeatable component).
 
 ## Links
 
