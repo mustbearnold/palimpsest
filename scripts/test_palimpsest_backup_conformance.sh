@@ -37,6 +37,14 @@ s3_secret_key="conformance-secret-key"
 # Refuse a test/gate environment that points at the live database.
 "$(dirname -- "${BASH_SOURCE[0]}")/guard-palimpsest-db-env.sh"
 
+# This runner is hermetic. The guard has inspected the ambient environment.
+# Now drop ambient database URLs so another gate can never steer the scratch
+# clusters. This runner exports the URLs that it owns below.
+unset PALIMPSEST_DATABASE_URL
+unset PALIMPSEST_MIGRATION_DATABASE_URL
+unset PALIMPSEST_TEST_DATABASE_URL
+unset PALIMPSEST_RESTORE_DATABASE_URL
+
 tenant_id="10000000-0000-4000-8000-000000000001"
 subject_one="10000000-0000-4000-8000-000000000011"
 subject_two="10000000-0000-4000-8000-000000000012"

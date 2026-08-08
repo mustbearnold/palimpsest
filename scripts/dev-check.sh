@@ -97,6 +97,10 @@ if [[ "$mode_postgres" == true ]]; then
 fi
 
 if [[ "$mode_backup" == true ]]; then
+    # The backup gate is hermetic. Drop the postgres-tier URLs first.
+    unset PALIMPSEST_MIGRATION_DATABASE_URL
+    unset PALIMPSEST_TEST_DATABASE_URL
+    unset PALIMPSEST_LOCAL_SUPERUSER_URL
     step "backup and PITR conformance"
     bash "$script_dir/test_palimpsest_backup_conformance.sh"
 fi
