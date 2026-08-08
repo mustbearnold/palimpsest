@@ -3,7 +3,9 @@ set -euo pipefail
 
 required_files=(
     AGENTS.md
+    INDEX.md
     README.md
+    SOUL.md
     docs/architecture.md
     docs/decisions/0001-postgres-temporal-source-of-truth.md
     docs/decisions/0002-ai-ceo-and-github-governance.md
