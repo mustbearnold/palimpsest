@@ -5,6 +5,9 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "$script_dir/.." && pwd)"
 cd "$project_root"
 
+# Refuse a test/gate environment that points at the live database.
+"$script_dir/guard-palimpsest-db-env.sh"
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     minimum_compose_version="2.20.0"
     compose_version="$(docker compose version --short)"

@@ -10,6 +10,7 @@ Type=simple
 WorkingDirectory=%h/Projects/Palimpsest
 ExecStart=/usr/bin/python3 %h/Projects/Palimpsest/tools/palimpsest_ingest.py watch --discover --interval-seconds 5
 Environment=PYTHONUNBUFFERED=1
+Environment=PALIMPSEST_INGEST_BASE_URL=http://127.0.0.1:8090
 Environment=PALIMPSEST_INGEST_STATE_PATH=%h/.local/state/palimpsest/ingest-state.json
 EnvironmentFile=-%h/.config/palimpsest/ingest.env
 Restart=on-failure

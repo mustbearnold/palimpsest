@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly trigger for the Palimpsest logical backup
+
+[Timer]
+OnCalendar=*-*-* 03:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

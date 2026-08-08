@@ -1,0 +1,10 @@
+[Unit]
+Description=Palimpsest nightly logical backup (live database)
+After=palimpsest-postgres.service
+Requires=palimpsest-postgres.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/Projects/Palimpsest/scripts/palimpsest-nightly-backup.sh
+UMask=0077
+NoNewPrivileges=true

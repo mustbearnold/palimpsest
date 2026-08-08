@@ -78,6 +78,15 @@ class PalimpsestHttpError(PalimpsestError):
         )
 
 
+class PalimpsestIdempotencyReplayError(PalimpsestHttpError):
+    """A request reused an idempotency key outside the replay window.
+
+    The server kept the key but no longer serves the original receipt.
+    The original write is already committed. The caller must treat the
+    request as applied and advance its own cursor.
+    """
+
+
 class PartialRememberError(PalimpsestError):
     """An episode was committed but its governed fact was not."""
 
@@ -1010,6 +1019,15 @@ class PalimpsestClient:
                 problem = json.loads(response_body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 problem = None
+            problem_type = problem.get("type") if isinstance(problem, dict) else None
+            if (
+                exc.code == 409
+                and isinstance(problem_type, str)
+                and problem_type.endswith("/idempotency-key-reused")
+            ):
+                raise PalimpsestIdempotencyReplayError(
+                    exc.code, method, path, problem, headers
+                ) from None
             raise PalimpsestHttpError(
                 exc.code, method, path, problem, headers
             ) from None

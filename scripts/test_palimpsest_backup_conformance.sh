@@ -34,6 +34,9 @@ s3_region="us-east-1"
 s3_access_key="conformance-access-key"
 s3_secret_key="conformance-secret-key"
 
+# Refuse a test/gate environment that points at the live database.
+"$(dirname -- "${BASH_SOURCE[0]}")/guard-palimpsest-db-env.sh"
+
 tenant_id="10000000-0000-4000-8000-000000000001"
 subject_one="10000000-0000-4000-8000-000000000011"
 subject_two="10000000-0000-4000-8000-000000000012"

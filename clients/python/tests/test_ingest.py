@@ -24,6 +24,7 @@ from palimpsest.ingest import (  # noqa: E402
     redact_sensitive_text,
     SourceSpec,
 )
+from palimpsest.client import PalimpsestIdempotencyReplayError  # noqa: E402
 
 
 class IngestionBoundaryTests(unittest.TestCase):
@@ -487,6 +488,52 @@ class IngestionBoundaryTests(unittest.TestCase):
             report = runner.run_once()
             self.assertEqual(report.ingested, 1)
             self.assertEqual(client.calls[0][0], "event after flush")
+
+    def test_runner_advances_past_expired_idempotency_replays(self) -> None:
+        class FakeClient:
+            def remember(self, content: str, **kwargs: object) -> dict[str, object]:
+                raise PalimpsestIdempotencyReplayError(
+                    409,
+                    "POST",
+                    "/episodes",
+                    {
+                        "type": (
+                            "https://palimpsest.dev/problems/"
+                            "idempotency-key-reused"
+                        )
+                    },
+                    {},
+                )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            path = root / "session.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "type": "event_msg",
+                        "timestamp": "2026-08-03T03:04:05Z",
+                        "payload": {
+                            "type": "user_message",
+                            "message": "already committed",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            client = FakeClient()
+            runner = IngestionRunner(
+                client,
+                [SourceSpec("codex", path)],
+                state_path=root / "state.json",
+                backfill=True,
+            )
+            report = runner.run_once()
+            self.assertEqual(report.replayed, 1)
+            self.assertEqual(report.ingested, 0)
+            second = runner.run_once()
+            self.assertEqual(second.seen, 0)
 
 
 if __name__ == "__main__":

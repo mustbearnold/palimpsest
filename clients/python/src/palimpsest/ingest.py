@@ -142,6 +142,7 @@ class IngestReport:
     ingested: int
     skipped: int
     baselined: int
+    replayed: int
     project_ids: tuple[str, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -150,6 +151,7 @@ class IngestReport:
             "ingested": self.ingested,
             "skipped": self.skipped,
             "baselined": self.baselined,
+            "replayed": self.replayed,
             "project_ids": list(self.project_ids),
         }
 
@@ -206,7 +208,7 @@ class IngestionRunner:
 
     def run_once(self) -> IngestReport:
         state = _load_state(self.state_path)
-        counters = {"seen": 0, "ingested": 0, "skipped": 0, "baselined": 0}
+        counters = {"seen": 0, "ingested": 0, "skipped": 0, "baselined": 0, "replayed": 0}
         projects: set[str] = set()
         source_states = state.setdefault("sources", {})
         for source in self.sources:
@@ -223,6 +225,7 @@ class IngestionRunner:
             counters["ingested"],
             counters["skipped"],
             counters["baselined"],
+            counters["replayed"],
             tuple(sorted(projects)),
         )
 
@@ -279,10 +282,12 @@ class IngestionRunner:
                     cursor["offset"] = end_offset
                     counters["skipped"] += 1
                     continue
-                self._remember(event)
+                if self._remember(event):
+                    counters["ingested"] += 1
+                else:
+                    counters["replayed"] += 1
                 cursor["line"] = line_number
                 cursor["offset"] = end_offset
-                counters["ingested"] += 1
                 projects.add(event.project.project_id)
         source_state["initialized"] = True
 
@@ -313,9 +318,11 @@ class IngestionRunner:
                     source_state["last_id"] = int(row["id"])
                     counters["skipped"] += 1
                     continue
-                self._remember(event)
+                if self._remember(event):
+                    counters["ingested"] += 1
+                else:
+                    counters["replayed"] += 1
                 source_state["last_id"] = int(row["id"])
-                counters["ingested"] += 1
                 projects.add(event.project.project_id)
             source_state["initialized"] = True
         finally:
@@ -324,7 +331,9 @@ class IngestionRunner:
     def _project_allowed(self, event: SessionEvent) -> bool:
         return self.project_root is None or event.project.root == self.project_root
 
-    def _remember(self, event: SessionEvent) -> None:
+    def _remember(self, event: SessionEvent) -> bool:
+        from palimpsest.client import PalimpsestIdempotencyReplayError
+
         metadata = {
             "source": event.source,
             "session_id": event.session_id,
@@ -335,22 +344,28 @@ class IngestionRunner:
             "branch": event.project.branch,
             "privacy": {"credential_redaction": "common-patterns-v1"},
         }
-        self.client.remember(
-            event.content,
-            key=f"{event.source}:{event.event_id}",
-            metadata=metadata,
-            kind=f"{event.source}_session_message",
-            source_type=f"{event.source}.session",
-            source_uri=f"agent-session://{event.source}/{event.session_id}",
-            external_id=f"{event.source}:{event.event_id}",
-            namespace=project_namespace(
-                event.project.project_id, self.namespace_prefix
-            ),
-            sensitivity=self.sensitivity,
-            retention_policy_id=self.retention_policy_id,
-            observed_at=event.observed_at,
-            idempotency_key=f"palimpsest-ingest:{event.source}:{event.event_id}",
-        )
+        try:
+            self.client.remember(
+                event.content,
+                key=f"{event.source}:{event.event_id}",
+                metadata=metadata,
+                kind=f"{event.source}_session_message",
+                source_type=f"{event.source}.session",
+                source_uri=f"agent-session://{event.source}/{event.session_id}",
+                external_id=f"{event.source}:{event.event_id}",
+                namespace=project_namespace(
+                    event.project.project_id, self.namespace_prefix
+                ),
+                sensitivity=self.sensitivity,
+                retention_policy_id=self.retention_policy_id,
+                observed_at=event.observed_at,
+                idempotency_key=f"palimpsest-ingest:{event.source}:{event.event_id}",
+            )
+            return True
+        except PalimpsestIdempotencyReplayError:
+            # The key exists but the replay window expired. The write is
+            # already committed. Advance the cursor and count the replay.
+            return False
 
 
 def parse_codex_record(
