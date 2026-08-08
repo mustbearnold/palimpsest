@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. Spec review round 1 FAIL; fixes applied 2026-08-08 (fence-ledger source pinned, fixture contract named, retention mechanism named, restore sequence pinned). Round 2 review PASS (8/8 conditions fixed, no new blockers).
+Active. Finalized 2026-08-08. Spec review round 1 FAIL; fixes applied 2026-08-08 (fence-ledger source pinned, fixture contract named, retention mechanism named, restore sequence pinned). Round 2 review PASS (8/8 conditions fixed, no new blockers). No open questions.
 
 ## Owner
 
@@ -19,6 +19,7 @@ Provide base-backup and WAL capture against a real provider, with documented RPO
 3. The logical-backup rehearsal (`scripts/palimpsest-logical-backup-rehearsal.sh`) remains the guarded baseline fixture.
 4. A restore is not complete until restore suppression is proven for the restored scope set.
 5. Suppression markers come from the live independent fence ledger (docs/decisions/0011). They are recorded at backup time and re-verified at restore time.
+6. The first provider run uses `archive_command` for WAL archiving. Archive modules are a later option. `archive_command` works with any S3-compatible provider without a server-side module.
 
 ## Requirements
 
@@ -50,10 +51,6 @@ Provide base-backup and WAL capture against a real provider, with documented RPO
 - Server-side worker orchestration (later option, spec 011 pattern).
 - Non-S3-compatible providers.
 - Restore of scopes that were never fenced or deleted.
-
-## Open questions
-
-- Which WAL archiving mode is used (archive_command versus archive modules) for the first provider run.
 
 ## Links
 
