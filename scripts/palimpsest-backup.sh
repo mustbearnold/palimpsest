@@ -166,7 +166,9 @@ run_backup_create() {
     wal_from="$(psql "$source_url" --tuples-only --no-align --quiet --command \
         "SELECT pg_walfile_name(pg_switch_wal())")"
 
-    pg_basebackup --format=tar --compress=gzip --pgdata="$backup_tmp_root/base" \
+    # A fast checkpoint avoids a wait for the next spread checkpoint. On an
+    # idle cluster that wait can reach checkpoint_timeout.
+    pg_basebackup --format=tar --compress=gzip --checkpoint=fast --pgdata="$backup_tmp_root/base" \
         --dbname="$source_url" --label="palimpsest-backup-$backup_id"
 
     local wal_to
