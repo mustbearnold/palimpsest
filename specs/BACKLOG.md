@@ -8,6 +8,8 @@ Known-but-unspecced capabilities and gaps. One line each. Promote to a
 - [scheduled → #38] Provider-managed backup/PITR orchestration, independent
   backup disposition, and full restore suppression against a real backup
   provider.
+- [scheduled → #46] Wiki workspace: markdown vault projection and governed
+  write-back (spec 017, llm-wiki pattern).
 - [deferred: needs a consistency ADR first] Multi-region active-active writes
   and a hosted control plane.
 - [deferred: until after the first production deployment] External identity
