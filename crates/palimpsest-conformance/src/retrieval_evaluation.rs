@@ -425,7 +425,8 @@ pub async fn evaluate_frozen_corpus(
         .scenarios
         .iter()
         .flat_map(|scenario| &scenario.forbidden_ids)
-        .collect::<std::collections::BTreeSet<_>>();
+        .cloned()
+        .collect::<std::collections::BTreeSet<String>>();
     let lexical = evaluate_policy_once(
         target,
         corpus,
@@ -559,7 +560,8 @@ pub async fn evaluate_full_policy_once(
         .scenarios
         .iter()
         .flat_map(|scenario| &scenario.forbidden_ids)
-        .collect::<std::collections::BTreeSet<_>>();
+        .cloned()
+        .collect::<std::collections::BTreeSet<String>>();
     let scenarios = evaluate_policy_once(
         target,
         corpus,
@@ -576,31 +578,62 @@ pub async fn evaluate_full_policy_once(
     })
 }
 
+/// The corpus scenarios are independent: each request uses its own
+/// idempotency key and reads only shared fixtures. Evaluate a bounded number
+/// of scenarios at a time so the frozen-corpus gate stays fast. The frozen
+/// `predictions.json` artifact still verifies every prediction byte for
+/// byte, so the determinism claim is unchanged.
+const EVALUATION_CONCURRENCY: usize = 16;
+
 async fn evaluate_policy_once(
     target: &Target,
     corpus: &Corpus,
     prepared: &PreparedCorpus,
     reverse_ids: &BTreeMap<Uuid, String>,
-    forbidden_ids: &std::collections::BTreeSet<&String>,
+    forbidden_ids: &std::collections::BTreeSet<String>,
     policy_id: &str,
     repetition: usize,
 ) -> Result<Vec<ScenarioPrediction>> {
-    let mut predictions = Vec::with_capacity(corpus.scenarios.len());
-    for scenario in &corpus.scenarios {
-        predictions.push(
-            request_prediction(
-                target,
-                scenario,
-                prepared,
-                reverse_ids,
-                forbidden_ids,
-                policy_id,
-                repetition,
-            )
-            .await?,
-        );
+    let shared_target = std::sync::Arc::new(target.clone());
+    let shared_prepared = std::sync::Arc::new(prepared.clone());
+    let shared_reverse_ids = std::sync::Arc::new(reverse_ids.clone());
+    let shared_forbidden_ids = std::sync::Arc::new(forbidden_ids.clone());
+    let mut slots: Vec<Option<ScenarioPrediction>> = vec![None; corpus.scenarios.len()];
+    let mut chunk_start = 0usize;
+    for chunk in corpus.scenarios.chunks(EVALUATION_CONCURRENCY) {
+        let mut join_set = tokio::task::JoinSet::new();
+        for (offset, scenario) in chunk.iter().enumerate() {
+            let index = chunk_start + offset;
+            let target = std::sync::Arc::clone(&shared_target);
+            let prepared = std::sync::Arc::clone(&shared_prepared);
+            let reverse_ids = std::sync::Arc::clone(&shared_reverse_ids);
+            let forbidden_ids = std::sync::Arc::clone(&shared_forbidden_ids);
+            let scenario = scenario.clone();
+            let policy = policy_id.to_owned();
+            join_set.spawn(async move {
+                let prediction = request_prediction(
+                    &target,
+                    &scenario,
+                    &prepared,
+                    &reverse_ids,
+                    &forbidden_ids,
+                    &policy,
+                    repetition,
+                )
+                .await?;
+                Ok::<_, anyhow::Error>((index, prediction))
+            });
+        }
+        chunk_start += chunk.len();
+        while let Some(joined) = join_set.join_next().await {
+            let (index, prediction) = joined.context("corpus prediction task panicked")??;
+            slots[index] = Some(prediction);
+        }
     }
-    Ok(predictions)
+    slots
+        .into_iter()
+        .map(|slot| slot.context("a corpus prediction was not produced"))
+        .collect()
 }
 
 pub fn write_or_verify_artifact(artifact: &EvaluationArtifact) -> Result<()> {
@@ -786,7 +819,7 @@ async fn request_prediction(
     scenario: &Scenario,
     prepared: &PreparedCorpus,
     reverse_ids: &BTreeMap<Uuid, String>,
-    forbidden_ids: &std::collections::BTreeSet<&String>,
+    forbidden_ids: &std::collections::BTreeSet<String>,
     policy_id: &str,
     repetition: usize,
 ) -> Result<ScenarioPrediction> {
@@ -828,7 +861,7 @@ async fn request_prediction(
     let forbidden_leaks = forbidden_ids
         .iter()
         .filter_map(|logical| {
-            let revision = prepared.revisions.get(*logical)?;
+            let revision = prepared.revisions.get(logical)?;
             std::str::from_utf8(&raw)
                 .ok()?
                 .contains(&revision.to_string())
