@@ -87,7 +87,20 @@ jobs:
 
       - name: Run backup and PITR conformance
         run: |
-          if ! command -v initdb >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-16
+          have_pg_tools=false
+          if command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1; then
+            have_pg_tools=true
+          fi
+          if find /usr/lib/postgresql -mindepth 2 -maxdepth 2 -type d -name bin -print -quit 2>/dev/null | grep -q .; then
+            have_pg_tools=true
+          fi
+          if [[ "$have_pg_tools" == false ]]; then
+            sudo install -d /usr/share/keyrings
+            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc |
+              sudo gpg --dearmor --yes -o /usr/share/keyrings/postgresql-pgdg.gpg
+            echo "deb [signed-by=/usr/share/keyrings/postgresql-pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" |
+              sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-18 postgresql-18-pgvector
           fi
           bash scripts/test_palimpsest_backup_conformance.sh
