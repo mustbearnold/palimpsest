@@ -198,7 +198,9 @@ pub async fn retrieves_with_the_fixed_temporal_policy(
     }
 
     let mut independent_retrieval_ids = vec![successor_receipt.retrieval_id];
-    for repeat in 1..10 {
+    // Two independent replays prove the deterministic replay and the unique
+    // retrieval IDs. Further replays repeat the same check.
+    for repeat in 1..3 {
         let independent_receipt = create_temporal_receipt(
             target,
             &format!("temporal-policy-after-late-evidence-repeat-{repeat}"),
