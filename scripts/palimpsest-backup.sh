@@ -75,12 +75,12 @@ wal_previous() {
     local name="$1"
     local number
     number="$(wal_number "$name")"
-    printf '%s%016x' "${name:0:8}" "$(( number - 1 ))"
+    printf '%s%016x' "${name:0:8}" "$((number - 1))"
 }
 
 wal_to_lsn_start() {
     local name="$1"
-    printf '%d' "$(( $(wal_number "$name") << 24 ))"
+    printf '%d' "$(($(wal_number "$name") << 24))"
 }
 
 lsn_value() {
@@ -88,7 +88,7 @@ lsn_value() {
     local high low
     high="$(printf '%d' "0x${lsn%/*}")"
     low="$(printf '%d' "0x${lsn#*/}")"
-    printf '%d' "$(( (high << 32) | low ))"
+    printf '%d' "$(((high << 32) | low))"
 }
 
 write_json() {
@@ -347,7 +347,7 @@ EOF
     local recovered_lsn_value expected_lsn_value
     recovered_lsn_value="$(lsn_value "$recovered_lsn")"
     expected_lsn_value="$(wal_to_lsn_start "$wal_to")"
-    if (( recovered_lsn_value < expected_lsn_value )); then
+    if ((recovered_lsn_value < expected_lsn_value)); then
         echo "restored cluster recovered only through $recovered_wal, expected to reach $wal_to" >&2
         echo "the WAL archive is incomplete" >&2
         tail -20 "$restore_log" >&2 || true
@@ -371,17 +371,17 @@ EOF
 }
 
 case "$operation" in
-    create)
-        run_backup_create "${2:-}"
-        ;;
-    expire)
-        run_backup_expire
-        ;;
-    restore)
-        run_backup_restore "${2:-}"
-        ;;
-    *)
-        echo "Usage: palimpsest-backup.sh <create|expire|restore>" >&2
-        exit 2
-        ;;
+create)
+    run_backup_create "${2:-}"
+    ;;
+expire)
+    run_backup_expire
+    ;;
+restore)
+    run_backup_restore "${2:-}"
+    ;;
+*)
+    echo "Usage: palimpsest-backup.sh <create|expire|restore>" >&2
+    exit 2
+    ;;
 esac
