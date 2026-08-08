@@ -1,16 +1,16 @@
 # Recommendation: spec 017 — wiki workspace
 
-Status: under review (R3).
+Status: under review (R4).
 Date: 2026-08-08.
-Revision: v2.1 — R2 review FAIL 77/100. One blocker fixed. Four notes folded.
-See changelog.
+Revision: v2.2 — R3 review FAIL 78/100. One blocker fixed. Three notes
+folded. See changelog.
 
 ## The recommendation
 
 Palimpsest shall add a wiki workspace capability (spec 017) as an opt-in,
 tenant-level integration. The capability has two parts: a markdown vault
-projection and a governed write-back path. 017 enters the backlog as a new
-issue. It does not pre-empt issue #38. [v2.0]
+projection and a governed write-back path. 017 entered the backlog as issue
+#46. It does not pre-empt issue #38. [v2.0]
 
 ## Context
 
@@ -49,9 +49,11 @@ Open questions drive future sourcing.
 1. Open questions page. Resolution: facts in a registered namespace. Writes
    need attribution and policy (001 R9, 011 R2).
 2. Review queue. Resolution: a worker job (011 R1 jobs and claims). The job
-   reads last-touched dates from page frontmatter. It flags pages not touched
-   in 30 days. A 012 surface informs the agent. It does not process the
-   queue. Surfaces are advisory and bounded (012 R4, R6).
+   reads last-touched dates from canonical fact metadata. The renderer
+   writes these dates into frontmatter. The projection is never the
+   authority. It flags pages not touched in 30 days. A 012 surface informs
+   the agent. It does not process the queue. Surfaces are advisory and
+   bounded (012 R4, R6).
 3. Lint pass. Resolution: an operation, not state. A periodic worker job
    checks contradictions, orphans, stale claims, and provenance gaps. It
    writes lint state to a governed fact namespace. It generates new open
@@ -70,7 +72,11 @@ forbids derived summaries. The vault renders derived pages. The new export
 kind reuses the spec 004 package machinery. It adds a new projection surface.
 
 The vault is read-only by default. Human edits do not touch the files. The
-third voice survives through governed write-back:
+vault is one-way. Git sync pushes canonical state to the vault. The write-back
+API is the only write path. Direct sync-back is rejected. The
+reconciliation rule: renderer output never flows back into canonical memory
+except through attributable writes. The third voice survives through governed
+write-back:
 
 - Annotations become attributable writes with a registered policy (001 R9,
   principle 13).
@@ -88,8 +94,8 @@ voice canonical too.
 ## Priority and tracker [v2.0]
 
 Evidence from the live tracker: issue #38 carries ready-for-agent. It is the
-only actionable frontier item. Issue #1 is a stale umbrella from 2025. It is
-not a frontier item. Spec 016 is finalized with no open questions. Backup is
+only actionable frontier item. Issue #1 is a stale umbrella. It is not a
+frontier item. Spec 016 is finalized with no open questions. Backup is
 risk insurance. Delay adds deployment risk.
 
 Revised recommendation: #38 proceeds as the frontier. 017 entered BACKLOG as
@@ -133,3 +139,6 @@ scenarios (A-* pattern).
 - v2.1: named issue #46 and the BACKLOG marker (blocker 1 of round 2).
   Folded notes: #1 stale umbrella stated; page edits as a write-back kind;
   export kind reuses 004 machinery; review queue due rule = 30 days.
+- v2.2: removed the false year for issue #1 (blocker 1 of round 3). Aligned
+  the intro tense. Last-touched dates come from canonical metadata. Vault
+  sync is one-way. The write-back API is the only write path.
