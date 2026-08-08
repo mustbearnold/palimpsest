@@ -1,9 +1,9 @@
 # Recommendation: spec 017 — wiki workspace
 
-Status: under review (R4).
+Status: APPROVED.
 Date: 2026-08-08.
-Revision: v2.2 — R3 review FAIL 78/100. One blocker fixed. Three notes
-folded. See changelog.
+Revision: v2.3 — R4 review PASS 94/100, no blockers. One note folded.
+See changelog.
 
 ## The recommendation
 
@@ -94,9 +94,11 @@ voice canonical too.
 ## Priority and tracker [v2.0]
 
 Evidence from the live tracker: issue #38 carries ready-for-agent. It is the
-only actionable frontier item. Issue #1 is a stale umbrella. It is not a
-frontier item. Spec 016 is finalized with no open questions. Backup is
-risk insurance. Delay adds deployment risk.
+only actionable frontier item. Issue #1 is the build umbrella opened on
+2026-07-28. Its scope decomposed into per-capability issues (#38-#46). The
+runbook frontier advances through those issues. The umbrella has no
+per-spec milestone of its own. Spec 016 is finalized with no open questions.
+Backup is risk insurance. Delay adds deployment risk.
 
 Revised recommendation: #38 proceeds as the frontier. 017 entered BACKLOG as
 scheduled with issue #46 on 2026-08-08. Draft 017 after the 016
@@ -142,3 +144,6 @@ scenarios (A-* pattern).
 - v2.2: removed the false year for issue #1 (blocker 1 of round 3). Aligned
   the intro tense. Last-touched dates come from canonical metadata. Vault
   sync is one-way. The write-back API is the only write path.
+- v2.3: APPROVED (R4 PASS 94/100, no blockers). Folded the round-4 note:
+  the stale-umbrella call now states its basis — issue #1 decomposed into
+  per-capability issues #38-#46.
