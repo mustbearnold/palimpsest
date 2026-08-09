@@ -613,6 +613,50 @@ impl ConsolidationRepository for PostgresMemoryRepository {
         Ok(row.try_get::<bool, _>(0).map_err(unexpected)?)
     }
 
+    async fn has_in_flight_claims(
+        &self,
+        job: &ClaimedConsolidationJob,
+    ) -> Result<bool, RepositoryError> {
+        // The claims table is RLS-protected; set the worker-claim context
+        // exactly like the SECURITY DEFINER functions do.
+        let mut transaction = self.pool.begin().await.map_err(unexpected)?;
+        sqlx::query("SELECT set_config('palimpsest.tenant_id', $1, true)")
+            .bind(job.tenant_id.0.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        sqlx::query("SELECT set_config('palimpsest.subject_id', $1, true)")
+            .bind(job.subject_id.0.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        sqlx::query("SELECT set_config('palimpsest.worker_claim', 'palimpsest-worker-v1', true)")
+            .execute(&mut *transaction)
+            .await
+            .map_err(unexpected)?;
+        let exists = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM memory.consolidation_claims
+                WHERE tenant_id = $1
+                  AND subject_id = $2
+                  AND job_id = $3
+                  AND lifecycle_state = 'leased'
+                  AND lease_expires_at > clock_timestamp()
+            )
+            "#,
+        )
+        .bind(job.tenant_id.0)
+        .bind(job.subject_id.0)
+        .bind(job.job_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(map_consolidation_sqlx)?;
+        transaction.rollback().await.map_err(unexpected)?;
+        Ok(exists)
+    }
+
     async fn fail_job(
         &self,
         job: &ClaimedConsolidationJob,

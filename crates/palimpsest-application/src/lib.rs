@@ -1151,6 +1151,18 @@ impl MemoryService {
                 .await
                 .map_err(map_repository)?
             {
+                // Another pass may still hold leased claims whose leases
+                // have not expired (the job lease expired mid-run and a
+                // fresh pass claimed the job). That pass will complete the
+                // claims and finish the job; failing it now would race the
+                // pass. Only fail when no claim can still make progress.
+                if consolidations
+                    .has_in_flight_claims(&job)
+                    .await
+                    .map_err(map_repository)?
+                {
+                    continue;
+                }
                 let _ = consolidations.fail_job(&job, "claims incomplete").await;
                 summary.failed_jobs += 1;
             }

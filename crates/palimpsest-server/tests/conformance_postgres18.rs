@@ -58,7 +58,8 @@ mod surface;
 mod temporal;
 use consolidation::{
     consolidation_crash_resume_yields_no_duplicates_or_loss,
-    consolidation_fails_closed_without_registered_policy, consolidation_jobs_are_isolated_by_scope,
+    consolidation_fails_closed_without_registered_policy,
+    consolidation_job_not_failed_while_claims_in_flight, consolidation_jobs_are_isolated_by_scope,
     consolidation_jobs_enforce_bounded_queues,
     consolidation_worker_materializes_attributable_facts,
 };
@@ -455,6 +456,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             consolidation_fails_closed_without_registered_policy(&pool, &scenario_target).await?;
             consolidation_jobs_are_isolated_by_scope(&pool, &scenario_target).await?;
             consolidation_jobs_enforce_bounded_queues(&pool, &scenario_target).await?;
+            consolidation_job_not_failed_while_claims_in_flight(&pool, &scenario_target).await?;
             consolidation_crash_resume_yields_no_duplicates_or_loss(
                 &test_database_url,
                 &scenario_target,

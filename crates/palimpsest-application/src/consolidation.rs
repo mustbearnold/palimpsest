@@ -422,6 +422,14 @@ pub trait ConsolidationRepository: Send + Sync {
         job: &ClaimedConsolidationJob,
     ) -> Result<bool, crate::RepositoryError>;
 
+    /// Returns true when the job still has claims leased with an unexpired
+    /// lease. Another worker pass owns those claims, so the job can still
+    /// make progress; a worker must not fail the job in that state.
+    async fn has_in_flight_claims(
+        &self,
+        job: &ClaimedConsolidationJob,
+    ) -> Result<bool, crate::RepositoryError>;
+
     async fn fail_job(
         &self,
         job: &ClaimedConsolidationJob,

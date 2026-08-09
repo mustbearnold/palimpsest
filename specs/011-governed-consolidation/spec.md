@@ -85,7 +85,10 @@ complete | failed`, with scope, policy snapshot, claim counts, and caps.
 `memory.consolidation_claims` holds claim state: `pending -> leased -> done`,
 with episode lineage, content hash, confidence, sensitivity, valid time, and
 a deterministic idempotency key from the claim id. Workers claim and renew
-leases exactly like the deletion worker.
+leases exactly like the deletion worker. A job is never failed while any
+claim is still leased with an unexpired lease: another worker pass owns
+that claim, so the pass defers and leaves the job running until the pass
+completes it (issue #47).
 
 ### API surface
 

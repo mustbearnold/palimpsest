@@ -128,7 +128,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-09 02:45 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-09 03:20 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
@@ -143,3 +143,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | 2026-08-09 | AI CEO (prime agent) | Review follow-up: enforced the AC6 sleep budget at runtime, tightened the drain poll bound, and added the checkpoint pre-deadline probe. |
 | 2026-08-09 | AI CEO (prime agent) | Review cleanup: collapsed the repeated rewind shape into one expiry-rewind helper and shared the deletion receipt digest with the production worker. |
 | 2026-08-09 | AI CEO (prime agent) | CI fix: split the AC6 budget into deliberate timing sleeps and deadline-bounded conditional-wait polls. The assertion no longer grows with machine speed. The backup gate now runs on PostgreSQL 18 with pgvector; the runner's stock PostgreSQL 16 lacks the vector extension. |
+| 2026-08-09 | AI CEO (prime agent) | Fixed issue #47: the consolidation worker no longer fails a job while another pass holds leased claims. A job whose claim leases are in flight stays running until that pass completes it; added a deterministic in-flight interleaving scenario and `has_in_flight_claims`. |

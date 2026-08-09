@@ -18,7 +18,12 @@ fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+use palimpsest_application::{
+    ClaimedConsolidationJob, ConsolidationRepository, PendingConsolidationClaim,
+};
 use palimpsest_conformance::Target;
+use palimpsest_domain::{CaseId, EpisodeId, FactId, PrincipalId, RevisionId, SubjectId, TenantId};
+use palimpsest_postgres::PostgresMemoryRepository;
 
 use super::crash::{reserve_local_address, spawn_production_server, wait_for_listener};
 
@@ -862,6 +867,223 @@ pub(crate) async fn consolidation_crash_resume_yields_no_duplicates_or_loss(
     let _ = restart_server.wait().await;
     let _ = case_id;
     result
+}
+
+/// Regression for issue #47: a job must not be failed while another worker
+/// pass still holds leased claims. Deterministic simulation of the
+/// two-pass interleaving that flaked CI: pass A leases the job, its lease
+/// expires mid-run, pass B takes the job over and leases the remaining
+/// claim; pass A must not fail the job, and pass B completes it.
+///
+/// The job is inserted directly as a running job leased by pass A, so the
+/// lifecycle server's ambient worker can never claim it: a running job
+/// with an unexpired lease is invisible to claim_next_job. Pass B takes
+/// the job over with a single atomic UPDATE, exactly as claim_next_job
+/// would after the lease expiry, so the scenario has no timing windows.
+pub(crate) async fn consolidation_job_not_failed_while_claims_in_flight(
+    pool: &PgPool,
+    target: &Target,
+) -> Result<()> {
+    let job_id = Uuid::now_v7();
+    let worker_a = Uuid::now_v7();
+    let worker_b = Uuid::now_v7();
+    let now = time::OffsetDateTime::now_utc();
+    let window_from = now - time::Duration::hours(1);
+    let window_until = now + time::Duration::hours(1);
+
+    let mut transaction = pool.begin().await?;
+    for (guc, value) in [
+        ("palimpsest.tenant_id", target.tenant_id.to_string()),
+        ("palimpsest.subject_id", target.subject_id.to_string()),
+        ("palimpsest.worker_claim", "palimpsest-worker-v1".to_owned()),
+    ] {
+        sqlx::query("SELECT set_config($1, $2, true)")
+            .bind(guc)
+            .bind(value)
+            .execute(&mut *transaction)
+            .await?;
+    }
+    sqlx::query(
+        r#"
+        INSERT INTO memory.consolidation_jobs (
+            tenant_id, subject_id, job_id, source_kind, policy_id, policy_version,
+            window_from, window_until, lifecycle_state, worker_lease_id,
+            worker_lease_expires_at, claim_cap, claims_total, claims_done,
+            principal_id, idempotency_key_digest, request_fingerprint
+        )
+        VALUES ($1, $2, $3, 'conversation', 'derive-summaries-v1', '1',
+                $4, $5, 'running', $6,
+                clock_timestamp() + interval '30 seconds', 100000, 0, 0,
+                'palimpsest-consolidation-worker', $7, $8)
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(job_id)
+    .bind(window_from)
+    .bind(window_until)
+    .bind(worker_a)
+    .bind("1".repeat(64))
+    .bind("2".repeat(64))
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let job = ClaimedConsolidationJob {
+        tenant_id: TenantId(target.tenant_id),
+        subject_id: SubjectId(target.subject_id),
+        job_id,
+        source_kind: "conversation".to_owned(),
+        policy_id: "derive-summaries-v1".to_owned(),
+        policy_version: "1".to_owned(),
+        window_from,
+        window_until,
+        claim_cap: 100_000,
+        principal_id: PrincipalId("palimpsest-consolidation-worker".to_owned()),
+    };
+    let claims: Vec<PendingConsolidationClaim> = [1u8, 2]
+        .into_iter()
+        .map(|index| PendingConsolidationClaim {
+            claim_id: Uuid::from_u128(u128::from(index)),
+            case_id: CaseId(Uuid::now_v7()),
+            episode_ids: vec![EpisodeId(Uuid::now_v7())],
+            content_hash: format!("{:064x}", index),
+            confidence: 0.95,
+            sensitivity: "internal".to_owned(),
+            observed_at: now,
+            valid_from: now,
+            valid_until: None,
+            model_identity: "fixture-deterministic-v1:config-digest".to_owned(),
+            prompt_policy_version: "fixture-prompt-v1".to_owned(),
+            value: json!({"kind": "fixture-summary", "index": index}),
+        })
+        .collect();
+    repository.insert_claims(&job, &claims).await?;
+
+    // Pass A completes the first claim; the second stays pending.
+    let claimed_1 = repository
+        .claim_next_claim(&job, worker_a, 30)
+        .await?
+        .context("pass A could not lease claim 1")?;
+    ensure!(
+        repository
+            .complete_claim(
+                &claimed_1,
+                FactId(Uuid::from_u128(101)),
+                RevisionId(Uuid::from_u128(102)),
+            )
+            .await?,
+        "pass A could not complete claim 1"
+    );
+
+    // Pass A's job lease expires mid-run (the slow-run interleaving), and
+    // pass B takes the job over atomically, exactly as claim_next_job
+    // would after the expiry.
+    let mut transaction = pool.begin().await?;
+    for (guc, value) in [
+        ("palimpsest.tenant_id", target.tenant_id.to_string()),
+        ("palimpsest.subject_id", target.subject_id.to_string()),
+        ("palimpsest.worker_claim", "palimpsest-worker-v1".to_owned()),
+    ] {
+        sqlx::query("SELECT set_config($1, $2, true)")
+            .bind(guc)
+            .bind(value)
+            .execute(&mut *transaction)
+            .await?;
+    }
+    let taken = sqlx::query(
+        r#"
+        UPDATE memory.consolidation_jobs
+        SET worker_lease_id = $4,
+            worker_lease_expires_at = clock_timestamp() + interval '30 seconds',
+            state_version = state_version + 1,
+            updated_at = clock_timestamp()
+        WHERE tenant_id = $1 AND subject_id = $2 AND job_id = $3
+          AND lifecycle_state = 'running'
+        "#,
+    )
+    .bind(target.tenant_id)
+    .bind(target.subject_id)
+    .bind(job_id)
+    .bind(worker_b)
+    .execute(&mut *transaction)
+    .await?;
+    ensure!(
+        taken.rows_affected() == 1,
+        "pass B could not take the job over"
+    );
+    transaction.commit().await?;
+
+    // Pass B leases the second claim; its lease is unexpired.
+    let claimed_2 = repository
+        .claim_next_claim(&job, worker_b, 30)
+        .await?
+        .context("pass B could not lease claim 2")?;
+
+    // Pass A's claim loop drains to none while pass B holds an unexpired
+    // lease, so complete_job cannot finish the job from A's view...
+    ensure!(
+        repository
+            .claim_next_claim(&job, worker_a, 30)
+            .await?
+            .is_none(),
+        "pass A reclaimed a claim leased by pass B"
+    );
+    ensure!(
+        !repository.complete_job(&job).await?,
+        "complete_job finished a job with a leased claim"
+    );
+    // ...and the worker must not fail the job while a claim is still in
+    // flight: it defers and leaves the job running for pass B.
+    ensure!(
+        repository.has_in_flight_claims(&job).await?,
+        "has_in_flight_claims missed the claim leased by pass B"
+    );
+    let deferred = repository
+        .poll_job(
+            TenantId(target.tenant_id),
+            SubjectId(target.subject_id),
+            job_id,
+        )
+        .await?;
+    ensure!(
+        deferred.lifecycle_state == "running" && deferred.failure_reason.is_none(),
+        "the job was failed while a claim was in flight"
+    );
+
+    // Pass B finishes the last claim and completes the job.
+    ensure!(
+        repository
+            .complete_claim(
+                &claimed_2,
+                FactId(Uuid::from_u128(103)),
+                RevisionId(Uuid::from_u128(104)),
+            )
+            .await?,
+        "pass B could not complete claim 2"
+    );
+    ensure!(
+        repository.complete_job(&job).await?,
+        "pass B could not complete the job"
+    );
+    let completed = repository
+        .poll_job(
+            TenantId(target.tenant_id),
+            SubjectId(target.subject_id),
+            job_id,
+        )
+        .await?;
+    ensure!(
+        completed.lifecycle_state == "complete" && completed.failure_reason.is_none(),
+        "the job did not complete cleanly: {completed:?}"
+    );
+    ensure!(
+        completed.claims_done == 2,
+        "claims_done mismatch: {}",
+        completed.claims_done
+    );
+    Ok(())
 }
 
 fn spawn_consolidation_crash_child(
