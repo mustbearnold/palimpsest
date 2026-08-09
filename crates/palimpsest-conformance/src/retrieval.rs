@@ -754,20 +754,15 @@ pub async fn retrieval_receipt_hides_expired_content(
     ensure!(created.items.len() == 1);
     ensure!(created.items[0].revision_id == revision_id);
     // Rewind the marker fact retention expiry instead of waiting for it.
-    let rewind_statement = format!(
-        "UPDATE memory.fact_revision_governance \
-         SET retention_expires_at = clock_timestamp() - interval '1 second' \
-         WHERE revision_id = '{revision_id}'"
-    );
-    let rewound = crate::rewind_under_disabled_trigger(
+    crate::rewind_expiry_under_disabled_trigger(
         migration_pool,
         "memory.fact_revision_governance",
         "fact_revision_governance_restrict_mutation",
-        &rewind_statement,
+        "retention_expires_at",
+        &format!("revision_id = '{revision_id}'"),
+        "rewind the marker fact retention expiry",
     )
-    .await
-    .context("rewind the marker fact retention expiry")?;
-    ensure!(rewound >= 1, "the retention rewind missed the marker fact");
+    .await?;
     let receipt_url = if location.starts_with("http://") || location.starts_with("https://") {
         location
     } else {

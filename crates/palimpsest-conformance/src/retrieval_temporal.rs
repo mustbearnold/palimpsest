@@ -696,23 +696,15 @@ pub async fn temporal_policy_does_not_resurrect_ineligible_successors(
 ) -> Result<()> {
     // Rewind the expired successor retention instead of waiting for it.
     let expired_successor_revision_id = fixture.expired_successor_revision_id;
-    let rewind_statement = format!(
-        "UPDATE memory.fact_revision_governance \
-         SET retention_expires_at = clock_timestamp() - interval '1 second' \
-         WHERE revision_id = '{expired_successor_revision_id}'"
-    );
-    let rewound = crate::rewind_under_disabled_trigger(
+    crate::rewind_expiry_under_disabled_trigger(
         migration_pool,
         "memory.fact_revision_governance",
         "fact_revision_governance_restrict_mutation",
-        &rewind_statement,
+        "retention_expires_at",
+        &format!("revision_id = '{expired_successor_revision_id}'"),
+        "rewind the expired successor retention",
     )
-    .await
-    .context("rewind the expired successor retention")?;
-    ensure!(
-        rewound >= 1,
-        "the retention rewind missed the expired successor"
-    );
+    .await?;
     for receipt_fixture in &replay.receipts {
         let get_response = Client::new()
             .get(format!(

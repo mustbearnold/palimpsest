@@ -636,40 +636,24 @@ pub async fn expires_only_the_targeted_checkpoint(
     // Both the head revision and the checkpoint row store the expiry, and
     // both must read as expired for the deadline probes.
     let checkpoint_revision_id = short_lived.checkpoint_revision_id;
-    let revision_rewind = format!(
-        "UPDATE memory.checkpoint_revisions \
-         SET expires_at = clock_timestamp() - interval '1 second' \
-         WHERE revision_id = '{checkpoint_revision_id}'"
-    );
-    let rewound = crate::rewind_under_disabled_trigger(
+    crate::rewind_expiry_under_disabled_trigger(
         migration_pool,
         "memory.checkpoint_revisions",
         "checkpoint_revisions_reject_mutation",
-        &revision_rewind,
+        "expires_at",
+        &format!("revision_id = '{checkpoint_revision_id}'"),
+        "rewind the short-lived checkpoint revision expiry",
     )
-    .await
-    .context("rewind the short-lived checkpoint revision expiry")?;
-    ensure!(
-        rewound >= 1,
-        "the checkpoint revision rewind missed the short-lived revision"
-    );
-    let checkpoint_rewind = format!(
-        "UPDATE memory.checkpoints \
-         SET expires_at = clock_timestamp() - interval '1 second' \
-         WHERE head_revision_id = '{checkpoint_revision_id}'"
-    );
-    let rewound = crate::rewind_under_disabled_trigger(
+    .await?;
+    crate::rewind_expiry_under_disabled_trigger(
         migration_pool,
         "memory.checkpoints",
         "checkpoints_prepare_transition",
-        &checkpoint_rewind,
+        "expires_at",
+        &format!("head_revision_id = '{checkpoint_revision_id}'"),
+        "rewind the short-lived checkpoint expiry",
     )
-    .await
-    .context("rewind the short-lived checkpoint expiry")?;
-    ensure!(
-        rewound >= 1,
-        "the checkpoint rewind missed the short-lived checkpoint"
-    );
+    .await?;
     let expired_response = client
         .get(&checkpoint_url)
         .bearer_auth(&target.bearer_token)

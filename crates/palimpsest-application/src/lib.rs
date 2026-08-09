@@ -1397,6 +1397,20 @@ impl MemoryService {
             .await
     }
 
+    /// Computes the effect receipt digest for a completed deletion target.
+    /// The digest is part of the deletion evidence contract; the conformance
+    /// suite uses this same function so production drift cannot hide.
+    pub fn deletion_target_effect_receipt_sha256(
+        operation_id: DeletionOperationId,
+        target_key_digest: &str,
+        attempts: u32,
+    ) -> String {
+        hex::encode(Sha256::digest(format!(
+            "palimpsest.deletion-target/v1:{}:{}:{}",
+            operation_id.0, target_key_digest, attempts
+        )))
+    }
+
     pub async fn run_deletion_worker_once(&self) -> Result<DeletionWorkerRunSummary, ServiceError> {
         let worker_id = Uuid::now_v7();
         let mut processed = 0u32;
@@ -1522,10 +1536,11 @@ impl MemoryService {
                         Err(_release_error) => Err(ServiceError::DeletionWorkerRecoveryFailed),
                     };
                 }
-                let effect_receipt_sha256 = hex::encode(Sha256::digest(format!(
-                    "palimpsest.deletion-target/v1:{}:{}:{}",
-                    target.operation_id.0, target.target_key_digest, target.attempts
-                )));
+                let effect_receipt_sha256 = Self::deletion_target_effect_receipt_sha256(
+                    target.operation_id,
+                    &target.target_key_digest,
+                    target.attempts,
+                );
                 self.lifecycle
                     .complete_deletion_target(&target, &effect_receipt_sha256)
                     .await

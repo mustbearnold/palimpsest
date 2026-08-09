@@ -3,7 +3,6 @@
 use anyhow::{Context, Result, bail, ensure};
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{env, fs, sync::Arc, time::Duration};
 use time::{Duration as TimeDuration, OffsetDateTime};
 
@@ -14,9 +13,9 @@ use palimpsest_application::{
 };
 use palimpsest_conformance::Target;
 use palimpsest_domain::{
-    DeletionOperationState, DeletionTargetCapability, DeletionTargetName, DeletionTargetState,
-    DeletionTargetVerification, OperationGrant, PrincipalId, PrincipalScope, Sensitivity,
-    SubjectId, TenantId,
+    DeletionOperationId, DeletionOperationState, DeletionTargetCapability, DeletionTargetName,
+    DeletionTargetState, DeletionTargetVerification, OperationGrant, PrincipalId, PrincipalScope,
+    Sensitivity, SubjectId, TenantId,
 };
 use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
@@ -344,10 +343,11 @@ pub(crate) async fn deletion_retry_backoff_rewinds_instead_of_waiting(
             .apply_deletion_target(&target)
             .await
             .context("apply deletion target effect")?;
-        let effect_receipt_sha256 = hex::encode(Sha256::digest(format!(
-            "palimpsest.deletion-target/v1:{}:{}:{}",
-            target.operation_id.0, target.target_key_digest, target.attempts
-        )));
+        let effect_receipt_sha256 = MemoryService::deletion_target_effect_receipt_sha256(
+            target.operation_id,
+            &target.target_key_digest,
+            target.attempts,
+        );
         repository
             .complete_deletion_target(&target, &effect_receipt_sha256)
             .await
@@ -405,22 +405,8 @@ pub(crate) async fn deletion_retry_backoff_rewinds_instead_of_waiting(
     );
 
     // Rewind the backoff deadline instead of waiting for it.
-    let rewound = sqlx::query(
-        "UPDATE memory.deletion_operations
-         SET retry_at = clock_timestamp() - interval '1 second'
-         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3
-             AND lifecycle_state = 'retry_wait'",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .bind(created.operation_id.0)
-    .execute(migration_pool)
-    .await
-    .context("rewind the deletion retry backoff")?;
-    ensure!(
-        rewound.rows_affected() == 1,
-        "the retry backoff rewind missed the operation"
-    );
+    rewind_deletion_retry_deadline(migration_pool, tenant_id, subject_id, created.operation_id)
+        .await?;
 
     // The residual still fails verification, so the operation advances into
     // a second backoff with an incremented retry count.
@@ -449,22 +435,8 @@ pub(crate) async fn deletion_retry_backoff_rewinds_instead_of_waiting(
     .execute(migration_pool)
     .await
     .context("remove the residual content lease")?;
-    let rewound = sqlx::query(
-        "UPDATE memory.deletion_operations
-         SET retry_at = clock_timestamp() - interval '1 second'
-         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3
-             AND lifecycle_state = 'retry_wait'",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .bind(created.operation_id.0)
-    .execute(migration_pool)
-    .await
-    .context("rewind the second deletion retry backoff")?;
-    ensure!(
-        rewound.rows_affected() == 1,
-        "the second retry backoff rewind missed the operation"
-    );
+    rewind_deletion_retry_deadline(migration_pool, tenant_id, subject_id, created.operation_id)
+        .await?;
     service
         .run_deletion_worker_once()
         .await
@@ -509,6 +481,35 @@ pub(crate) async fn deletion_retry_backoff_rewinds_instead_of_waiting(
     let scope_digest: String = tombstone.try_get("scope_digest")?;
     ensure!(scope_digest.starts_with("v1:"));
     ensure!(scope_digest.len() == 67);
+    Ok(())
+}
+
+/// Rewinds the retry deadline of one retry_wait deletion operation into the
+/// past by one second, and proves that exactly one deadline moved. The one
+/// second margin satisfies the spec 018 safety margin of at least 100
+/// milliseconds.
+async fn rewind_deletion_retry_deadline(
+    migration_pool: &PgPool,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    operation_id: DeletionOperationId,
+) -> Result<()> {
+    let rewound = sqlx::query(
+        "UPDATE memory.deletion_operations
+         SET retry_at = clock_timestamp() - interval '1 second'
+         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3
+             AND lifecycle_state = 'retry_wait'",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(operation_id.0)
+    .execute(migration_pool)
+    .await
+    .context("rewind the deletion retry deadline")?;
+    ensure!(
+        rewound.rows_affected() == 1,
+        "the retry deadline rewind missed the operation"
+    );
     Ok(())
 }
 
