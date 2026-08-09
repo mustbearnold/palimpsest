@@ -118,10 +118,18 @@ seeded values, CHECK bounds, trigger definitions, or the HTTP contract.
    works. The retention interval CHECK bound stays untouched.
 3. The deletion lease scenario keeps one short real-time wait as live expiry
    evidence. The retry backoff uses rewind.
-4. How does the suite enforce the sleep budget? The lifecycle test records
-   every explicit sleep through a shared budget helper and asserts the
-   recorded total at the end. The recovered-lease drain poll has a two second
-   deadline, so its worst case stays inside the budget.
+4. How does the suite enforce the sleep budget? The budget helper
+   distinguishes two kinds of sleep. A deliberate timing sleep exists so
+   that wall-clock time passes for a proof, such as live lease expiry or a
+   lease renewal. The lifecycle test records every deliberate sleep and
+   asserts the recorded total at the end: at most ten seconds. A
+   conditional-wait poll sleep paces a poll loop that exits as soon as
+   async worker progress makes the condition true. Each poll loop has its
+   own deadline and asserts that deadline, so the recorded poll total is
+   bounded by the sum of the poll deadlines and does not grow with machine
+   speed. The recovered-lease drain poll has a two second deadline. The
+   consolidation job poll has a thirty second deadline. A loose bound on
+   the poll total guards against an unbounded poll regression.
 
 ## Links
 

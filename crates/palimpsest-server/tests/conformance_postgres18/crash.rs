@@ -79,7 +79,7 @@ pub(crate) async fn wait_for_listener(address: std::net::SocketAddr) -> Result<(
                     drop(stream);
                     break;
                 }
-                Err(_) => crate::sleep_budget::sleep(Duration::from_millis(10)).await,
+                Err(_) => crate::sleep_budget::poll_sleep(Duration::from_millis(10)).await,
             }
         }
     })

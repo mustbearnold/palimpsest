@@ -630,11 +630,18 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
     }
     .await;
 
-    // Spec 018 AC6: the explicit sleep budget must stay inside ten seconds.
+    // Spec 018 AC6: the deliberate timing sleeps must stay inside ten
+    // seconds. Conditional-wait poll sleeps are bounded by their own poll
+    // deadlines; the loose bound below catches an unbounded poll regression.
     ensure!(
         sleep_budget::total() <= std::time::Duration::from_secs(10),
-        "the explicit sleep budget exceeded ten seconds: {} ms",
+        "the deliberate sleep budget exceeded ten seconds: {} ms",
         sleep_budget::total().as_millis()
+    );
+    ensure!(
+        sleep_budget::poll_total() <= std::time::Duration::from_secs(70),
+        "the conditional-wait poll sleeps exceeded their bound: {} ms",
+        sleep_budget::poll_total().as_millis()
     );
 
     migration_pool.close().await;

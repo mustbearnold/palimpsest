@@ -115,7 +115,7 @@ pub(crate) async fn exercise_concurrent_projection_claim(
     });
     tokio::time::timeout(Duration::from_secs(2), async {
         while provider.calls.load(Ordering::SeqCst) == 0 {
-            crate::sleep_budget::sleep(Duration::from_millis(10)).await;
+            crate::sleep_budget::poll_sleep(Duration::from_millis(10)).await;
         }
     })
     .await

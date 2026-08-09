@@ -187,9 +187,9 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
 
     // Finish the recovered deletion. The recovery lease is the smallest
     // allowed duration, so the drain poll stays under one second plus one
-    // poll interval. The two second deadline bounds the worst case inside
-    // the AC6 sleep budget; the loop must outlast the recovered target
-    // lease, not the retry budget.
+    // poll interval. The two second deadline bounds the conditional-wait
+    // poll; the loop must outlast the recovered target lease, not the retry
+    // budget.
     let drain_deadline = std::time::Instant::now() + Duration::from_secs(2);
     let completed = {
         let mut completed = None;
@@ -210,7 +210,7 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
                     completed = Some(view);
                 }
                 DeletionOperationState::RetryWait | DeletionOperationState::Purging => {
-                    crate::sleep_budget::sleep(Duration::from_millis(100)).await;
+                    crate::sleep_budget::poll_sleep(Duration::from_millis(100)).await;
                 }
                 state => bail!("recovered deletion entered unexpected state {state:?}"),
             }
@@ -900,7 +900,7 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
             break;
         }
         ensure!(view.lifecycle_state == DeletionOperationState::Purging);
-        crate::sleep_budget::sleep(Duration::from_millis(25)).await;
+        crate::sleep_budget::poll_sleep(Duration::from_millis(25)).await;
     }
     let recovered_operation = match recovered_operation {
         Some(operation) => operation,
@@ -1315,7 +1315,7 @@ pub(crate) async fn exercise_export_and_deletion_http(
         let body: Value = response.json().await?;
         last_export_body = body.clone();
         ensure!(body["state"] != "failed", "export failed: {body}");
-        crate::sleep_budget::sleep(Duration::from_millis(25)).await;
+        crate::sleep_budget::poll_sleep(Duration::from_millis(25)).await;
     }
     let _ready_response = ready_operation
         .with_context(|| format!("export did not become ready; last status: {last_export_body}"))?;
@@ -1505,7 +1505,7 @@ pub(crate) async fn exercise_export_and_deletion_http(
             body["lifecycle_state"] != "failed",
             "deletion failed: {body}"
         );
-        crate::sleep_budget::sleep(Duration::from_millis(25)).await;
+        crate::sleep_budget::poll_sleep(Duration::from_millis(25)).await;
     }
     let completed_etag = completed_etag
         .with_context(|| format!("deletion did not complete: {last_deletion_body}"))?;
