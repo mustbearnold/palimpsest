@@ -24,8 +24,8 @@ use axum::{
 use http_body::{Frame, SizeHint};
 use palimpsest_application::{
     CANONICAL_HISTORY_EXPORT_PROFILE, ContentLeasePermit, ExportOperationState,
-    FactAsOfCoordinates, MemoryService, NewConsolidationInterpreterConfig, NewConsolidationJob,
-    NewConsolidationPolicy, NewSurfacePolicy, NewSurfaceRequest,
+    FactAsOfCoordinates, MAX_RETRIEVAL_QUERY_BYTES, MemoryService, NewConsolidationInterpreterConfig,
+    NewConsolidationJob, NewConsolidationPolicy, NewSurfacePolicy, NewSurfaceRequest,
     SURFACE_DEFAULT_MAX_CONTEXT_TOKENS, SURFACE_DEFAULT_MAX_ITEMS,
     SURFACE_DEFAULT_MAX_RESULT_TOKENS, ServiceError,
 };
@@ -980,13 +980,13 @@ async fn create_retrieval(
     let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_retrieval_json_rejection)?;
-    if request.query.len() > 4096 {
+    if request.query.len() > MAX_RETRIEVAL_QUERY_BYTES {
         return Err(Problem::new(
             "retrieval-request-too-large",
             "Retrieval request is too large",
             StatusCode::PAYLOAD_TOO_LARGE,
             "retrieval_request_too_large",
-            "query must contain at most 4096 bytes.",
+            "Reduce the query or retrieval filter set.",
         ));
     }
     let query = RetrievalQuery::try_from(request.query)
