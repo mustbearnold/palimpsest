@@ -38,3 +38,6 @@ build/
 *.log
 *.tmp
 *.cache
+
+# raw reviewer stdout from spec gates (the verdict .md files are tracked)
+.steploop/*.out.txt

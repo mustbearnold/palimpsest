@@ -671,6 +671,7 @@ pub(crate) async fn export_worker_fails_closed_on_store_failure(
             tenant_id,
             subject_id,
             "export-store-failure".to_owned(),
+            CANONICAL_HISTORY_EXPORT_PROFILE,
         )
         .await
         .context("create export with failing package store")?;
@@ -740,6 +741,7 @@ pub(crate) async fn export_worker_fails_closed_on_authorization_revocation(
             tenant_id,
             subject_id,
             "export-authorization-revocation".to_owned(),
+            CANONICAL_HISTORY_EXPORT_PROFILE,
         )
         .await
         .context("create export before authorization revocation")?;
@@ -815,6 +817,7 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
             tenant_id,
             subject_id,
             "deletion-export-store-failure-export".to_owned(),
+            CANONICAL_HISTORY_EXPORT_PROFILE,
         )
         .await
         .context("create export before deletion store failure")?;

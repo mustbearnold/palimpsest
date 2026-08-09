@@ -44,10 +44,11 @@ pub use consolidation::{
 pub use export::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, EXPORT_RETENTION_HOURS,
     ExportCreateOutcome, ExportMaterialization, ExportOperationState, ExportOperationView,
-    ExportPackageError, ExportPackageMetadata, ExportPackageStore, ExportProcessingContext,
-    ExportRecord, ExportRecordKind, ExportRepository, ExportStoreError, FileExportPackageStore,
-    InMemoryExportPackageStore, NewExport, S3_EXPORT_PACKAGE_STORE_PROFILE, S3ExportPackageStore,
-    S3ExportPackageStoreConfig, S3ExportPackageStoreConfigError,
+    ExportPackage, ExportPackageError, ExportPackageMetadata, ExportPackageStore,
+    ExportProcessingContext, ExportRecord, ExportRecordKind, ExportRepository, ExportStoreError,
+    FileExportPackageStore, InMemoryExportPackageStore, NewExport, S3_EXPORT_PACKAGE_STORE_PROFILE,
+    S3ExportPackageStore, S3ExportPackageStoreConfig, S3ExportPackageStoreConfigError,
+    WIKI_VAULT_EXPORT_PROFILE, WikiVaultPackage, is_supported_export_profile,
 };
 pub use recovery::{
     RESTORE_FENCE_LEDGER_PROFILE, RESTORE_FENCE_LEDGER_SCHEMA_VERSION, RestoreFenceEntry,
@@ -1568,7 +1569,13 @@ impl MemoryService {
         tenant_id: TenantId,
         subject_id: SubjectId,
         idempotency_key: String,
+        profile: &str,
     ) -> Result<ExportCreateOutcome, ServiceError> {
+        if !is_supported_export_profile(profile) {
+            return Err(ServiceError::Invalid(format!(
+                "unsupported export profile: {profile}"
+            )));
+        }
         authorize_operation(
             principal,
             tenant_id,
@@ -1585,7 +1592,7 @@ impl MemoryService {
             "principal_id": principal.principal_id.0,
             "tenant_id": tenant_id.0,
             "subject_id": subject_id.0,
-            "profile": CANONICAL_HISTORY_EXPORT_PROFILE,
+            "profile": profile,
             "schema_version": 1,
             "authorization_scope_sha256": authorization_scope_sha256,
         });
@@ -1606,7 +1613,7 @@ impl MemoryService {
                 subject_id,
                 export_id: ExportId(Uuid::now_v7()),
                 principal_id: principal.principal_id.clone(),
-                profile: CANONICAL_HISTORY_EXPORT_PROFILE.to_owned(),
+                profile: profile.to_owned(),
                 idempotency: IdempotencyRequest {
                     key: idempotency_key,
                     fingerprint,
@@ -1919,24 +1926,34 @@ impl MemoryService {
                 .clone(),
             generated_at: materialization.operation.created_at,
         };
-        let package = match CanonicalHistoryPackage::build(materialization.records, context) {
+        let profile = materialization.operation.profile.clone();
+        let build_result: Result<Box<dyn ExportPackage>, &str> = match profile.as_str() {
+            CANONICAL_HISTORY_EXPORT_PROFILE => {
+                match CanonicalHistoryPackage::build(materialization.records, context) {
+                    Ok(package) => Ok(Box::new(package) as Box<dyn ExportPackage>),
+                    Err(_) => Err("package_build_failed"),
+                }
+            }
+            WIKI_VAULT_EXPORT_PROFILE => {
+                match WikiVaultPackage::build(materialization.records, context) {
+                    Ok(package) => Ok(Box::new(package) as Box<dyn ExportPackage>),
+                    Err(_) => Err("package_build_failed"),
+                }
+            }
+            _ => Err("unsupported_export_profile"),
+        };
+        let package = match build_result {
             Ok(package) => package,
-            Err(_) => {
+            Err(reason) => {
                 let _ = exports
-                    .mark_export_failed(
-                        tenant_id,
-                        subject_id,
-                        export_id,
-                        worker_lease_id,
-                        "package_build_failed",
-                    )
+                    .mark_export_failed(tenant_id, subject_id, export_id, worker_lease_id, reason)
                     .await;
                 return Err(ServiceError::Unavailable);
             }
         };
         let metadata = match await_content_operation(permit, async {
             store
-                .stage(export_id, &package)
+                .stage(export_id, package)
                 .await
                 .map_err(map_export_store_error)
         })

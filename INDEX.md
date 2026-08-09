@@ -128,7 +128,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-09 04:25 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-09 05:20 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
@@ -146,3 +146,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | 2026-08-09 | AI CEO (prime agent) | Fixed issue #47: the consolidation worker no longer fails a job while another pass holds leased claims. A job whose claim leases are in flight stays running until that pass completes it; added a deterministic in-flight interleaving scenario and `has_in_flight_claims`. |
 | 2026-08-09 | AI CEO (prime agent) | Finalized spec 017 (wiki workspace): markdown vault projection (push-only git sync, new export kind) and governed write-back (annotations, page edits, filed answers). Gate R1 FAIL 80, R2 PASS 93. Recommendation approved 94. Closed #38 (spec 016 implemented). |
 | 2026-08-09 | AI CEO (prime agent) | Founder approved spec 017. Decomposed #46 into child issues #49-P1 (frontier), #50-P2, #51-P3, #52-P4. |
+| 2026-08-09 | AI CEO (prime agent) | Implemented spec 017 P1 (#49): `palimpsest-wiki-vault-v1` export kind. Markdown pages render the semantic layer (facts with supersede chains and evidence links, episodes), deterministically rebuildable byte for byte (AC1). The vault kind leaves spec 004 record files untouched (AC2). `scripts/wiki-vault-sync.sh` pushes fast-forward only and never pulls/merges/fetches; a rebuild discards foreign file state; the renderer writes nothing into canonical memory (AC3). Gate: `scripts/run-gate.sh` GATE GREEN (all 9 tiers). |

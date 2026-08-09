@@ -23,10 +23,11 @@ use axum::{
 };
 use http_body::{Frame, SizeHint};
 use palimpsest_application::{
-    ContentLeasePermit, ExportOperationState, FactAsOfCoordinates, MemoryService,
-    NewConsolidationInterpreterConfig, NewConsolidationJob, NewConsolidationPolicy,
-    NewSurfacePolicy, NewSurfaceRequest, SURFACE_DEFAULT_MAX_CONTEXT_TOKENS,
-    SURFACE_DEFAULT_MAX_ITEMS, SURFACE_DEFAULT_MAX_RESULT_TOKENS, ServiceError,
+    CANONICAL_HISTORY_EXPORT_PROFILE, ContentLeasePermit, ExportOperationState,
+    FactAsOfCoordinates, MemoryService, NewConsolidationInterpreterConfig, NewConsolidationJob,
+    NewConsolidationPolicy, NewSurfacePolicy, NewSurfaceRequest,
+    SURFACE_DEFAULT_MAX_CONTEXT_TOKENS, SURFACE_DEFAULT_MAX_ITEMS,
+    SURFACE_DEFAULT_MAX_RESULT_TOKENS, ServiceError,
 };
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
@@ -1197,14 +1198,23 @@ async fn create_export(
     State(state): State<AppState>,
     Path((tenant_id, subject_id)): Path<(String, String)>,
     headers: HeaderMap,
+    body: Option<Json<Value>>,
 ) -> Result<Response, Problem> {
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let profile = body
+        .and_then(|Json(value)| {
+            value
+                .get("profile")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| CANONICAL_HISTORY_EXPORT_PROFILE.to_owned());
     let outcome = state
         .service
-        .create_export(&principal, tenant_id, subject_id, idempotency_key)
+        .create_export(&principal, tenant_id, subject_id, idempotency_key, &profile)
         .await
         .map_err(Problem::from_service)?;
     let location = format!(

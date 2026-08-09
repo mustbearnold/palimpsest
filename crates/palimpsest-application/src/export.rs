@@ -23,9 +23,19 @@ use url::Url;
 use uuid::Uuid;
 
 pub const CANONICAL_HISTORY_EXPORT_PROFILE: &str = "palimpsest-canonical-history-v1";
+pub const WIKI_VAULT_EXPORT_PROFILE: &str = "palimpsest-wiki-vault-v1";
 pub const EXPORT_RETENTION_HOURS: i64 = 24;
 const MAX_EXPORT_RECORDS: usize = 100_000;
 const MAX_EXPORT_PACKAGE_BYTES: usize = 256 * 1024 * 1024;
+
+/// The set of export profiles a caller may select.
+pub const EXPORT_PROFILES: [&str; 2] =
+    [CANONICAL_HISTORY_EXPORT_PROFILE, WIKI_VAULT_EXPORT_PROFILE];
+
+/// Returns true when the profile is a registered export profile.
+pub fn is_supported_export_profile(profile: &str) -> bool {
+    EXPORT_PROFILES.contains(&profile)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -174,12 +184,19 @@ pub enum ExportStoreError {
     Unavailable,
 }
 
+/// A materialized export package, independent of its profile.
+pub trait ExportPackage: Send + Sync {
+    fn as_bytes(&self) -> Result<Vec<u8>, ExportPackageError>;
+
+    fn record_count(&self) -> usize;
+}
+
 #[async_trait]
 pub trait ExportPackageStore: Send + Sync {
     async fn stage(
         &self,
         export_id: ExportId,
-        package: &CanonicalHistoryPackage,
+        package: Box<dyn ExportPackage>,
     ) -> Result<ExportPackageMetadata, ExportStoreError>;
 
     async fn publish(&self, export_id: ExportId) -> Result<(), ExportStoreError>;
@@ -509,12 +526,16 @@ impl ExportPackageStore for S3ExportPackageStore {
     async fn stage(
         &self,
         export_id: ExportId,
-        package: &CanonicalHistoryPackage,
+        package: Box<dyn ExportPackage>,
     ) -> Result<ExportPackageMetadata, ExportStoreError> {
-        let mut bytes = Vec::new();
-        let metadata = package
-            .write_to(&mut bytes)
-            .map_err(map_package_write_error)?;
+        let bytes = package.as_bytes().map_err(map_package_write_error)?;
+        let metadata = ExportPackageMetadata {
+            content_sha256: sha256_hex(&bytes),
+            size_bytes: bytes.len() as u64,
+            record_count: u64::try_from(package.record_count())
+                .map_err(|_| ExportPackageError::TooLarge)
+                .map_err(map_package_write_error)?,
+        };
         let url = self.object_url(export_id, "staging");
         match self.read_object(url.clone()).await {
             Ok(existing) => {
@@ -639,12 +660,16 @@ impl ExportPackageStore for InMemoryExportPackageStore {
     async fn stage(
         &self,
         export_id: ExportId,
-        package: &CanonicalHistoryPackage,
+        package: Box<dyn ExportPackage>,
     ) -> Result<ExportPackageMetadata, ExportStoreError> {
-        let mut bytes = Vec::new();
-        let metadata = package
-            .write_to(&mut bytes)
-            .map_err(map_package_write_error)?;
+        let bytes = package.as_bytes().map_err(map_package_write_error)?;
+        let metadata = ExportPackageMetadata {
+            content_sha256: sha256_hex(&bytes),
+            size_bytes: bytes.len() as u64,
+            record_count: u64::try_from(package.record_count())
+                .map_err(|_| ExportPackageError::TooLarge)
+                .map_err(map_package_write_error)?,
+        };
         self.inner
             .lock()
             .map_err(|_| ExportStoreError::Unavailable)?
@@ -726,12 +751,19 @@ impl ExportPackageStore for FileExportPackageStore {
     async fn stage(
         &self,
         export_id: ExportId,
-        package: &CanonicalHistoryPackage,
+        package: Box<dyn ExportPackage>,
     ) -> Result<ExportPackageMetadata, ExportStoreError> {
         let root = self.root.clone();
         let staging = self.path(export_id, "staging");
         let temporary = self.path(export_id, "staging.tmp");
-        let package = package.clone();
+        let bytes = package.as_bytes().map_err(map_package_write_error)?;
+        let metadata = ExportPackageMetadata {
+            content_sha256: sha256_hex(&bytes),
+            size_bytes: bytes.len() as u64,
+            record_count: u64::try_from(package.record_count())
+                .map_err(|_| ExportPackageError::TooLarge)
+                .map_err(map_package_write_error)?,
+        };
         tokio::task::spawn_blocking(move || {
             let result = (|| {
                 std::fs::create_dir_all(root.as_ref())
@@ -746,9 +778,8 @@ impl ExportPackageStore for FileExportPackageStore {
                 let mut file = options
                     .open(&temporary)
                     .map_err(|_| ExportStoreError::Unavailable)?;
-                let metadata = package
-                    .write_to(&mut file)
-                    .map_err(map_package_write_error)?;
+                file.write_all(&bytes)
+                    .map_err(|_| ExportStoreError::Unavailable)?;
                 file.sync_all().map_err(|_| ExportStoreError::Unavailable)?;
                 std::fs::rename(&temporary, staging).map_err(|_| ExportStoreError::Unavailable)?;
                 Ok(metadata)
@@ -1056,6 +1087,518 @@ impl CanonicalHistoryPackage {
         self.record_count
     }
 }
+
+impl ExportPackage for CanonicalHistoryPackage {
+    fn as_bytes(&self) -> Result<Vec<u8>, ExportPackageError> {
+        CanonicalHistoryPackage::as_bytes(self)
+    }
+
+    fn record_count(&self) -> usize {
+        self.record_count
+    }
+}
+
+/// A derived markdown projection of the canonical semantic layer.
+///
+/// The vault renders one page per episode and one page per fact. The
+/// pages derive from canonical records; they are not a dump of the
+/// record envelopes. The renderer is a pure function of its records, so
+/// the same canonical state rebuilds the same pages byte for byte.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WikiVaultPackage {
+    files: Vec<(String, Vec<u8>)>,
+    record_count: usize,
+}
+
+impl WikiVaultPackage {
+    pub fn build(
+        records: Vec<ExportRecord>,
+        context: ExportProcessingContext,
+    ) -> Result<Self, ExportPackageError> {
+        if records.len() > MAX_EXPORT_RECORDS {
+            return Err(ExportPackageError::TooLarge);
+        }
+        let mut episodes = Vec::new();
+        let mut fact_revisions = Vec::new();
+        for record in records {
+            match record.kind {
+                ExportRecordKind::Episode => episodes.push(record),
+                ExportRecordKind::FactRevision => fact_revisions.push(record),
+                // Checkpoints, procedures, and artifact references render
+                // in a later phase (spec 017 P3/P4).
+                _ => {}
+            }
+        }
+        episodes.sort_by(|left, right| {
+            left.recorded_at
+                .cmp(&right.recorded_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        fact_revisions.sort_by(|left, right| {
+            left.recorded_at
+                .cmp(&right.recorded_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        for (kind, records) in [("episode", &episodes), ("fact_revision", &fact_revisions)] {
+            for pair in records.windows(2) {
+                if pair[0].id == pair[1].id && pair[0].recorded_at == pair[1].recorded_at {
+                    return Err(ExportPackageError::DuplicateRecord {
+                        kind,
+                        id: pair[0].id,
+                    });
+                }
+            }
+        }
+
+        let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut page_count = 0usize;
+        for episode in &episodes {
+            let page = render_episode_page(episode)?;
+            page_count += 1;
+            files.push((format!("pages/episodes/{}.md", episode.id), page));
+        }
+        let mut facts: BTreeMap<Uuid, Vec<&ExportRecord>> = BTreeMap::new();
+        for revision in &fact_revisions {
+            if let Some(fact_id) = record_scope_uuid(revision, "fact_id") {
+                facts.entry(fact_id).or_default().push(revision);
+            }
+        }
+        for (fact_id, revisions) in &facts {
+            let page = render_fact_page(*fact_id, revisions)?;
+            page_count += 1;
+            files.push((format!("pages/facts/{fact_id}.md"), page));
+        }
+        files.push((
+            "README.md".to_owned(),
+            vault_readme(facts.len(), episodes.len()),
+        ));
+        files.push((
+            "schema/palimpsest-wiki-vault-v1.md".to_owned(),
+            VAULT_SCHEMA_DESCRIPTION.to_vec(),
+        ));
+
+        let generated_at = context
+            .generated_at
+            .format(&Rfc3339)
+            .map_err(|_| ExportPackageError::InvalidTimestamp)?;
+        let processing_context_value = canonical_json(&json!({
+            "profile": WIKI_VAULT_EXPORT_PROFILE,
+            "export_id": context.export_id,
+            "scope": {
+                "tenant_id": context.tenant_id,
+                "subject_id": context.subject_id,
+            },
+            "snapshot_id": &context.snapshot_id,
+            "generated_at": &generated_at,
+            "authorization_scope_sha256": &context.authorization_scope_sha256,
+        }))?;
+        files.push((
+            "processing-context.json".to_owned(),
+            serde_json::to_vec(&processing_context_value)?,
+        ));
+
+        let mut manifest_files = Vec::new();
+        for (path, content) in &files {
+            manifest_files.push(json!({
+                "path": path,
+                "size_bytes": content.len(),
+                "sha256": sha256_hex(content),
+            }));
+        }
+        let manifest_value = canonical_json(&json!({
+            "format": WIKI_VAULT_EXPORT_PROFILE,
+            "profile": WIKI_VAULT_EXPORT_PROFILE,
+            "schema_version": 1,
+            "export_id": context.export_id,
+            "scope": {
+                "tenant_id": context.tenant_id,
+                "subject_id": context.subject_id,
+            },
+            "snapshot": {
+                "snapshot_id": &context.snapshot_id,
+                "generated_at": &generated_at,
+            },
+            "policy_versions": {
+                "export": WIKI_VAULT_EXPORT_PROFILE,
+                "record_schema": 1,
+            },
+            "authorization_scope_sha256": &context.authorization_scope_sha256,
+            "record_count": page_count,
+            "page_count": page_count,
+            "record_classes": [
+                {
+                    "record_kind": "episode",
+                    "status": if episodes.is_empty() { "supported_empty" } else { "supported" },
+                    "record_count": episodes.len(),
+                },
+                {
+                    "record_kind": "fact_revision",
+                    "status": if fact_revisions.is_empty() { "supported_empty" } else { "supported" },
+                    "record_count": fact_revisions.len(),
+                },
+                {"record_kind": "checkpoint", "status": "unsupported", "record_count": 0},
+                {"record_kind": "procedure", "status": "unsupported", "record_count": 0},
+                {"record_kind": "artifact_reference", "status": "unsupported", "record_count": 0},
+            ],
+            "policy_omissions": [],
+            "files": manifest_files,
+        }))?;
+        let manifest = serde_json::to_vec(&manifest_value)?;
+        files.insert(0, ("manifest.json".to_owned(), manifest));
+
+        Ok(Self {
+            files,
+            record_count: page_count,
+        })
+    }
+
+    pub fn write_to<W: Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<ExportPackageMetadata, ExportPackageError> {
+        write_zip(&self.files, writer, self.record_count)
+    }
+
+    pub fn as_bytes(&self) -> Result<Vec<u8>, ExportPackageError> {
+        let mut bytes = Vec::new();
+        self.write_to(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    pub fn record_count(&self) -> usize {
+        self.record_count
+    }
+}
+
+impl ExportPackage for WikiVaultPackage {
+    fn as_bytes(&self) -> Result<Vec<u8>, ExportPackageError> {
+        WikiVaultPackage::as_bytes(self)
+    }
+
+    fn record_count(&self) -> usize {
+        self.record_count
+    }
+}
+
+fn record_envelope(record: &ExportRecord) -> &Map<String, Value> {
+    record
+        .value
+        .as_object()
+        .expect("export records are JSON objects")
+}
+
+fn record_scope(record: &ExportRecord) -> &Map<String, Value> {
+    record_envelope(record)
+        .get("scope")
+        .and_then(Value::as_object)
+        .expect("export records carry a scope object")
+}
+
+fn record_temporal(record: &ExportRecord) -> &Map<String, Value> {
+    record_envelope(record)
+        .get("temporal")
+        .and_then(Value::as_object)
+        .expect("export records carry a temporal object")
+}
+
+fn record_provenance(record: &ExportRecord) -> &Map<String, Value> {
+    record_envelope(record)
+        .get("provenance")
+        .and_then(Value::as_object)
+        .expect("export records carry a provenance object")
+}
+
+fn record_governance(record: &ExportRecord) -> &Map<String, Value> {
+    record_envelope(record)
+        .get("governance")
+        .and_then(Value::as_object)
+        .expect("export records carry a governance object")
+}
+
+fn record_payload(record: &ExportRecord) -> &Value {
+    record_envelope(record)
+        .get("payload")
+        .expect("export records carry a payload")
+}
+
+fn record_scope_uuid(record: &ExportRecord, key: &str) -> Option<Uuid> {
+    record_scope(record)
+        .get(key)
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+}
+
+fn record_timestamp(record: &ExportRecord, key: &str) -> Option<String> {
+    record_temporal(record)
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+fn frontmatter_value(value: &str) -> String {
+    serde_json::to_string(value).expect("strings serialize to JSON")
+}
+
+fn markdown_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' | '`' | '#' | '*' | '_' | '[' | ']' | '(' | ')' | '<' | '>' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn pretty_payload(value: &Value) -> Result<String, ExportPackageError> {
+    let canonical = canonical_json(value)?;
+    Ok(serde_json::to_string_pretty(&canonical)?)
+}
+
+fn render_episode_page(record: &ExportRecord) -> Result<Vec<u8>, ExportPackageError> {
+    let scope = record_scope(record);
+    let temporal = record_temporal(record);
+    let provenance = record_provenance(record);
+    let mut out = String::new();
+    out.push_str("---\n");
+    out.push_str("palimpsest_kind: episode\n");
+    out.push_str(&format!("palimpsest_id: {}\n", record.id));
+    if let Some(case_id) = scope.get("case_id").and_then(Value::as_str) {
+        out.push_str(&format!("case_id: {case_id}\n"));
+    }
+    out.push_str(&format!(
+        "last_touched: {}\n",
+        record_timestamp(record, "recorded_at").unwrap_or_default()
+    ));
+    out.push_str("---\n\n");
+    out.push_str(&format!(
+        "# Episode: {}\n\n",
+        markdown_escape(&record.id.to_string())
+    ));
+    if let Some(observed_at) = temporal.get("observed_at").and_then(Value::as_str) {
+        out.push_str(&format!("- observed_at: {observed_at}\n"));
+    }
+    out.push_str(&format!(
+        "- recorded_at: {}\n",
+        record_timestamp(record, "recorded_at").unwrap_or_default()
+    ));
+    if let Some(writer) = provenance
+        .get("writer_principal_id")
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!("- writer: {}\n", markdown_escape(writer)));
+    }
+    if let Some(source_type) = provenance.get("source_type").and_then(Value::as_str) {
+        out.push_str(&format!(
+            "- source_type: {}\n",
+            markdown_escape(source_type)
+        ));
+    }
+    if let Some(source_uri) = provenance.get("source_uri").and_then(Value::as_str) {
+        out.push_str(&format!("- source_uri: {}\n", markdown_escape(source_uri)));
+    }
+    out.push_str("\n## Payload\n\n```json\n");
+    out.push_str(&pretty_payload(record_payload(record))?);
+    out.push_str("\n```\n");
+    Ok(out.into_bytes())
+}
+
+fn render_fact_page(
+    fact_id: Uuid,
+    revisions: &[&ExportRecord],
+) -> Result<Vec<u8>, ExportPackageError> {
+    // Revisions arrive sorted by (recorded_at, id); the head is the last.
+    let head = revisions
+        .last()
+        .expect("a fact page has at least one revision");
+    let scope = record_scope(head);
+    let namespace = scope
+        .get("namespace")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let key = scope
+        .get("key")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    // A revision is superseded when a later revision names it as its
+    // supersedes_id. The head is current unless its lifecycle says so.
+    let mut superseded_by: BTreeMap<Uuid, Uuid> = BTreeMap::new();
+    for revision in revisions.iter().skip(1) {
+        if let Some(supersedes) = record_relations_supersedes(revision) {
+            superseded_by.insert(supersedes, revision.id);
+        }
+    }
+    let head_lifecycle = record_governance(head)
+        .get("lifecycle_state")
+        .and_then(Value::as_str)
+        .unwrap_or("active");
+    let status = if superseded_by.contains_key(&head.id) {
+        "superseded"
+    } else {
+        head_lifecycle
+    };
+
+    let mut out = String::new();
+    out.push_str("---\n");
+    out.push_str("palimpsest_kind: fact\n");
+    out.push_str(&format!("palimpsest_id: {fact_id}\n"));
+    out.push_str(&format!("namespace: {}\n", frontmatter_value(&namespace)));
+    out.push_str(&format!("key: {}\n", frontmatter_value(&key)));
+    out.push_str(&format!("status: {status}\n"));
+    out.push_str(&format!(
+        "last_touched: {}\n",
+        record_timestamp(head, "recorded_at").unwrap_or_default()
+    ));
+    out.push_str(&format!(
+        "created_at: {}\n",
+        record_timestamp(
+            revisions.first().expect("non-empty revisions"),
+            "recorded_at"
+        )
+        .unwrap_or_default()
+    ));
+    out.push_str(&format!("revisions: {}\n", revisions.len()));
+    out.push_str("---\n\n");
+    out.push_str(&format!(
+        "# Fact: {}/{}\n\n",
+        markdown_escape(&namespace),
+        markdown_escape(&key)
+    ));
+    out.push_str(&format!(
+        "- status: {status}\n- last_touched: {}\n",
+        record_timestamp(head, "recorded_at").unwrap_or_default()
+    ));
+
+    out.push_str("\n## Current revision\n\n");
+    out.push_str(&format!(
+        "- recorded_at: {}\n",
+        record_timestamp(head, "recorded_at").unwrap_or_default()
+    ));
+    if let Some(writer) = record_provenance(head)
+        .get("writer_principal_id")
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!("- writer: {}\n", markdown_escape(writer)));
+    }
+    if let Some(policy) = record_provenance(head)
+        .get("write_policy_id")
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!("- write_policy: {}\n", markdown_escape(policy)));
+    }
+    append_evidence(&mut out, head);
+    out.push_str("\n```json\n");
+    out.push_str(&pretty_payload(record_payload(head))?);
+    out.push_str("\n```\n");
+
+    if revisions.len() > 1 {
+        out.push_str("\n## Revision history\n\n");
+        for revision in revisions.iter().rev().skip(1) {
+            out.push_str(&format!(
+                "### {} (revision {})\n\n",
+                record_timestamp(revision, "recorded_at").unwrap_or_default(),
+                markdown_escape(&revision.id.to_string())
+            ));
+            if let Some(superseded_by_id) = superseded_by.get(&revision.id) {
+                out.push_str(&format!(
+                    "- superseded by: {}\n",
+                    markdown_escape(&superseded_by_id.to_string())
+                ));
+            }
+            if let Some(writer) = record_provenance(revision)
+                .get("writer_principal_id")
+                .and_then(Value::as_str)
+            {
+                out.push_str(&format!("- writer: {}\n", markdown_escape(writer)));
+            }
+            append_evidence(&mut out, revision);
+            out.push_str("\n```json\n");
+            out.push_str(&pretty_payload(record_payload(revision))?);
+            out.push_str("\n```\n");
+        }
+    }
+    Ok(out.into_bytes())
+}
+
+fn record_relations_supersedes(record: &ExportRecord) -> Option<Uuid> {
+    record_envelope(record)
+        .get("relations")
+        .and_then(Value::as_object)
+        .and_then(|relations| relations.get("supersedes_id"))
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+}
+
+fn append_evidence(out: &mut String, record: &ExportRecord) {
+    let evidence = record_provenance(record)
+        .get("evidence")
+        .and_then(Value::as_array);
+    if let Some(evidence) = evidence
+        && !evidence.is_empty()
+    {
+        out.push_str("- evidence:\n");
+        for item in evidence {
+            if let Some(episode_id) = item.get("episode_id").and_then(Value::as_str) {
+                out.push_str(&format!(
+                    "  - [Episode {episode_id}](../episodes/{episode_id}.md) ({})\n",
+                    item.get("role").and_then(Value::as_str).unwrap_or_default()
+                ));
+            }
+        }
+    }
+}
+
+fn vault_readme(fact_count: usize, episode_count: usize) -> Vec<u8> {
+    format!(
+        "# Palimpsest wiki vault\n\n\
+         A derived markdown projection of Palimpsest canonical memory.\n\n\
+         - profile: {WIKI_VAULT_EXPORT_PROFILE}\n\
+         - facts: {fact_count}\n\
+         - episodes: {episode_count}\n\
+         - rebuildable: yes. The sync script rebuilds every page from\n\
+           canonical records.\n\
+         - write-back: none in this projection. The vault is read-only.\n\
+         - page format: see schema/palimpsest-wiki-vault-v1.md\n"
+    )
+    .into_bytes()
+}
+
+const VAULT_SCHEMA_DESCRIPTION: &[u8] = br#"# Wiki vault page format
+
+The vault renders one markdown page per fact and per episode.
+
+## Frontmatter
+
+Every page carries a YAML frontmatter block with these fields:
+
+- palimpsest_kind: fact or episode
+- palimpsest_id: the canonical identifier (UUID)
+- last_touched: the newest recorded_at from canonical metadata
+
+Fact pages also carry namespace, key, status, created_at, and revisions.
+Episode pages carry case_id.
+
+## Fact pages
+
+A fact page renders the fact head (current revision), its provenance and
+evidence links, and the full revision history. Older revisions render
+"superseded by" links when a later revision supersedes them.
+
+## Episode pages
+
+An episode page renders the episode metadata (observed_at, recorded_at,
+writer, source) and its payload.
+
+## Determinism
+
+Pages are a pure function of the canonical records. The same records
+rebuild the same bytes. No page embeds a run timestamp.
+"#;
 
 #[derive(Debug, Error)]
 pub enum ExportPackageError {
@@ -1426,7 +1969,10 @@ mod tests {
             store.read(export_id).await,
             Err(ExportStoreError::NotFound)
         ));
-        let metadata = store.stage(export_id, &package).await.unwrap();
+        let metadata = store
+            .stage(export_id, Box::new(package.clone()))
+            .await
+            .unwrap();
         assert_eq!(metadata.record_count, 0);
         let bytes = package.as_bytes().unwrap();
         assert!(matches!(
@@ -1467,9 +2013,15 @@ mod tests {
         let export_id = ExportId(Uuid::now_v7());
         let store = InMemoryExportPackageStore::default();
 
-        store.stage(export_id, &first).await.unwrap();
+        store
+            .stage(export_id, Box::new(first.clone()))
+            .await
+            .unwrap();
         store.publish(export_id).await.unwrap();
-        store.stage(export_id, &second).await.unwrap();
+        store
+            .stage(export_id, Box::new(second.clone()))
+            .await
+            .unwrap();
 
         assert!(matches!(
             store.publish(export_id).await,
@@ -1507,9 +2059,15 @@ mod tests {
         let export_id = ExportId(Uuid::now_v7());
         let store = FileExportPackageStore::new(&root);
 
-        store.stage(export_id, &first).await.unwrap();
+        store
+            .stage(export_id, Box::new(first.clone()))
+            .await
+            .unwrap();
         store.publish(export_id).await.unwrap();
-        store.stage(export_id, &second).await.unwrap();
+        store
+            .stage(export_id, Box::new(second.clone()))
+            .await
+            .unwrap();
 
         assert!(matches!(
             store.publish(export_id).await,
@@ -1610,13 +2168,19 @@ mod tests {
         let export_id = ExportId(Uuid::now_v7());
         let expected = package.as_bytes().unwrap();
 
-        store.stage(export_id, &package).await.unwrap();
+        store
+            .stage(export_id, Box::new(package.clone()))
+            .await
+            .unwrap();
         store.publish(export_id).await.unwrap();
         assert_eq!(store.read(export_id).await.unwrap(), expected);
 
         // A retry after a crash between publication and staging cleanup sees
         // the same published bytes and safely removes the duplicate staging object.
-        store.stage(export_id, &package).await.unwrap();
+        store
+            .stage(export_id, Box::new(package.clone()))
+            .await
+            .unwrap();
         store.publish(export_id).await.unwrap();
         assert_eq!(store.read(export_id).await.unwrap(), expected);
 
@@ -1630,7 +2194,7 @@ mod tests {
             context(),
         )
         .unwrap();
-        store.stage(export_id, &different).await.unwrap();
+        store.stage(export_id, Box::new(different)).await.unwrap();
         assert!(matches!(
             store.publish(export_id).await,
             Err(ExportStoreError::Conflict)
@@ -1729,5 +2293,153 @@ mod tests {
             offset = name_end + extra_len + size;
         }
         names
+    }
+
+    fn vault_fact_revision(
+        id: u128,
+        fact_id: u128,
+        recorded_at: i64,
+        supersedes_id: Option<u128>,
+        key: &str,
+    ) -> ExportRecord {
+        let supersedes = supersedes_id
+            .map(|id| json!({"supersedes_id": Uuid::from_u128(id).to_string()}))
+            .unwrap_or_else(|| json!({}));
+        record(
+            ExportRecordKind::FactRevision,
+            id,
+            recorded_at,
+            json!({
+                "schema_version": 1,
+                "record_kind": "fact_revision",
+                "origin_class": "assigned",
+                "id": Uuid::from_u128(id).to_string(),
+                "scope": {
+                    "tenant_id": "t", "subject_id": "s", "case_id": "c",
+                    "fact_id": Uuid::from_u128(fact_id).to_string(),
+                    "namespace": "scratch", "key": key,
+                },
+                "temporal": {
+                    "observed_at": "2026-01-01T00:00:00Z",
+                    "recorded_at": format!("2026-01-0{}T00:00:00Z", (recorded_at % 10) + 1),
+                    "valid_from": "2026-01-01T00:00:00Z", "valid_to": null,
+                },
+                "governance": {"lifecycle_state": "active", "importance": "normal"},
+                "provenance": {
+                    "writer_principal_id": "agent-1",
+                    "write_policy_id": "policy-1",
+                    "evidence": [
+                        {"episode_id": Uuid::from_u128(1).to_string(), "role": "supporting"}
+                    ],
+                },
+                "relations": supersedes,
+                "payload": {"summary": format!("fact revision {}", id)},
+            }),
+        )
+    }
+
+    fn vault_episode() -> ExportRecord {
+        record(
+            ExportRecordKind::Episode,
+            1,
+            10,
+            json!({
+                "schema_version": 1,
+                "record_kind": "episode",
+                "origin_class": "observed",
+                "id": Uuid::from_u128(1).to_string(),
+                "scope": {"tenant_id": "t", "subject_id": "s", "case_id": "c"},
+                "temporal": {
+                    "observed_at": "2026-01-01T00:00:00Z",
+                    "recorded_at": "2026-01-01T00:00:00Z",
+                },
+                "governance": {"sensitivity": "internal", "retention_policy_id": "r", "schema_version": 1},
+                "provenance": {
+                    "writer_principal_id": "agent-1", "source_type": "chat",
+                    "source_uri": "urn:test:1", "external_id": null,
+                },
+                "relations": {},
+                "payload": {"summary": "the episode"},
+            }),
+        )
+    }
+
+    #[test]
+    fn vault_package_rebuilds_byte_for_byte_and_groups_revisions() {
+        let records = vec![
+            vault_episode(),
+            vault_fact_revision(2, 100, 20, None, "temperature"),
+            vault_fact_revision(3, 100, 30, Some(2), "temperature"),
+            vault_fact_revision(4, 101, 25, None, "weather#now"),
+        ];
+        let first = WikiVaultPackage::build(records.clone(), context()).unwrap();
+        let second = WikiVaultPackage::build(records, context()).unwrap();
+        assert_eq!(
+            first.files, second.files,
+            "the vault must rebuild byte for byte"
+        );
+        let names: Vec<&str> = first.files.iter().map(|(path, _)| path.as_str()).collect();
+        assert!(names.contains(&"manifest.json"));
+        assert!(names.contains(&"README.md"));
+        assert!(names.contains(&"schema/palimpsest-wiki-vault-v1.md"));
+        assert!(names.contains(&"processing-context.json"));
+        assert!(names.contains(&"pages/episodes/00000000-0000-0000-0000-000000000001.md"));
+        assert!(names.contains(&"pages/facts/00000000-0000-0000-0000-000000000064.md"));
+        assert!(names.contains(&"pages/facts/00000000-0000-0000-0000-000000000065.md"));
+        assert_eq!(first.record_count(), 3, "three pages for three entities");
+        let fact_page = first
+            .files
+            .iter()
+            .find(|(path, _)| path == "pages/facts/00000000-0000-0000-0000-000000000064.md")
+            .unwrap()
+            .1
+            .clone();
+        let fact_page = String::from_utf8(fact_page).unwrap();
+        assert!(fact_page.contains("status: active"), "head is current");
+        assert!(
+            fact_page.contains("superseded by: 00000000-0000-0000-0000-000000000003"),
+            "older revision shows its successor"
+        );
+        assert!(fact_page.contains("[Episode 00000000-0000-0000-0000-000000000001](../episodes/00000000-0000-0000-0000-000000000001.md)"),
+            "evidence renders as a relative page link");
+        assert!(
+            fact_page.contains("last_touched:"),
+            "frontmatter carries last_touched"
+        );
+    }
+
+    #[test]
+    fn vault_package_escapes_markdown_in_headings() {
+        let records = vec![vault_fact_revision(4, 101, 25, None, "weather#now")];
+        let package = WikiVaultPackage::build(records, context()).unwrap();
+        let page = package
+            .files
+            .iter()
+            .find(|(path, _)| path == "pages/facts/00000000-0000-0000-0000-000000000065.md")
+            .unwrap()
+            .1
+            .clone();
+        let page = String::from_utf8(page).unwrap();
+        assert!(
+            page.contains("# Fact: scratch/weather\\#now"),
+            "heading hash is escaped"
+        );
+        assert!(
+            page.contains("key: \"weather#now\""),
+            "frontmatter keeps the raw key"
+        );
+    }
+
+    #[test]
+    fn vault_package_rejects_duplicate_records() {
+        let records = vec![vault_episode(), vault_episode()];
+        let error = WikiVaultPackage::build(records, context()).unwrap_err();
+        assert!(matches!(
+            error,
+            ExportPackageError::DuplicateRecord {
+                kind: "episode",
+                ..
+            }
+        ));
     }
 }

@@ -56,6 +56,8 @@ mod sleep_budget;
 mod surface;
 #[path = "conformance_postgres18/temporal.rs"]
 mod temporal;
+#[path = "conformance_postgres18/vault.rs"]
+mod vault;
 use consolidation::{
     consolidation_crash_resume_yields_no_duplicates_or_loss,
     consolidation_fails_closed_without_registered_policy,
@@ -100,6 +102,10 @@ use surface::{
     verify_surface_filters_before_ranking, verify_surface_idempotent_replay,
     verify_surface_respects_fence_and_purge, verify_surface_revoked_principal_empty,
     verify_surface_tenant_isolation,
+};
+use vault::{
+    vault_export_kind_leaves_canonical_packages_unchanged, vault_pages_rebuild_byte_for_byte,
+    vault_sync_rejects_direct_sync_back,
 };
 
 #[tokio::test]
@@ -332,6 +338,9 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         export_worker_lease_recovery_fences_stale_completion(&pool, &migration_pool).await?;
         export_worker_fails_closed_on_store_failure(&pool, &migration_pool).await?;
         export_worker_fails_closed_on_authorization_revocation(&pool, &migration_pool).await?;
+        vault_pages_rebuild_byte_for_byte(&pool, &migration_pool).await?;
+        vault_export_kind_leaves_canonical_packages_unchanged(&pool, &migration_pool).await?;
+        vault_sync_rejects_direct_sync_back(&pool, &migration_pool).await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
             .await?;
         let restore_listener = TcpListener::bind("127.0.0.1:0").await?;
