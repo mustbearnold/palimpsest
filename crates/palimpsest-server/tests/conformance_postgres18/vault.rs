@@ -8,7 +8,7 @@ use anyhow::{Context, Result, ensure};
 use std::{env, fs, path::Path, sync::Arc};
 
 use palimpsest_application::{
-    CANONICAL_HISTORY_EXPORT_PROFILE, ExportOperationState, FileExportPackageStore, MemoryService,
+    CANONICAL_HISTORY_EXPORT_PROFILE, ExportOperationState, MemoryService,
     WIKI_VAULT_EXPORT_PROFILE,
 };
 use palimpsest_domain::{
@@ -19,6 +19,7 @@ use palimpsest_domain::{
 };
 use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
+use palimpsest_stores::FileExportPackageStore;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;

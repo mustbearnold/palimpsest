@@ -1,0 +1,20 @@
+[package]
+name = "palimpsest-stores"
+version = "0.1.0"
+edition = "2021"
+description = "Export-package storage adapters (S3-compatible, filesystem, in-memory)"
+
+[dependencies]
+palimpsest-application = { path = "../palimpsest-application" }
+palimpsest-domain = { path = "../palimpsest-domain" }
+async-trait.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+uuid.workspace = true

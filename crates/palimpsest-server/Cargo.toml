@@ -13,6 +13,7 @@ palimpsest-application = { path = "../palimpsest-application" }
 palimpsest-domain = { path = "../palimpsest-domain" }
 palimpsest-http = { path = "../palimpsest-http" }
 palimpsest-postgres = { path = "../palimpsest-postgres" }
+palimpsest-stores = { path = "../palimpsest-stores" }
 sqlx.workspace = true
 serde_json.workspace = true
 time.workspace = true

@@ -1108,6 +1108,7 @@ dependencies = [
  "palimpsest-domain",
  "palimpsest-http",
  "palimpsest-postgres",
+ "palimpsest-stores",
  "reqwest",
  "serde_json",
  "sha2 0.10.9",
@@ -1162,6 +1163,7 @@ dependencies = [
  "palimpsest-domain",
  "palimpsest-http",
  "palimpsest-postgres",
+ "palimpsest-stores",
  "proptest",
  "reqwest",
  "serde_json",
@@ -1169,6 +1171,23 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "palimpsest-stores"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "hex",
+ "palimpsest-application",
+ "palimpsest-domain",
+ "reqwest",
+ "thiserror",
+ "time",
+ "tokio",
+ "url",
  "uuid",
 ]
 

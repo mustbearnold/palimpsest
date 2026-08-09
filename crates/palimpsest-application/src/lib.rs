@@ -42,13 +42,13 @@ pub use consolidation::{
 };
 
 pub use export::{
-    CANONICAL_HISTORY_EXPORT_PROFILE, CanonicalHistoryPackage, EXPORT_RETENTION_HOURS,
+    aws_timestamp, canonical_header_value, canonical_uri,
+    CANONICAL_HISTORY_EXPORT_PROFILE, EXPORT_RETENTION_HOURS,
     ExportCreateOutcome, ExportMaterialization, ExportOperationState, ExportOperationView,
     ExportPackage, ExportPackageError, ExportPackageMetadata, ExportPackageStore,
     ExportProcessingContext, ExportRecord, ExportRecordKind, ExportRepository, ExportStoreError,
-    FileExportPackageStore, InMemoryExportPackageStore, NewExport, S3_EXPORT_PACKAGE_STORE_PROFILE,
-    S3ExportPackageStore, S3ExportPackageStoreConfig, S3ExportPackageStoreConfigError,
-    WIKI_VAULT_EXPORT_PROFILE, WikiVaultPackage, is_supported_export_profile,
+    NewExport, WIKI_VAULT_EXPORT_PROFILE, export_profile, hmac_sha256, host_header,
+    is_supported_export_profile, sha256_hex,
 };
 pub use recovery::{
     RESTORE_FENCE_LEDGER_PROFILE, RESTORE_FENCE_LEDGER_SCHEMA_VERSION, RestoreFenceEntry,
@@ -1927,20 +1927,12 @@ impl MemoryService {
             generated_at: materialization.operation.created_at,
         };
         let profile = materialization.operation.profile.clone();
-        let build_result: Result<Box<dyn ExportPackage>, &str> = match profile.as_str() {
-            CANONICAL_HISTORY_EXPORT_PROFILE => {
-                match CanonicalHistoryPackage::build(materialization.records, context) {
-                    Ok(package) => Ok(Box::new(package) as Box<dyn ExportPackage>),
-                    Err(_) => Err("package_build_failed"),
-                }
-            }
-            WIKI_VAULT_EXPORT_PROFILE => {
-                match WikiVaultPackage::build(materialization.records, context) {
-                    Ok(package) => Ok(Box::new(package) as Box<dyn ExportPackage>),
-                    Err(_) => Err("package_build_failed"),
-                }
-            }
-            _ => Err("unsupported_export_profile"),
+        let build_result: Result<Box<dyn ExportPackage>, &str> = match export_profile(&profile) {
+            Some(def) => match (def.build)(materialization.records, context) {
+                Ok(package) => Ok(package),
+                Err(_) => Err("package_build_failed"),
+            },
+            None => Err("unsupported_export_profile"),
         };
         let package = match build_result {
             Ok(package) => package,

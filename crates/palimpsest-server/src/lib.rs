@@ -13,13 +13,14 @@ use axum::{
 };
 use palimpsest_application::{
     ConsolidationWorkerRunSummary, EmbeddingProvider, ExportPackageStore, ExportWorkerAuthorizer,
-    FileExportPackageStore, FixtureDeterministicInterpreter, InterpreterRegistry, MemoryService,
-    S3ExportPackageStore, ServiceError, UnavailableEmbeddingProvider,
+    FixtureDeterministicInterpreter, InterpreterRegistry, MemoryService,
+    ServiceError, UnavailableEmbeddingProvider,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
 use palimpsest_http::{
     Authenticator, ContentLeaseCleanupCounters, ServerMetricsSnapshot, record_request_latency,
 };
+use palimpsest_stores::{FileExportPackageStore, S3ExportPackageStore};
 use palimpsest_postgres::{PostgresMemoryRepository, PostgresSubjectLifecycleRepository};
 use sqlx::PgPool;
 

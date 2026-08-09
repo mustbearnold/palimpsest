@@ -8,8 +8,8 @@ use time::{Duration as TimeDuration, OffsetDateTime};
 
 use palimpsest_application::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DeletionRepository,
-    ExportOperationState, ExportPackageMetadata, ExportRepository, FileExportPackageStore,
-    IdempotencyRequest, InMemoryExportPackageStore, MemoryService, NewExport, ServiceError,
+    ExportOperationState, ExportPackageMetadata, ExportRepository,
+    IdempotencyRequest, MemoryService, NewExport, ServiceError,
 };
 use palimpsest_conformance::Target;
 use palimpsest_domain::{
@@ -19,6 +19,7 @@ use palimpsest_domain::{
 };
 use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
+use palimpsest_stores::{FileExportPackageStore, InMemoryExportPackageStore};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 

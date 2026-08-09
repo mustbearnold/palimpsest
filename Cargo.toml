@@ -8,6 +8,7 @@ members = [
   "crates/palimpsest-http",
   "crates/palimpsest-postgres",
   "crates/palimpsest-server",
+  "crates/palimpsest-stores",
 ]
 resolver = "3"
 
