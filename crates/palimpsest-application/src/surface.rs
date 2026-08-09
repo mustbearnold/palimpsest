@@ -99,6 +99,16 @@ pub struct SurfaceBundleItem {
     pub item_sha256: String,
 }
 
+impl SurfaceBundleItem {
+    /// The canonical digest of the item. The repository stores it with the
+    /// item; a replay returns the stored bundle verbatim (A8).
+    pub fn item_sha256(&self) -> String {
+        hex::encode(Sha256::digest(
+            serde_json::to_vec(self).expect("surface item is serializable"),
+        ))
+    }
+}
+
 impl SurfaceBundle {
     /// The canonical digest of the bundle. The repository stores it for
     /// integrity; a replay returns the stored bundle verbatim (A8).

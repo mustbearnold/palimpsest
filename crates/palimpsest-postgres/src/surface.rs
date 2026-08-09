@@ -58,22 +58,6 @@ fn surface_policy_sha256(
     ))
 }
 
-fn surface_bundle_sha256(bundle: &SurfaceBundle) -> String {
-    hex::encode(sha256_bytes(
-        serde_json::to_vec(bundle)
-            .expect("surface bundle always serializes")
-            .as_slice(),
-    ))
-}
-
-fn surface_item_sha256(item: &SurfaceBundleItem) -> String {
-    hex::encode(sha256_bytes(
-        serde_json::to_vec(item)
-            .expect("surface item always serializes")
-            .as_slice(),
-    ))
-}
-
 /// Deterministic token estimate (spec 012: caps bound the bundle).
 /// One token per four characters, rounded up.
 fn estimated_tokens(value: &str) -> usize {
@@ -313,7 +297,7 @@ impl SurfaceRepository for PostgresMemoryRepository {
             ),
         };
 
-        let bundle_sha256 = surface_bundle_sha256(&bundle);
+        let bundle_sha256 = bundle.bundle_sha256();
         let key_digest = hex::encode(sha256_bytes(idempotency.key.as_bytes()));
         let row = sqlx::query(
             r#"
@@ -526,7 +510,7 @@ impl PostgresMemoryRepository {
             .map_err(map_surface_sqlx)?;
             for (ordinal, row) in (0_i16..).zip(rows.iter().take(max_items as usize)) {
                 let mut item = surface_item_from_row(row, ordinal)?;
-                item.item_sha256 = surface_item_sha256(&item);
+                item.item_sha256 = item.item_sha256();
                 // The result cap bounds the surfaced payload. Items are
                 // dropped after the cap, in rank order (A2). A cap smaller
                 // than the smallest item yields an empty bundle (fail closed).
