@@ -37,7 +37,8 @@ use super::projections::{
     exercise_concurrent_projection_claim, exercise_corrupt_ready_embedding_projections,
     exercise_projection_lease_expiry, exercise_projection_provider_contract_failures,
     exercise_projection_rebuilds, exercise_query_provider_contract_failures,
-    verify_embedding_projection_rows,
+    shrink_projection_policy_for_verification, verify_embedding_projection_rows,
+    verify_projection_policy_seed_and_immutability,
 };
 use super::temporal::{
     NonbypassTemporalRuntime, rebuild_temporal_fixture_projections, temporal_receipt_digests,
@@ -555,6 +556,8 @@ pub(crate) async fn runs_hybrid_retrieval_conformance(
         ensure!(initial.failed == 0);
         verify_embedding_projection_rows(pool, target, &fixture).await?;
         verify_no_ann_indexes(pool).await?;
+        verify_projection_policy_seed_and_immutability(migration_pool).await?;
+        shrink_projection_policy_for_verification(migration_pool).await?;
         exercise_concurrent_projection_claim(pool, migration_pool, target, &fixture).await?;
         exercise_projection_lease_expiry(migration_pool, target, &fixture, &coordinator).await?;
 

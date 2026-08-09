@@ -299,7 +299,7 @@ async fn embedded_mode_conforms_to_spec_014() -> Result<()> {
     };
 
     let scenario = async {
-        verify_embedded_retrieval_conformance(&scenario_target).await?;
+        verify_embedded_retrieval_conformance(&scenario_target, &migration_pool).await?;
         // A4 must run before A2: A2 replays the restore fence ledger, which
         // purges the restore corpus that A4 reads back over the surface.
         verify_embedded_contract_parity(&scenario_target, &restore_fixture).await?;
@@ -334,7 +334,10 @@ async fn embedded_mode_conforms_to_spec_014() -> Result<()> {
 /// A1. Spec 002 A1–A3 canonical suite passes unchanged against the embedded
 /// substrate: episodes, fact revisions, and retrieval receipts over the
 /// embedded loopback surface.
-async fn verify_embedded_retrieval_conformance(target: &Target) -> Result<()> {
+async fn verify_embedded_retrieval_conformance(
+    target: &Target,
+    migration_pool: &PgPool,
+) -> Result<()> {
     records_and_reads_an_immutable_episode(target).await?;
     creates_an_attributable_fact_revision(target).await?;
     creates_and_replays_a_lexical_retrieval_receipt(target).await?;
@@ -346,7 +349,7 @@ async fn verify_embedded_retrieval_conformance(target: &Target) -> Result<()> {
     concurrent_retrievals_converge_on_one_receipt(target).await?;
     rejects_cross_subject_retrieval_idempotency_reuse(target).await?;
     retrieval_paginates_and_rejects_invalid_replays(target).await?;
-    retrieval_receipt_hides_expired_content(target).await?;
+    retrieval_receipt_hides_expired_content(target, migration_pool).await?;
     rejects_unregistered_write_policies(target).await?;
     Ok(())
 }

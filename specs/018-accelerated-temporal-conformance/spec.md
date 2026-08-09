@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft. Created 2026-08-08. Awaiting founder review (GitHub issue #48).
+Active. Finalized 2026-08-08 (GitHub issue #48). Founder approved
+2026-08-09.
 
 ## Owner
 
@@ -109,14 +110,14 @@ seeded values, CHECK bounds, trigger definitions, or the HTTP contract.
 - Changes to deletion fence semantics or subject lifecycle states.
 - Sub-second retention policy vocabulary.
 
-## Open questions
+## Resolved questions
 
-1. Does the receipt expiry path read a stored timestamp, or does it recompute
-   expiry on read? The plan MUST answer this before AC5 uses rewind.
-2. Do checkpoint retention fixtures need one wall-clock second, or can the
-   suite rewind checkpoint expiry too?
-3. Should the deletion lease scenario keep one short real-time wait as live
-   expiry evidence, with rewind for the rest?
+1. Receipt expiry reads a stored timestamp. Retention lives in
+   `memory.fact_revision_governance.retention_expires_at`. Rewind works.
+2. Checkpoints store `expires_at` in `memory.checkpoint_revisions`. Rewind
+   works. The retention interval CHECK bound stays untouched.
+3. The deletion lease scenario keeps one short real-time wait as live expiry
+   evidence. The retry backoff uses rewind.
 
 ## Links
 

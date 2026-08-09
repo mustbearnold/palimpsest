@@ -539,6 +539,7 @@ pub(crate) async fn verify_nonbypass_temporal_runtime(
                 &runtime_target,
                 lifecycle_fixture,
                 lifecycle_replay,
+                migration_pool,
             )
             .await?;
 

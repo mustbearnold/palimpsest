@@ -3,7 +3,6 @@
 use anyhow::{Context, Result, ensure};
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
-use std::time::Duration;
 use uuid::Uuid;
 
 use super::common::{Checkpoint, Target, assert_problem};
@@ -548,7 +547,10 @@ pub async fn saves_and_reads_a_resumable_checkpoint(target: &Target) -> Result<(
     Ok(())
 }
 
-pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()> {
+pub async fn expires_only_the_targeted_checkpoint(
+    target: &Target,
+    migration_pool: &sqlx::PgPool,
+) -> Result<()> {
     let client = Client::new();
     let case_id = Uuid::parse_str("019be000-0000-7000-8000-000000000311")?;
     let agent_id = Uuid::parse_str("019be000-0000-7000-8000-000000000312")?;
@@ -613,7 +615,44 @@ pub async fn expires_only_the_targeted_checkpoint(target: &Target) -> Result<()>
     let short_lived: Checkpoint = short_lived_response.json().await?;
     ensure!(short_lived.retention_policy_id == "checkpoint-test-1s-v1");
 
-    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    // Rewind the short-lived checkpoint expiry instead of waiting for it.
+    // Both the head revision and the checkpoint row store the expiry, and
+    // both must read as expired for the deadline probes.
+    let checkpoint_revision_id = short_lived.checkpoint_revision_id;
+    let revision_rewind = format!(
+        "UPDATE memory.checkpoint_revisions \
+         SET expires_at = clock_timestamp() - interval '1 second' \
+         WHERE revision_id = '{checkpoint_revision_id}'"
+    );
+    let rewound = crate::rewind_under_disabled_trigger(
+        migration_pool,
+        "memory.checkpoint_revisions",
+        "checkpoint_revisions_reject_mutation",
+        &revision_rewind,
+    )
+    .await
+    .context("rewind the short-lived checkpoint revision expiry")?;
+    ensure!(
+        rewound >= 1,
+        "the checkpoint revision rewind missed the short-lived revision"
+    );
+    let checkpoint_rewind = format!(
+        "UPDATE memory.checkpoints \
+         SET expires_at = clock_timestamp() - interval '1 second' \
+         WHERE head_revision_id = '{checkpoint_revision_id}'"
+    );
+    let rewound = crate::rewind_under_disabled_trigger(
+        migration_pool,
+        "memory.checkpoints",
+        "checkpoints_prepare_transition",
+        &checkpoint_rewind,
+    )
+    .await
+    .context("rewind the short-lived checkpoint expiry")?;
+    ensure!(
+        rewound >= 1,
+        "the checkpoint rewind missed the short-lived checkpoint"
+    );
     let expired_response = client
         .get(&checkpoint_url)
         .bearer_auth(&target.bearer_token)

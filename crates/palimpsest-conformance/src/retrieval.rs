@@ -700,7 +700,10 @@ pub async fn retrieval_paginates_and_rejects_invalid_replays(target: &Target) ->
     Ok(())
 }
 
-pub async fn retrieval_receipt_hides_expired_content(target: &Target) -> Result<()> {
+pub async fn retrieval_receipt_hides_expired_content(
+    target: &Target,
+    migration_pool: &sqlx::PgPool,
+) -> Result<()> {
     let client = Client::new();
     let marker = "amber-kestrel-953";
     let fact = create_marker_fact(
@@ -750,7 +753,21 @@ pub async fn retrieval_receipt_hides_expired_content(target: &Target) -> Result<
     let created: RetrievalReceipt = response.json().await?;
     ensure!(created.items.len() == 1);
     ensure!(created.items[0].revision_id == revision_id);
-    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    // Rewind the marker fact retention expiry instead of waiting for it.
+    let rewind_statement = format!(
+        "UPDATE memory.fact_revision_governance \
+         SET retention_expires_at = clock_timestamp() - interval '1 second' \
+         WHERE revision_id = '{revision_id}'"
+    );
+    let rewound = crate::rewind_under_disabled_trigger(
+        migration_pool,
+        "memory.fact_revision_governance",
+        "fact_revision_governance_restrict_mutation",
+        &rewind_statement,
+    )
+    .await
+    .context("rewind the marker fact retention expiry")?;
+    ensure!(rewound >= 1, "the retention rewind missed the marker fact");
     let receipt_url = if location.starts_with("http://") || location.starts_with("https://") {
         location
     } else {

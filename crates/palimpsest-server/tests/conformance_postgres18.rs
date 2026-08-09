@@ -63,6 +63,7 @@ use consolidation::{
 use crash::{verify_checkpoint_governance, verify_governed_write_records};
 use deletion::{
     deletion_failed_operation_can_be_repaired_and_resumed,
+    deletion_retry_backoff_rewinds_instead_of_waiting,
     deletion_target_lease_recovers_after_worker_expiry,
     deletion_target_retry_exhaustion_remains_fenced,
     deletion_worker_fails_closed_when_export_store_is_unavailable,
@@ -321,6 +322,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             ),
         ]));
         deletion_target_lease_recovers_after_worker_expiry(&pool, &migration_pool).await?;
+        deletion_retry_backoff_rewinds_instead_of_waiting(&pool, &migration_pool).await?;
         deletion_failed_operation_can_be_repaired_and_resumed(&pool, &migration_pool).await?;
         deletion_target_retry_exhaustion_remains_fenced(&pool, &migration_pool).await?;
         export_worker_lease_recovery_fences_stale_completion(&pool, &migration_pool).await?;
@@ -562,14 +564,14 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             )
             .await?;
             retrieval_paginates_and_rejects_invalid_replays(&scenario_target).await?;
-            retrieval_receipt_hides_expired_content(&scenario_target).await?;
+            retrieval_receipt_hides_expired_content(&scenario_target, &migration_pool).await?;
             let lifecycle = creates_retrieval_lifecycle_fixture(&scenario_target).await?;
             delete_retrieval_revision(&pool, &target, &lifecycle).await?;
             retrieval_receipt_does_not_resurrect_deleted_history(&scenario_target, &lifecycle)
                 .await?;
             saves_and_reads_a_resumable_checkpoint(&scenario_target).await?;
             checkpoint_scopes_fail_closed(&scenario_target).await?;
-            expires_only_the_targeted_checkpoint(&scenario_target).await?;
+            expires_only_the_targeted_checkpoint(&scenario_target, &migration_pool).await?;
             verify_checkpoint_governance(&pool, &scenario_target).await?;
             install_deterministic_hybrid_fixture(&migration_pool).await?;
             verify_hybrid_retrieval_policy_and_profiles(&migration_pool).await?;

@@ -3,14 +3,14 @@
 use anyhow::{Context, Result, bail, ensure};
 use reqwest::{Client, StatusCode, header};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{env, fs, sync::Arc, time::Duration};
 use time::{Duration as TimeDuration, OffsetDateTime};
 
 use palimpsest_application::{
-    CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DELETION_MAX_ATTEMPTS,
-    DeletionRepository, ExportOperationState, ExportPackageMetadata, ExportRepository,
-    FileExportPackageStore, IdempotencyRequest, InMemoryExportPackageStore, MemoryService,
-    NewExport, ServiceError,
+    CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DeletionRepository,
+    ExportOperationState, ExportPackageMetadata, ExportRepository, FileExportPackageStore,
+    IdempotencyRequest, InMemoryExportPackageStore, MemoryService, NewExport, ServiceError,
 };
 use palimpsest_conformance::Target;
 use palimpsest_domain::{
@@ -106,26 +106,28 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
     ensure!(leased_target.target_key_digest == first_target.target_key_digest);
     ensure!(leased_target.lease_id == Some(first_target.target_lease_id));
 
+    // The renewed leases use one second. The waits below stay short while
+    // they still prove live lease expiry.
     repository
-        .renew_deletion_operation_lease(&claimed, first_worker, 5)
+        .renew_deletion_operation_lease(&claimed, first_worker, 1)
         .await
         .context("renew deletion operation lease")?;
     repository
-        .renew_deletion_target_lease(&first_target, 5)
+        .renew_deletion_target_lease(&first_target, 1)
         .await
         .context("renew deletion target lease")?;
-    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
     let second_worker = Uuid::now_v7();
     ensure!(
         repository
-            .claim_next_deletion_operation(second_worker, 5)
+            .claim_next_deletion_operation(second_worker, 1)
             .await?
             .is_none(),
         "a renewed deletion operation lease was reclaimed early"
     );
-    tokio::time::sleep(Duration::from_millis(5_000)).await;
+    tokio::time::sleep(Duration::from_millis(1_300)).await;
     let reclaimed_operation = repository
-        .claim_next_deletion_operation(second_worker, 5)
+        .claim_next_deletion_operation(second_worker, 1)
         .await
         .context("reclaim expired deletion operation")?
         .context("expired deletion operation lease was not reclaimable")?;
@@ -139,10 +141,62 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
     ensure!(reclaimed_target.target_lease_id != first_target.target_lease_id);
     ensure!(reclaimed_target.attempts == first_target.attempts + 1);
 
-    tokio::time::sleep(Duration::from_millis(6_500)).await;
+    // Probe before any lease drain. While the recovered leases are live, the
+    // worker must make no progress: two runs still leave the recovered
+    // target leased by the recovery worker.
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("probe recovered deletion before the lease drain")?;
+    let probe_view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll recovered deletion before the lease drain")?;
+    ensure!(
+        probe_view.lifecycle_state == DeletionOperationState::Purging,
+        "the recovered deletion left purging before the lease drain"
+    );
+    let probe_target = probe_view
+        .targets
+        .iter()
+        .find(|target| target.target_name == reclaimed_target.target_name)
+        .context("probe view missed the recovered target")?;
+    ensure!(
+        probe_target.state == DeletionTargetState::Leased
+            && probe_target.lease_id == Some(reclaimed_target.target_lease_id),
+        "the worker reclaimed a live recovered target lease early"
+    );
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("probe recovered deletion a second time")?;
+    let held_view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll recovered deletion against the held leases")?;
+    let held_target = held_view
+        .targets
+        .iter()
+        .find(|target| target.target_name == reclaimed_target.target_name)
+        .context("held view missed the recovered target")?;
+    ensure!(
+        held_view.lifecycle_state == DeletionOperationState::Purging
+            && held_target.state == DeletionTargetState::Leased
+            && held_target.lease_id == Some(reclaimed_target.target_lease_id),
+        "a live recovered target lease was reclaimed early"
+    );
+
+    // Finish the recovered deletion. The recovery lease is the smallest
+    // allowed duration, so the drain poll stays under one second plus one
+    // poll interval. The budget is time-based because the loop must outlast
+    // the recovered target lease, not the retry budget.
+    let drain_deadline = std::time::Instant::now() + Duration::from_secs(5);
     let completed = {
         let mut completed = None;
-        for attempt in 0..=DELETION_MAX_ATTEMPTS {
+        while std::time::Instant::now() < drain_deadline {
+            if completed.is_some() {
+                break;
+            }
             service
                 .run_deletion_worker_once()
                 .await
@@ -154,15 +208,9 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
             match view.lifecycle_state {
                 DeletionOperationState::Completed => {
                     completed = Some(view);
-                    break;
                 }
-                DeletionOperationState::RetryWait => {
-                    ensure!(view.retry_count > 0);
-                    ensure!(
-                        attempt < DELETION_MAX_ATTEMPTS,
-                        "recovered deletion remained in retry_wait after the retry budget"
-                    );
-                    tokio::time::sleep(Duration::from_secs(3)).await;
+                DeletionOperationState::RetryWait | DeletionOperationState::Purging => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
                 state => bail!("recovered deletion entered unexpected state {state:?}"),
             }
@@ -224,6 +272,242 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
             .len()
             == 64
     );
+    Ok(())
+}
+
+/// Spec 018 AC4: a deletion retry backoff is a stored deadline. The suite
+/// proves the deadline holds, rewinds it, and proves the operation advances.
+/// The verification failure is deterministic: one live content lease survives
+/// the target purges and fails the residual check.
+pub(crate) async fn deletion_retry_backoff_rewinds_instead_of_waiting(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000032")?);
+    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000033")?);
+    let principal = PrincipalScope {
+        principal_id: PrincipalId("deletion-retry-backoff-principal".to_owned()),
+        tenant_id,
+        subject_ids: vec![subject_id],
+        allowed_sensitivities: vec![],
+        operation_grants: vec![OperationGrant::SubjectDelete],
+    };
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = MemoryService::new(
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+        repository.clone(),
+    );
+    let created = repository
+        .create_deletion_operation(CreateDeletionRequest {
+            tenant_id,
+            subject_id,
+            principal_id: principal.principal_id.clone(),
+            idempotency_key: "deletion-retry-backoff-rewind".to_owned(),
+            request_fingerprint_sha256: "2".repeat(64),
+            configured_targets: vec![
+                palimpsest_domain::DeletionTargetName::Canonical,
+                palimpsest_domain::DeletionTargetName::Projections,
+            ],
+            retention_hours: 24 * 90,
+        })
+        .await
+        .context("create deletion operation for the retry backoff rewind")?;
+
+    // Drive the purge at the repository level so a residual row can survive
+    // between the target effects and the verification step. The operation
+    // lease stays held by this worker for the whole drive.
+    let worker = Uuid::now_v7();
+    let claimed = repository
+        .claim_next_deletion_operation(worker, 5)
+        .await
+        .context("claim deletion operation for the retry backoff rewind")?
+        .context("deletion operation was not claimable for the retry backoff rewind")?;
+    ensure!(claimed.operation_id == created.operation_id);
+    let advanced = repository
+        .advance_deletion_operation(&claimed, worker, 5)
+        .await
+        .context("advance deletion operation into purging")?;
+    ensure!(advanced.lifecycle_state == DeletionOperationState::Purging);
+    loop {
+        let Some(target) = repository
+            .claim_next_deletion_target(&claimed, worker, 1)
+            .await
+            .context("claim deletion target for the retry backoff rewind")?
+        else {
+            break;
+        };
+        repository
+            .apply_deletion_target(&target)
+            .await
+            .context("apply deletion target effect")?;
+        let effect_receipt_sha256 = hex::encode(Sha256::digest(format!(
+            "palimpsest.deletion-target/v1:{}:{}:{}",
+            target.operation_id.0, target.target_key_digest, target.attempts
+        )));
+        repository
+            .complete_deletion_target(&target, &effect_receipt_sha256)
+            .await
+            .context("complete deletion target")?;
+    }
+
+    // One live content lease survives the purges. Verification must fail on
+    // it and park the operation in retry_wait with a future backoff.
+    let residual_lease_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO memory.subject_content_leases
+            (tenant_id, subject_id, lease_id, principal_id, expires_at)
+         VALUES ($1, $2, $3, 'deletion-retry-backoff-principal',
+                 clock_timestamp() + interval '1 hour')",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(residual_lease_id)
+    .execute(migration_pool)
+    .await
+    .context("insert the residual content lease")?;
+    let failed = repository
+        .advance_deletion_operation(&claimed, worker, 5)
+        .await
+        .context("advance deletion operation into verification")?;
+    ensure!(
+        failed.lifecycle_state == DeletionOperationState::RetryWait,
+        "deletion verification did not fail into retry_wait: {:?}",
+        failed.lifecycle_state
+    );
+
+    // The backoff deadline must hold the worker: one run before the rewind
+    // makes no progress.
+    let held_view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll the held retry backoff")?;
+    ensure!(
+        held_view.lifecycle_state == DeletionOperationState::RetryWait
+            && held_view.retry_count == 1,
+        "the retry backoff did not hold the operation"
+    );
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("probe the retry backoff before the rewind")?;
+    let probe_view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll the retry backoff before the rewind")?;
+    ensure!(
+        probe_view.lifecycle_state == DeletionOperationState::RetryWait
+            && probe_view.retry_count == 1,
+        "the worker advanced the operation before the retry backoff rewind"
+    );
+
+    // Rewind the backoff deadline instead of waiting for it.
+    let rewound = sqlx::query(
+        "UPDATE memory.deletion_operations
+         SET retry_at = clock_timestamp() - interval '1 second'
+         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3
+             AND lifecycle_state = 'retry_wait'",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(created.operation_id.0)
+    .execute(migration_pool)
+    .await
+    .context("rewind the deletion retry backoff")?;
+    ensure!(
+        rewound.rows_affected() == 1,
+        "the retry backoff rewind missed the operation"
+    );
+
+    // The residual still fails verification, so the operation advances into
+    // a second backoff with an incremented retry count.
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("advance the rewound deletion operation")?;
+    let advanced_view = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll the advanced deletion operation")?;
+    ensure!(
+        advanced_view.lifecycle_state == DeletionOperationState::RetryWait
+            && advanced_view.retry_count == 2,
+        "the rewound deletion operation did not advance into the second backoff"
+    );
+
+    // Remove the residual, rewind once more, and let the worker complete.
+    sqlx::query(
+        "DELETE FROM memory.subject_content_leases
+         WHERE tenant_id = $1 AND subject_id = $2 AND lease_id = $3",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(residual_lease_id)
+    .execute(migration_pool)
+    .await
+    .context("remove the residual content lease")?;
+    let rewound = sqlx::query(
+        "UPDATE memory.deletion_operations
+         SET retry_at = clock_timestamp() - interval '1 second'
+         WHERE tenant_id = $1 AND subject_id = $2 AND operation_id = $3
+             AND lifecycle_state = 'retry_wait'",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .bind(created.operation_id.0)
+    .execute(migration_pool)
+    .await
+    .context("rewind the second deletion retry backoff")?;
+    ensure!(
+        rewound.rows_affected() == 1,
+        "the second retry backoff rewind missed the operation"
+    );
+    service
+        .run_deletion_worker_once()
+        .await
+        .context("complete the rewound deletion operation")?;
+    let completed = service
+        .poll_subject_deletion(&principal, tenant_id, subject_id, created.operation_id)
+        .await
+        .context("poll the completed deletion operation")?;
+    ensure!(
+        completed.lifecycle_state == DeletionOperationState::Completed,
+        "the rewound deletion operation did not complete"
+    );
+    ensure!(
+        completed
+            .targets
+            .iter()
+            .filter(|target| target.capability
+                == palimpsest_domain::DeletionTargetCapability::Configured)
+            .all(|target| {
+                target.state == DeletionTargetState::Done
+                    && target.verification
+                        == palimpsest_domain::DeletionTargetVerification::Verified
+                    && target.effect_receipt_sha256.is_some()
+            })
+    );
+    let operation_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM memory.deletion_operations WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(tenant_id.0)
+    .bind(subject_id.0)
+    .fetch_one(migration_pool)
+    .await?;
+    ensure!(operation_rows == 0);
+    let tombstone = sqlx::query(
+        "SELECT scope_digest FROM memory.deletion_tombstones
+         WHERE tenant_id = $1 AND operation_id = $2",
+    )
+    .bind(tenant_id.0)
+    .bind(created.operation_id.0)
+    .fetch_one(migration_pool)
+    .await?;
+    let scope_digest: String = tombstone.try_get("scope_digest")?;
+    ensure!(scope_digest.starts_with("v1:"));
+    ensure!(scope_digest.len() == 67);
     Ok(())
 }
 

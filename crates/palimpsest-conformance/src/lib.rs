@@ -20,3 +20,5 @@ pub use retrieval_lexical::*;
 pub use retrieval_temporal::*;
 
 pub mod retrieval_evaluation;
+mod seams;
+pub use seams::*;

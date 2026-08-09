@@ -26,6 +26,74 @@ use super::projection_helpers::{
     verify_projection_failure_code,
 };
 
+/// Proves the seeded projection lease policy and its immutability guard.
+/// These checks complete without wall-clock waits.
+pub(crate) async fn verify_projection_policy_seed_and_immutability(
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let lease_seconds: i32 = sqlx::query_scalar(
+        "SELECT lease_seconds FROM memory.embedding_projection_lease_policies \
+         WHERE policy_id = 'embedding-projection-v1'",
+    )
+    .fetch_one(migration_pool)
+    .await
+    .context("read the seeded projection lease seconds")?;
+    let renewal_interval_seconds: i32 = sqlx::query_scalar(
+        "SELECT renewal_interval_seconds FROM memory.embedding_projection_lease_policies \
+         WHERE policy_id = 'embedding-projection-v1'",
+    )
+    .fetch_one(migration_pool)
+    .await
+    .context("read the seeded projection renewal interval")?;
+    ensure!(
+        lease_seconds == 60 && renewal_interval_seconds == 20,
+        "the seeded projection lease policy changed: lease {lease_seconds}, \
+         renewal {renewal_interval_seconds}"
+    );
+    let mutation = sqlx::query(
+        "UPDATE memory.embedding_projection_lease_policies \
+         SET schema_version = schema_version \
+         WHERE policy_id = 'embedding-projection-v1'",
+    )
+    .execute(migration_pool)
+    .await;
+    let Err(error) = mutation else {
+        anyhow::bail!("the projection lease policy accepted a mutation");
+    };
+    let database_error = error
+        .as_database_error()
+        .context("the lease policy mutation failed without a database error")?;
+    ensure!(
+        database_error.code().as_deref() == Some("55000"),
+        "the lease policy mutation returned an unexpected error: {database_error}"
+    );
+    Ok(())
+}
+
+/// Shrinks the projection lease policy in this scratch database so the
+/// renewal observation stays fast. The guard trigger is disabled for exactly
+/// one statement. The seeded values are proven separately by
+/// `verify_projection_policy_seed_and_immutability`.
+pub(crate) async fn shrink_projection_policy_for_verification(
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let rows = palimpsest_conformance::rewind_under_disabled_trigger(
+        migration_pool,
+        "memory.embedding_projection_lease_policies",
+        "embedding_projection_lease_policies_reject_mutation",
+        "UPDATE memory.embedding_projection_lease_policies \
+         SET lease_seconds = 5, renewal_interval_seconds = 1 \
+         WHERE policy_id = 'embedding-projection-v1'",
+    )
+    .await
+    .context("shrink the projection lease policy for verification")?;
+    ensure!(
+        rows == 1,
+        "the projection lease policy shrink missed its row"
+    );
+    Ok(())
+}
+
 pub(crate) async fn exercise_concurrent_projection_claim(
     pool: &PgPool,
     migration_pool: &PgPool,
@@ -88,7 +156,19 @@ pub(crate) async fn exercise_concurrent_projection_claim(
             .rebuild_pending(tenant_id, subject_id, 1)
             .await
     });
-    tokio::time::sleep(Duration::from_secs(21)).await;
+    let renewal_interval_seconds: i32 = sqlx::query_scalar(
+        "SELECT renewal_interval_seconds FROM memory.embedding_projection_lease_policies \
+         WHERE policy_id = 'embedding-projection-v1'",
+    )
+    .fetch_one(migration_pool)
+    .await
+    .context("read the projection renewal interval")?;
+    // Sleep one renewal interval plus a one second margin so the active
+    // provider renews its claim lease once.
+    let renewal_sleep_seconds = u64::try_from(renewal_interval_seconds)
+        .context("the projection renewal interval is not a whole second count")?
+        + 1;
+    tokio::time::sleep(Duration::from_secs(renewal_sleep_seconds)).await;
     let calls_while_claimed = provider.calls.load(Ordering::SeqCst);
     let renewed_projection_lease: OffsetDateTime = sqlx::query_scalar(
         r#"
@@ -143,18 +223,6 @@ pub(crate) async fn exercise_projection_lease_expiry(
     fixture: &HybridFusionFixture,
     coordinator: &EmbeddingProjectionCoordinator,
 ) -> Result<()> {
-    let policy = sqlx::query(
-        r#"
-        SELECT lease_seconds, renewal_interval_seconds
-        FROM memory.embedding_projection_lease_policies
-        WHERE policy_id = 'embedding-projection-v1'
-        "#,
-    )
-    .fetch_one(migration_pool)
-    .await?;
-    ensure!(policy.try_get::<i32, _>("lease_seconds")? == 60);
-    ensure!(policy.try_get::<i32, _>("renewal_interval_seconds")? == 20);
-
     let mut transaction = migration_pool.begin().await?;
     set_retrieval_test_scope(&mut transaction, target).await?;
     let claimed = sqlx::query(
