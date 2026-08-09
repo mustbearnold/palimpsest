@@ -252,7 +252,7 @@ async fn poll_until_complete(client: &Client, target: &Target, job_id: &str) -> 
             body["claims_total"],
             body["lifecycle_state"]
         );
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        crate::sleep_budget::sleep(Duration::from_millis(200)).await;
         ensure!(
             tokio::time::Instant::now() < deadline,
             "consolidation job did not complete in time"
@@ -1029,7 +1029,7 @@ fn crash_after_first_claim_child() {
             if (1..50).contains(&done) {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            crate::sleep_budget::sleep(Duration::from_millis(100)).await;
             assert!(
                 tokio::time::Instant::now() < deadline,
                 "worker finished before the crash point"

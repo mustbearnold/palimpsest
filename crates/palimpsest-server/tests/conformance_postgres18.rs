@@ -50,6 +50,8 @@ mod property_idempotency;
 #[path = "conformance_postgres18/restore.rs"]
 mod restore;
 
+#[path = "conformance_postgres18/sleep_budget.rs"]
+mod sleep_budget;
 #[path = "conformance_postgres18/surface.rs"]
 mod surface;
 #[path = "conformance_postgres18/temporal.rs"]
@@ -101,6 +103,7 @@ use surface::{
 
 #[tokio::test]
 async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> {
+    sleep_budget::reset();
     let database_url = std::env::var("PALIMPSEST_TEST_DATABASE_URL").unwrap_or_else(|_| {
         "postgresql://mustbearnold@localhost/postgres?host=/var/run/postgresql".to_owned()
     });
@@ -626,6 +629,13 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         recovers_a_committed_effect_after_response_loss(&pool, &target, &test_database_url).await
     }
     .await;
+
+    // Spec 018 AC6: the explicit sleep budget must stay inside ten seconds.
+    ensure!(
+        sleep_budget::total() <= std::time::Duration::from_secs(10),
+        "the explicit sleep budget exceeded ten seconds: {} ms",
+        sleep_budget::total().as_millis()
+    );
 
     migration_pool.close().await;
     pool.close().await;

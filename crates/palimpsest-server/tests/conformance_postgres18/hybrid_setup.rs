@@ -562,7 +562,7 @@ pub(crate) async fn runs_hybrid_retrieval_conformance(
         exercise_projection_lease_expiry(migration_pool, target, &fixture, &coordinator).await?;
 
         apply_corpus_lifecycle(pool, target, &prepared_corpus).await?;
-        tokio::time::sleep(Duration::from_millis(1_100)).await;
+        crate::sleep_budget::sleep(Duration::from_millis(1_100)).await;
         let mut corpus_evaluation =
             evaluate_frozen_corpus(&scenario_target, &corpus, &prepared_corpus, 10).await?;
         verify_corpus_manifests_exclude_forbidden(migration_pool, &corpus, &prepared_corpus)

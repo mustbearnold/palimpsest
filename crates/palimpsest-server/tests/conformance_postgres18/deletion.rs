@@ -116,7 +116,7 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
         .renew_deletion_target_lease(&first_target, 1)
         .await
         .context("renew deletion target lease")?;
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    crate::sleep_budget::sleep(Duration::from_millis(400)).await;
     let second_worker = Uuid::now_v7();
     ensure!(
         repository
@@ -125,7 +125,7 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
             .is_none(),
         "a renewed deletion operation lease was reclaimed early"
     );
-    tokio::time::sleep(Duration::from_millis(1_300)).await;
+    crate::sleep_budget::sleep(Duration::from_millis(1_300)).await;
     let reclaimed_operation = repository
         .claim_next_deletion_operation(second_worker, 1)
         .await
@@ -188,9 +188,10 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
 
     // Finish the recovered deletion. The recovery lease is the smallest
     // allowed duration, so the drain poll stays under one second plus one
-    // poll interval. The budget is time-based because the loop must outlast
-    // the recovered target lease, not the retry budget.
-    let drain_deadline = std::time::Instant::now() + Duration::from_secs(5);
+    // poll interval. The two second deadline bounds the worst case inside
+    // the AC6 sleep budget; the loop must outlast the recovered target
+    // lease, not the retry budget.
+    let drain_deadline = std::time::Instant::now() + Duration::from_secs(2);
     let completed = {
         let mut completed = None;
         while std::time::Instant::now() < drain_deadline {
@@ -210,7 +211,7 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
                     completed = Some(view);
                 }
                 DeletionOperationState::RetryWait | DeletionOperationState::Purging => {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    crate::sleep_budget::sleep(Duration::from_millis(100)).await;
                 }
                 state => bail!("recovered deletion entered unexpected state {state:?}"),
             }
@@ -567,7 +568,7 @@ pub(crate) async fn export_worker_lease_recovery_fences_stale_completion(
             .is_none(),
         "a live export worker lease was reclaimed early"
     );
-    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    crate::sleep_budget::sleep(Duration::from_millis(1_500)).await;
 
     let recovered_claim = repository
         .claim_next_export_for_materialization(second_worker, 1)
@@ -898,7 +899,7 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
             break;
         }
         ensure!(view.lifecycle_state == DeletionOperationState::Purging);
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        crate::sleep_budget::sleep(Duration::from_millis(25)).await;
     }
     let recovered_operation = match recovered_operation {
         Some(operation) => operation,
@@ -1313,7 +1314,7 @@ pub(crate) async fn exercise_export_and_deletion_http(
         let body: Value = response.json().await?;
         last_export_body = body.clone();
         ensure!(body["state"] != "failed", "export failed: {body}");
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        crate::sleep_budget::sleep(Duration::from_millis(25)).await;
     }
     let _ready_response = ready_operation
         .with_context(|| format!("export did not become ready; last status: {last_export_body}"))?;
@@ -1503,7 +1504,7 @@ pub(crate) async fn exercise_export_and_deletion_http(
             body["lifecycle_state"] != "failed",
             "deletion failed: {body}"
         );
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        crate::sleep_budget::sleep(Duration::from_millis(25)).await;
     }
     let completed_etag = completed_etag
         .with_context(|| format!("deletion did not complete: {last_deletion_body}"))?;

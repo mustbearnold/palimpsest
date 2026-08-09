@@ -118,6 +118,10 @@ seeded values, CHECK bounds, trigger definitions, or the HTTP contract.
    works. The retention interval CHECK bound stays untouched.
 3. The deletion lease scenario keeps one short real-time wait as live expiry
    evidence. The retry backoff uses rewind.
+4. How does the suite enforce the sleep budget? The lifecycle test records
+   every explicit sleep through a shared budget helper and asserts the
+   recorded total at the end. The recovered-lease drain poll has a two second
+   deadline, so its worst case stays inside the budget.
 
 ## Links
 

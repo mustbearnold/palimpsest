@@ -128,7 +128,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-09 01:33 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-09 06:45 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
@@ -140,3 +140,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | 2026-08-08 | AI CEO (prime agent) | Deep optimization. Workspace suite 155s to 109s. Full gate --all now 136s. Fixed an ambient-URL leak and a restart flake. |
 | 2026-08-08 | AI CEO (prime agent) | Drafted spec 018, accelerated temporal conformance. GitHub issue #48 awaits founder review. |
 | 2026-08-09 | AI CEO (prime agent) | Implemented spec 018. Deadline rewinds replace wall-clock waits; the gate budget stays under 10 seconds. Added the retry backoff rewind scenario (AC4). |
+| 2026-08-09 | AI CEO (prime agent) | Review follow-up: enforced the AC6 sleep budget at runtime, tightened the drain poll bound, and added the checkpoint pre-deadline probe. |

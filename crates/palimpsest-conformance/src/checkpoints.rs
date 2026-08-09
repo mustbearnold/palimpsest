@@ -615,6 +615,23 @@ pub async fn expires_only_the_targeted_checkpoint(
     let short_lived: Checkpoint = short_lived_response.json().await?;
     ensure!(short_lived.retention_policy_id == "checkpoint-test-1s-v1");
 
+    // Probe the live side of the deadline before the rewind: the short-lived
+    // head must read back while it is still live.
+    let live_response = client
+        .get(&checkpoint_url)
+        .bearer_auth(&target.bearer_token)
+        .send()
+        .await?;
+    ensure!(
+        live_response.status() == StatusCode::OK,
+        "the short-lived checkpoint did not read back while live"
+    );
+    let live: Checkpoint = live_response.json().await?;
+    ensure!(
+        live.retention_policy_id == "checkpoint-test-1s-v1",
+        "the live head is not the short-lived checkpoint"
+    );
+
     // Rewind the short-lived checkpoint expiry instead of waiting for it.
     // Both the head revision and the checkpoint row store the expiry, and
     // both must read as expired for the deadline probes.

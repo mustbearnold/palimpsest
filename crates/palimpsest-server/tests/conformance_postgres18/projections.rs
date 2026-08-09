@@ -115,7 +115,7 @@ pub(crate) async fn exercise_concurrent_projection_claim(
     });
     tokio::time::timeout(Duration::from_secs(2), async {
         while provider.calls.load(Ordering::SeqCst) == 0 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            crate::sleep_budget::sleep(Duration::from_millis(10)).await;
         }
     })
     .await
@@ -168,7 +168,7 @@ pub(crate) async fn exercise_concurrent_projection_claim(
     let renewal_sleep_seconds = u64::try_from(renewal_interval_seconds)
         .context("the projection renewal interval is not a whole second count")?
         + 1;
-    tokio::time::sleep(Duration::from_secs(renewal_sleep_seconds)).await;
+    crate::sleep_budget::sleep(Duration::from_secs(renewal_sleep_seconds)).await;
     let calls_while_claimed = provider.calls.load(Ordering::SeqCst);
     let renewed_projection_lease: OffsetDateTime = sqlx::query_scalar(
         r#"
