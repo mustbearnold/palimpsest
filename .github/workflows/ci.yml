@@ -87,14 +87,21 @@ jobs:
 
       - name: Run backup and PITR conformance
         run: |
-          have_pg_tools=false
-          if command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1; then
-            have_pg_tools=true
+          # The backup conformance runner creates a scratch cluster with the
+          # runner's native PostgreSQL and migrates it. Migration 0001 needs
+          # the vector extension, so the scratch cluster must run PostgreSQL
+          # 18 with pgvector. The runner image ships PostgreSQL 16 without
+          # pgvector; install 18 from the PostgreSQL apt repository in that
+          # case. The script picks the newest version directory.
+          have_pg18=false
+          if command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1 && initdb --version 2>/dev/null | grep -q 'PostgreSQL) 18'; then
+            have_pg18=true
           fi
-          if find /usr/lib/postgresql -mindepth 2 -maxdepth 2 -type d -name bin -print -quit 2>/dev/null | grep -q .; then
-            have_pg_tools=true
+          pg_bin_dir="$(find /usr/lib/postgresql -mindepth 2 -maxdepth 2 -type d -name bin 2>/dev/null | LC_ALL=C sort -V | tail -n 1)"
+          if [[ -n "$pg_bin_dir" && -x "$pg_bin_dir/initdb" ]] && "$pg_bin_dir/initdb" --version 2>/dev/null | grep -q 'PostgreSQL) 18'; then
+            have_pg18=true
           fi
-          if [[ "$have_pg_tools" == false ]]; then
+          if [[ "$have_pg18" == false ]]; then
             sudo install -d /usr/share/keyrings
             curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc |
               sudo gpg --dearmor --yes -o /usr/share/keyrings/postgresql-pgdg.gpg

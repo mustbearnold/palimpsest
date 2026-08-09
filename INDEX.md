@@ -142,4 +142,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | 2026-08-09 | AI CEO (prime agent) | Implemented spec 018. Deadline rewinds replace wall-clock waits; the gate budget stays under 10 seconds. Added the retry backoff rewind scenario (AC4). |
 | 2026-08-09 | AI CEO (prime agent) | Review follow-up: enforced the AC6 sleep budget at runtime, tightened the drain poll bound, and added the checkpoint pre-deadline probe. |
 | 2026-08-09 | AI CEO (prime agent) | Review cleanup: collapsed the repeated rewind shape into one expiry-rewind helper and shared the deletion receipt digest with the production worker. |
-| 2026-08-09 | AI CEO (prime agent) | CI fix: split the AC6 budget into deliberate timing sleeps and deadline-bounded conditional-wait polls. The assertion no longer grows with machine speed. |
+| 2026-08-09 | AI CEO (prime agent) | CI fix: split the AC6 budget into deliberate timing sleeps and deadline-bounded conditional-wait polls. The assertion no longer grows with machine speed. The backup gate now runs on PostgreSQL 18 with pgvector; the runner's stock PostgreSQL 16 lacks the vector extension. |
