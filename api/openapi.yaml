@@ -636,16 +636,27 @@ paths:
     post:
       tags: [Exports]
       operationId: createExport
-      summary: Start an authorized canonical-history export
+      summary: Start an authorized export operation
       description: |
         Commits an idempotent export operation and its authorization-scoped
         immutable membership manifest before returning `202 Accepted`. The
         package is materialized asynchronously and is not a legal-rights
-        determination.
+        determination. The optional body selects the export profile; the
+        default is the canonical-history profile.
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/SubjectId"
         - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profile:
+                  $ref: "#/components/schemas/ExportProfile"
+              additionalProperties: false
       responses:
         "202":
           description: Export operation committed and queued
@@ -2605,6 +2616,12 @@ components:
             failure_code:
               const: null
       unevaluatedProperties: false
+
+    ExportProfile:
+      type: string
+      enum:
+        - palimpsest-canonical-history-v1
+        - palimpsest-wiki-vault-v1
 
     ExportOperation:
       oneOf:
