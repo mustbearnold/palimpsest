@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use palimpsest_application::MemoryService;
 use palimpsest_domain::{
     OperationGrant, PrincipalId, PrincipalScope, Sensitivity, SubjectId, TenantId,

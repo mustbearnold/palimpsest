@@ -14,10 +14,9 @@ use palimpsest_application::{
 use palimpsest_conformance::Target;
 use palimpsest_domain::{
     DeletionOperationId, DeletionOperationState, DeletionTargetCapability, DeletionTargetName,
-    DeletionTargetState, DeletionTargetVerification, OperationGrant, PrincipalId, PrincipalScope,
+    DeletionTargetState, DeletionTargetVerification, OperationGrant, PrincipalId,
     Sensitivity, SubjectId, TenantId,
 };
-use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
 use palimpsest_stores::{FileExportPackageStore, InMemoryExportPackageStore};
 use sqlx::{PgPool, Row};
@@ -31,21 +30,15 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000030")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000031")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("deletion-recovery-principal".to_owned()),
+    let principal = super::harness::principal(
+        "deletion-recovery-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![],
-        operation_grants: vec![OperationGrant::SubjectDelete],
-    };
-    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
+        subject_id,
+        &[OperationGrant::SubjectDelete],
+        &[],
     );
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = super::harness::service(&repository);
     let created = repository
         .create_deletion_operation(CreateDeletionRequest {
             tenant_id,
@@ -286,21 +279,15 @@ pub(crate) async fn deletion_retry_backoff_rewinds_instead_of_waiting(
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000032")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000033")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("deletion-retry-backoff-principal".to_owned()),
+    let principal = super::harness::principal(
+        "deletion-retry-backoff-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![],
-        operation_grants: vec![OperationGrant::SubjectDelete],
-    };
-    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
+        subject_id,
+        &[OperationGrant::SubjectDelete],
+        &[],
     );
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = super::harness::service(&repository);
     let created = repository
         .create_deletion_operation(CreateDeletionRequest {
             tenant_id,
@@ -521,16 +508,7 @@ pub(crate) async fn export_worker_lease_recovery_fences_stale_completion(
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000060")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000061")?);
     let principal_id = PrincipalId("export-lease-recovery-principal".to_owned());
-    sqlx::query(
-        "INSERT INTO memory.subject_lifecycles
-            (tenant_id, subject_id, lifecycle_state, state_version)
-         VALUES ($1, $2, 'active', 0)",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .execute(migration_pool)
-    .await
-    .context("seed active export lease-recovery lifecycle")?;
+    super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
 
     let repository = PostgresMemoryRepository::new(pool.clone());
     let created = repository
@@ -626,40 +604,22 @@ pub(crate) async fn export_worker_fails_closed_on_store_failure(
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000062")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000063")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("export-store-failure-principal".to_owned()),
+    let principal = super::harness::principal(
+        "export-store-failure-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
-        operation_grants: vec![OperationGrant::CanonicalHistoryExport],
-    };
-    sqlx::query(
-        "INSERT INTO memory.subject_lifecycles
-            (tenant_id, subject_id, lifecycle_state, state_version)
-         VALUES ($1, $2, 'active', 0)",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .execute(migration_pool)
-    .await
-    .context("seed active export store-failure lifecycle")?;
+        subject_id,
+        &[OperationGrant::CanonicalHistoryExport],
+        &[Sensitivity::try_from("internal".to_owned())?],
+    );
+    super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
 
-    let authenticator = Arc::new(StaticAuthenticator::new([(
-        "export-store-failure-token".to_owned(),
-        principal.clone(),
-    )]));
+    let authenticator = super::harness::static_authenticator(principal.clone(), "export-store-failure-token");
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let fault_path =
         env::temp_dir().join(format!("palimpsest-export-store-fault-{}", Uuid::now_v7()));
     fs::write(&fault_path, b"the export root is intentionally a file")
         .context("seed export store failure")?;
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-    )
+    let service = super::harness::service(&repository)
     .with_export_components(
         repository.clone(),
         Arc::new(FileExportPackageStore::new(fault_path.clone())),
@@ -705,32 +665,17 @@ pub(crate) async fn export_worker_fails_closed_on_authorization_revocation(
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-0000-8000-000000000066")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-0000-8000-000000000067")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("export-authorization-revocation-principal".to_owned()),
+    let principal = super::harness::principal(
+        "export-authorization-revocation-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
-        operation_grants: vec![OperationGrant::CanonicalHistoryExport],
-    };
-    sqlx::query(
-        "INSERT INTO memory.subject_lifecycles
-            (tenant_id, subject_id, lifecycle_state, state_version)
-         VALUES ($1, $2, 'active', 0)",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .execute(migration_pool)
-    .await
-    .context("seed active export authorization-revocation lifecycle")?;
+        subject_id,
+        &[OperationGrant::CanonicalHistoryExport],
+        &[Sensitivity::try_from("internal".to_owned())?],
+    );
+    super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
 
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-    )
+    let service = super::harness::service(&repository)
     .with_export_components(
         repository.clone(),
         Arc::new(InMemoryExportPackageStore::default()),
@@ -767,31 +712,16 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000064")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000065")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("deletion-export-store-failure-principal".to_owned()),
+    let principal = super::harness::principal(
+        "deletion-export-store-failure-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
-        operation_grants: vec![
-            OperationGrant::CanonicalHistoryExport,
-            OperationGrant::SubjectDelete,
-        ],
-    };
-    sqlx::query(
-        "INSERT INTO memory.subject_lifecycles
-            (tenant_id, subject_id, lifecycle_state, state_version)
-         VALUES ($1, $2, 'active', 0)",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .execute(migration_pool)
-    .await
-    .context("seed active deletion export-store-failure lifecycle")?;
+        subject_id,
+        &[OperationGrant::CanonicalHistoryExport, OperationGrant::SubjectDelete],
+        &[Sensitivity::try_from("internal".to_owned())?],
+    );
+    super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
 
-    let authenticator = Arc::new(StaticAuthenticator::new([(
-        "deletion-export-store-failure-token".to_owned(),
-        principal.clone(),
-    )]));
+    let authenticator = super::harness::static_authenticator(principal.clone(), "deletion-export-store-failure-token");
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let fault_path = env::temp_dir().join(format!(
         "palimpsest-deletion-export-store-fault-{}",
@@ -799,13 +729,7 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
     ));
     fs::write(&fault_path, b"the export root is intentionally a file")
         .context("seed deletion export store failure")?;
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-    )
+    let service = super::harness::service(&repository)
     .with_export_components(
         repository.clone(),
         Arc::new(FileExportPackageStore::new(fault_path.clone())),
@@ -931,21 +855,15 @@ pub(crate) async fn deletion_failed_operation_can_be_repaired_and_resumed(
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000040")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000041")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("deletion-repair-principal".to_owned()),
+    let principal = super::harness::principal(
+        "deletion-repair-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![],
-        operation_grants: vec![OperationGrant::SubjectDelete],
-    };
-    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
+        subject_id,
+        &[OperationGrant::SubjectDelete],
+        &[],
     );
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = super::harness::service(&repository);
     let created = repository
         .create_deletion_operation(CreateDeletionRequest {
             tenant_id,
@@ -1031,21 +949,15 @@ pub(crate) async fn deletion_target_retry_exhaustion_remains_fenced(
 ) -> Result<()> {
     let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000050")?);
     let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000051")?);
-    let principal = PrincipalScope {
-        principal_id: PrincipalId("deletion-retry-exhaustion-principal".to_owned()),
+    let principal = super::harness::principal(
+        "deletion-retry-exhaustion-principal",
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![],
-        operation_grants: vec![OperationGrant::SubjectDelete],
-    };
-    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
+        subject_id,
+        &[OperationGrant::SubjectDelete],
+        &[],
     );
+    let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
+    let service = super::harness::service(&repository);
     let created = repository
         .create_deletion_operation(CreateDeletionRequest {
             tenant_id,

@@ -13,11 +13,10 @@ use palimpsest_application::{
 };
 use palimpsest_domain::{
     AppendEpisode, CaseId, CreateFact, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace,
-    OperationGrant, PrincipalId, PrincipalScope, Provenance, RetentionPolicyId, Sensitivity,
+    OperationGrant, PrincipalScope, Provenance, RetentionPolicyId, Sensitivity,
     SourceType, SubjectId, SupersedeFact, TenantId, ValidTime, WritePolicy, WritePolicyId,
     WritePolicyVersion,
 };
-use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
 use palimpsest_stores::FileExportPackageStore;
 use sqlx::PgPool;
@@ -47,43 +46,24 @@ async fn harness(
     principal_name: &str,
     token: &str,
 ) -> Result<VaultHarness> {
-    sqlx::query(
-        "INSERT INTO memory.subject_lifecycles
-            (tenant_id, subject_id, lifecycle_state, state_version)
-         VALUES ($1, $2, 'active', 0)",
-    )
-    .bind(tenant_id.0)
-    .bind(subject_id.0)
-    .execute(migration_pool)
-    .await
-    .context("seed active vault lifecycle")?;
-
-    let principal = PrincipalScope {
-        principal_id: PrincipalId(principal_name.to_owned()),
+    super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
+    let principal = super::harness::principal(
+        principal_name,
         tenant_id,
-        subject_ids: vec![subject_id],
-        allowed_sensitivities: vec![Sensitivity::try_from("internal".to_owned())?],
-        operation_grants: vec![OperationGrant::CanonicalHistoryExport],
-    };
-    let authenticator = Arc::new(StaticAuthenticator::new([(
-        token.to_owned(),
-        principal.clone(),
-    )]));
+        subject_id,
+        &[OperationGrant::CanonicalHistoryExport],
+        &[Sensitivity::try_from("internal".to_owned())?],
+    );
+    let authenticator = super::harness::static_authenticator(principal.clone(), token);
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let store_dir = env::temp_dir().join(format!("palimpsest-vault-store-{}", Uuid::now_v7()));
     fs::create_dir_all(&store_dir).context("create vault package store directory")?;
-    let service = MemoryService::new(
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-        repository.clone(),
-    )
-    .with_export_components(
-        repository.clone(),
-        Arc::new(FileExportPackageStore::new(store_dir.clone())),
-    )
-    .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
+    let service = super::harness::service(&repository)
+        .with_export_components(
+            repository.clone(),
+            Arc::new(FileExportPackageStore::new(store_dir.clone())),
+        )
+        .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
     Ok(VaultHarness {
         service,
         store_dir,
@@ -252,8 +232,9 @@ pub(crate) async fn vault_pages_rebuild_byte_for_byte(
     pool: &PgPool,
     migration_pool: &PgPool,
 ) -> Result<()> {
-    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000070")?);
-    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000071")?);
+    let mut ids = super::harness::FixtureIds::new(0x019be000_0000_7000_8000_000000000070);
+    let tenant_id = TenantId(ids.next());
+    let subject_id = SubjectId(ids.next());
     let harness = harness(
         pool,
         migration_pool,
@@ -313,8 +294,9 @@ pub(crate) async fn vault_export_kind_leaves_canonical_packages_unchanged(
     pool: &PgPool,
     migration_pool: &PgPool,
 ) -> Result<()> {
-    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000072")?);
-    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000073")?);
+    let mut ids = super::harness::FixtureIds::new(0x019be000_0000_7000_8000_000000000072);
+    let tenant_id = TenantId(ids.next());
+    let subject_id = SubjectId(ids.next());
     let harness = harness(
         pool,
         migration_pool,
@@ -460,8 +442,9 @@ pub(crate) async fn vault_sync_rejects_direct_sync_back(
     pool: &PgPool,
     migration_pool: &PgPool,
 ) -> Result<()> {
-    let tenant_id = TenantId(Uuid::parse_str("019be000-0000-7000-8000-000000000074")?);
-    let subject_id = SubjectId(Uuid::parse_str("019be000-0000-7000-8000-000000000075")?);
+    let mut ids = super::harness::FixtureIds::new(0x019be000_0000_7000_8000_000000000074);
+    let tenant_id = TenantId(ids.next());
+    let subject_id = SubjectId(ids.next());
     let harness = harness(
         pool,
         migration_pool,

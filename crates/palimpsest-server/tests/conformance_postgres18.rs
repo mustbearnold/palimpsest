@@ -39,6 +39,8 @@ mod deletion;
 mod deletion_ops;
 #[path = "conformance_postgres18/fixtures.rs"]
 mod fixtures;
+#[path = "conformance_postgres18/harness.rs"]
+mod harness;
 #[path = "conformance_postgres18/hybrid_setup.rs"]
 mod hybrid_setup;
 #[path = "conformance_postgres18/projection_helpers.rs"]
