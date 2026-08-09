@@ -34,7 +34,7 @@ async fn metrics_probe_is_public_content_free_and_database_independent() -> Resu
     );
     let body = response.text().await?;
     ensure!(body.contains("palimpsest_build_info"));
-    ensure!(body.contains("palimpsest_schema_version 25"));
+    ensure!(body.contains("palimpsest_schema_version 26"));
     ensure!(!body.contains("metrics-runtime"));
     ensure!(!body.contains("password"));
 
