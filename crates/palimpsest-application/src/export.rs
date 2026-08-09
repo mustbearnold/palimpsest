@@ -28,13 +28,50 @@ pub const EXPORT_RETENTION_HOURS: i64 = 24;
 const MAX_EXPORT_RECORDS: usize = 100_000;
 const MAX_EXPORT_PACKAGE_BYTES: usize = 256 * 1024 * 1024;
 
-/// The set of export profiles a caller may select.
-pub const EXPORT_PROFILES: [&str; 2] =
-    [CANONICAL_HISTORY_EXPORT_PROFILE, WIKI_VAULT_EXPORT_PROFILE];
+/// Builds an export package for one profile.
+pub type ExportPackageBuilder =
+    fn(Vec<ExportRecord>, ExportProcessingContext) -> Result<Box<dyn ExportPackage>, ExportPackageError>;
+
+/// One registered export profile: its name and the package builder behind it.
+pub struct ExportProfileDef {
+    pub name: &'static str,
+    pub build: ExportPackageBuilder,
+}
+
+fn canonical_history_build(
+    records: Vec<ExportRecord>,
+    context: ExportProcessingContext,
+) -> Result<Box<dyn ExportPackage>, ExportPackageError> {
+    Ok(Box::new(CanonicalHistoryPackage::build(records, context)?))
+}
+
+fn wiki_vault_build(
+    records: Vec<ExportRecord>,
+    context: ExportProcessingContext,
+) -> Result<Box<dyn ExportPackage>, ExportPackageError> {
+    Ok(Box::new(WikiVaultPackage::build(records, context)?))
+}
+
+/// The registered export profiles, in stable order.
+pub static EXPORT_PROFILE_REGISTRY: [ExportProfileDef; 2] = [
+    ExportProfileDef {
+        name: CANONICAL_HISTORY_EXPORT_PROFILE,
+        build: canonical_history_build,
+    },
+    ExportProfileDef {
+        name: WIKI_VAULT_EXPORT_PROFILE,
+        build: wiki_vault_build,
+    },
+];
+
+/// Returns the registered profile definition for `name`, if any.
+pub fn export_profile(name: &str) -> Option<&'static ExportProfileDef> {
+    EXPORT_PROFILE_REGISTRY.iter().find(|def| def.name == name)
+}
 
 /// Returns true when the profile is a registered export profile.
 pub fn is_supported_export_profile(profile: &str) -> bool {
-    EXPORT_PROFILES.contains(&profile)
+    export_profile(profile).is_some()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
@@ -2362,6 +2399,15 @@ mod tests {
                 "payload": {"summary": "the episode"},
             }),
         )
+    }
+
+    #[test]
+    fn export_profile_registry_resolves_builtin_profiles_only() {
+        assert!(export_profile(CANONICAL_HISTORY_EXPORT_PROFILE).is_some());
+        assert!(export_profile(WIKI_VAULT_EXPORT_PROFILE).is_some());
+        assert!(export_profile("palimpsest-no-such-v9").is_none());
+        assert!(is_supported_export_profile(WIKI_VAULT_EXPORT_PROFILE));
+        assert!(!is_supported_export_profile("palimpsest-no-such-v9"));
     }
 
     #[test]
