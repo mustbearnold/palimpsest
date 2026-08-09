@@ -2,16 +2,14 @@
 
 use palimpsest_application::{IdempotencyRequest, RepositoryError};
 use palimpsest_domain::{
-    AgentId, CaseId, CheckpointId, CheckpointRevisionId, EpisodeId, FactId,
-    PrincipalScope, RetrievalId, RetrievalReceipt, RevisionId,
-    SubjectId, TenantId, ThreadId,
+    AgentId, CaseId, CheckpointId, CheckpointRevisionId, EpisodeId, FactId, PrincipalScope,
+    RetrievalId, RetrievalReceipt, RevisionId, SubjectId, TenantId, ThreadId,
 };
 use sqlx::{Postgres, Row, Transaction};
 use time::OffsetDateTime;
 
 use super::retrieval::{select_retrieval_receipt, set_retrieval_scope};
 use super::{PostgresMemoryRepository, unexpected};
-
 
 impl PostgresMemoryRepository {
     pub(crate) async fn current_projection_coverage_state(

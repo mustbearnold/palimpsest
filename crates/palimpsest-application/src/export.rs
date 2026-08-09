@@ -1,8 +1,11 @@
-use std::{collections::BTreeMap, io::{self, Write}};
+use std::{
+    collections::BTreeMap,
+    io::{self, Write},
+};
 
 use crate::{IdempotencyRequest, RepositoryError};
-use hmac::{Hmac, Mac};
 use async_trait::async_trait;
+use hmac::{Hmac, Mac};
 use palimpsest_domain::{ExportId, PrincipalId, SubjectId, TenantId};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -18,8 +21,10 @@ const MAX_EXPORT_RECORDS: usize = 100_000;
 const MAX_EXPORT_PACKAGE_BYTES: usize = 256 * 1024 * 1024;
 
 /// Builds an export package for one profile.
-pub type ExportPackageBuilder =
-    fn(Vec<ExportRecord>, ExportProcessingContext) -> Result<Box<dyn ExportPackage>, ExportPackageError>;
+pub type ExportPackageBuilder = fn(
+    Vec<ExportRecord>,
+    ExportProcessingContext,
+) -> Result<Box<dyn ExportPackage>, ExportPackageError>;
 
 /// One registered export profile: its name and the package builder behind it.
 pub struct ExportProfileDef {
@@ -284,7 +289,6 @@ pub trait ExportPackageStore: Send + Sync {
         }
     }
 }
-
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ExportRecordKind {
@@ -1255,7 +1259,6 @@ impl<W: Write> Write for HashingWriter<'_, W> {
     }
 }
 
-
 fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = u32::MAX;
     for byte in bytes {
@@ -1372,7 +1375,6 @@ mod tests {
             Err(ExportPackageError::DuplicateRecord { .. })
         ));
     }
-
 
     fn zip_local_file_names(bytes: &[u8]) -> Vec<String> {
         let mut names = Vec::new();

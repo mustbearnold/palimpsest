@@ -17,9 +17,8 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 use async_trait::async_trait;
 use palimpsest_application::{
-    aws_timestamp, canonical_header_value, canonical_uri, ExportPackage, ExportPackageError,
-    ExportPackageMetadata, ExportPackageStore, ExportStoreError, hmac_sha256, host_header,
-    sha256_hex,
+    aws_timestamp, canonical_header_value, canonical_uri, hmac_sha256, host_header, sha256_hex,
+    ExportPackage, ExportPackageError, ExportPackageMetadata, ExportPackageStore, ExportStoreError,
 };
 use palimpsest_domain::ExportId;
 use reqwest::{Client, Method, RequestBuilder, StatusCode};
@@ -641,7 +640,6 @@ impl ExportPackageStore for FileExportPackageStore {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -817,7 +815,7 @@ mod tests {
 
     #[tokio::test]
     async fn s3_package_store_signs_requests_and_recovers_idempotently() {
-        use axum::{Router, routing::any};
+        use axum::{routing::any, Router};
 
         let state = FakeS3State::default();
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))

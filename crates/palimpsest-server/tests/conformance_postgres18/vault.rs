@@ -13,9 +13,8 @@ use palimpsest_application::{
 };
 use palimpsest_domain::{
     AppendEpisode, CaseId, CreateFact, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace,
-    OperationGrant, PrincipalScope, Provenance, RetentionPolicyId, Sensitivity,
-    SourceType, SubjectId, SupersedeFact, TenantId, ValidTime, WritePolicy, WritePolicyId,
-    WritePolicyVersion,
+    OperationGrant, PrincipalScope, Provenance, RetentionPolicyId, Sensitivity, SourceType,
+    SubjectId, SupersedeFact, TenantId, ValidTime, WritePolicy, WritePolicyId, WritePolicyVersion,
 };
 use palimpsest_postgres::PostgresMemoryRepository;
 use palimpsest_stores::FileExportPackageStore;

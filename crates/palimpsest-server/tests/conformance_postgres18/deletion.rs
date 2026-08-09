@@ -8,14 +8,14 @@ use time::{Duration as TimeDuration, OffsetDateTime};
 
 use palimpsest_application::{
     CANONICAL_HISTORY_EXPORT_PROFILE, CreateDeletionRequest, DeletionRepository,
-    ExportOperationState, ExportPackageMetadata, ExportRepository,
-    IdempotencyRequest, MemoryService, NewExport, ServiceError,
+    ExportOperationState, ExportPackageMetadata, ExportRepository, IdempotencyRequest,
+    MemoryService, NewExport, ServiceError,
 };
 use palimpsest_conformance::Target;
 use palimpsest_domain::{
     DeletionOperationId, DeletionOperationState, DeletionTargetCapability, DeletionTargetName,
-    DeletionTargetState, DeletionTargetVerification, OperationGrant, PrincipalId,
-    Sensitivity, SubjectId, TenantId,
+    DeletionTargetState, DeletionTargetVerification, OperationGrant, PrincipalId, Sensitivity,
+    SubjectId, TenantId,
 };
 use palimpsest_postgres::PostgresMemoryRepository;
 use palimpsest_stores::{FileExportPackageStore, InMemoryExportPackageStore};
@@ -613,18 +613,19 @@ pub(crate) async fn export_worker_fails_closed_on_store_failure(
     );
     super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
 
-    let authenticator = super::harness::static_authenticator(principal.clone(), "export-store-failure-token");
+    let authenticator =
+        super::harness::static_authenticator(principal.clone(), "export-store-failure-token");
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let fault_path =
         env::temp_dir().join(format!("palimpsest-export-store-fault-{}", Uuid::now_v7()));
     fs::write(&fault_path, b"the export root is intentionally a file")
         .context("seed export store failure")?;
     let service = super::harness::service(&repository)
-    .with_export_components(
-        repository.clone(),
-        Arc::new(FileExportPackageStore::new(fault_path.clone())),
-    )
-    .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
+        .with_export_components(
+            repository.clone(),
+            Arc::new(FileExportPackageStore::new(fault_path.clone())),
+        )
+        .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
 
     let created = service
         .create_export(
@@ -676,11 +677,11 @@ pub(crate) async fn export_worker_fails_closed_on_authorization_revocation(
 
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let service = super::harness::service(&repository)
-    .with_export_components(
-        repository.clone(),
-        Arc::new(InMemoryExportPackageStore::default()),
-    )
-    .with_export_worker_authorizer(Arc::new(DenyingExportWorkerAuthorizer));
+        .with_export_components(
+            repository.clone(),
+            Arc::new(InMemoryExportPackageStore::default()),
+        )
+        .with_export_worker_authorizer(Arc::new(DenyingExportWorkerAuthorizer));
     let created = service
         .create_export(
             &principal,
@@ -716,12 +717,18 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
         "deletion-export-store-failure-principal",
         tenant_id,
         subject_id,
-        &[OperationGrant::CanonicalHistoryExport, OperationGrant::SubjectDelete],
+        &[
+            OperationGrant::CanonicalHistoryExport,
+            OperationGrant::SubjectDelete,
+        ],
         &[Sensitivity::try_from("internal".to_owned())?],
     );
     super::harness::seed_active_lifecycle(migration_pool, tenant_id, subject_id).await?;
 
-    let authenticator = super::harness::static_authenticator(principal.clone(), "deletion-export-store-failure-token");
+    let authenticator = super::harness::static_authenticator(
+        principal.clone(),
+        "deletion-export-store-failure-token",
+    );
     let repository = Arc::new(PostgresMemoryRepository::new(pool.clone()));
     let fault_path = env::temp_dir().join(format!(
         "palimpsest-deletion-export-store-fault-{}",
@@ -730,11 +737,11 @@ pub(crate) async fn deletion_worker_fails_closed_when_export_store_is_unavailabl
     fs::write(&fault_path, b"the export root is intentionally a file")
         .context("seed deletion export store failure")?;
     let service = super::harness::service(&repository)
-    .with_export_components(
-        repository.clone(),
-        Arc::new(FileExportPackageStore::new(fault_path.clone())),
-    )
-    .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
+        .with_export_components(
+            repository.clone(),
+            Arc::new(FileExportPackageStore::new(fault_path.clone())),
+        )
+        .with_export_worker_authorizer(Arc::new(StaticExportWorkerAuthorizer { authenticator }));
 
     let _export = service
         .create_export(

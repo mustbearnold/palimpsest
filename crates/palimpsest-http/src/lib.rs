@@ -24,10 +24,10 @@ use axum::{
 use http_body::{Frame, SizeHint};
 use palimpsest_application::{
     CANONICAL_HISTORY_EXPORT_PROFILE, ContentLeasePermit, ExportOperationState,
-    FactAsOfCoordinates, MAX_RETRIEVAL_QUERY_BYTES, MemoryService, NewConsolidationInterpreterConfig,
-    NewConsolidationJob, NewConsolidationPolicy, NewSurfacePolicy, NewSurfaceRequest,
-    SURFACE_DEFAULT_MAX_CONTEXT_TOKENS, SURFACE_DEFAULT_MAX_ITEMS,
-    SURFACE_DEFAULT_MAX_RESULT_TOKENS, ServiceError,
+    FactAsOfCoordinates, MAX_RETRIEVAL_QUERY_BYTES, MemoryService,
+    NewConsolidationInterpreterConfig, NewConsolidationJob, NewConsolidationPolicy,
+    NewSurfacePolicy, NewSurfaceRequest, SURFACE_DEFAULT_MAX_CONTEXT_TOKENS,
+    SURFACE_DEFAULT_MAX_ITEMS, SURFACE_DEFAULT_MAX_RESULT_TOKENS, ServiceError,
 };
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,

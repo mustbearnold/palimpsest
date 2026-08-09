@@ -13,15 +13,15 @@ use axum::{
 };
 use palimpsest_application::{
     ConsolidationWorkerRunSummary, EmbeddingProvider, ExportPackageStore, ExportWorkerAuthorizer,
-    FixtureDeterministicInterpreter, InterpreterRegistry, MemoryService,
-    ServiceError, UnavailableEmbeddingProvider,
+    FixtureDeterministicInterpreter, InterpreterRegistry, MemoryService, ServiceError,
+    UnavailableEmbeddingProvider,
 };
 use palimpsest_domain::{PrincipalId, PrincipalScope, SubjectId, TenantId};
 use palimpsest_http::{
     Authenticator, ContentLeaseCleanupCounters, ServerMetricsSnapshot, record_request_latency,
 };
-use palimpsest_stores::{FileExportPackageStore, S3ExportPackageStore};
 use palimpsest_postgres::{PostgresMemoryRepository, PostgresSubjectLifecycleRepository};
+use palimpsest_stores::{FileExportPackageStore, S3ExportPackageStore};
 use sqlx::PgPool;
 
 static CONSOLIDATION_COUNTERS: OnceLock<Arc<ConsolidationWorkerCounters>> = OnceLock::new();
