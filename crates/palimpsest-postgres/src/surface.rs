@@ -324,116 +324,17 @@ impl SurfaceRepository for PostgresMemoryRepository {
             ),
         };
 
-        let bundle_sha256 = bundle.bundle_sha256();
         let key_digest = hex::encode(sha256_bytes(idempotency.key.as_bytes()));
-        let row = sqlx::query(
-            r#"
-            INSERT INTO memory.surface_responses (
-                tenant_id, subject_id, surface_id, host_id, principal_id,
-                idempotency_key_digest, request_fingerprint, policy_sha256,
-                bundle_sha256, item_count, truncated, context_terms,
-                evaluated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            ON CONFLICT (tenant_id, host_id, principal_id, idempotency_key_digest)
-                DO NOTHING
-            RETURNING surface_id
-            "#,
+        self.persist_surface_bundle(
+            transaction,
+            tenant_id,
+            subject_id,
+            bundle,
+            &policy_sha256,
+            &idempotency,
+            &key_digest,
         )
-        .bind(tenant_id.0)
-        .bind(subject_id.0)
-        .bind(bundle.surface_id)
-        .bind(&bundle.host_id)
-        .bind(&bundle.principal_id)
-        .bind(&key_digest)
-        .bind(&idempotency.fingerprint)
-        .bind(&policy_sha256)
-        .bind(&bundle_sha256)
-        .bind(i16::try_from(bundle.items.len()).map_err(unexpected)?)
-        .bind(bundle.truncated)
-        .bind(&bundle.context_terms_used)
-        .bind(bundle.evaluated_at)
-        .fetch_optional(&mut *transaction)
         .await
-        .map_err(map_surface_sqlx)?;
-
-        if row.is_some() {
-            for item in &bundle.items {
-                sqlx::query(
-                    r#"
-                    INSERT INTO memory.surface_response_items (
-                        tenant_id, subject_id, surface_id, ordinal,
-                        case_id, fact_id, revision_id, namespace, fact_key,
-                        value, confidence, sensitivity, lexical_score,
-                        content_sha256, item_sha256
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                    "#,
-                )
-                .bind(tenant_id.0)
-                .bind(subject_id.0)
-                .bind(bundle.surface_id)
-                .bind(item.ordinal)
-                .bind(item.case_id)
-                .bind(item.fact_id.0)
-                .bind(item.revision_id.0)
-                .bind(&item.namespace)
-                .bind(&item.fact_key)
-                .bind(&item.value)
-                .bind(item.confidence)
-                .bind(&item.sensitivity)
-                .bind(item.lexical_score)
-                .bind(&item.content_sha256)
-                .bind(&item.item_sha256)
-                .execute(&mut *transaction)
-                .await
-                .map_err(map_surface_sqlx)?;
-            }
-            transaction.commit().await.map_err(unexpected)?;
-            return Ok(CreateSurfaceOutcome {
-                bundle,
-                replayed: false,
-            });
-        }
-
-        let existing = sqlx::query(
-            r#"
-            SELECT request_fingerprint, surface_id
-            FROM memory.surface_responses
-            WHERE tenant_id = $1
-              AND host_id = $2
-              AND principal_id = $3
-              AND idempotency_key_digest = $4
-            "#,
-        )
-        .bind(tenant_id.0)
-        .bind(&request.host_id)
-        .bind(&request.principal_id)
-        .bind(&key_digest)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(map_surface_sqlx)?
-        .ok_or(RepositoryError::Unexpected(
-            "surface idempotency replay lost its reservation".to_owned(),
-        ))?;
-        let stored_fingerprint: String = existing
-            .try_get("request_fingerprint")
-            .map_err(unexpected)?;
-        if stored_fingerprint != idempotency.fingerprint {
-            return Err(RepositoryError::IdempotencyKeyReused);
-        }
-        let stored_surface_id: Uuid = existing.try_get("surface_id").map_err(unexpected)?;
-        let replayed = self
-            .read_stored_surface(&mut transaction, tenant_id, subject_id, stored_surface_id)
-            .await?
-            .ok_or(RepositoryError::Unexpected(
-                "surface idempotency replay lost its stored bundle".to_owned(),
-            ))?;
-        transaction.commit().await.map_err(unexpected)?;
-        Ok(CreateSurfaceOutcome {
-            bundle: replayed,
-            replayed: true,
-        })
     }
 
     async fn get_surface(
@@ -548,8 +449,36 @@ impl SurfaceRepository for PostgresMemoryRepository {
             ),
         };
 
-        let bundle_sha256 = bundle.bundle_sha256();
         let key_digest = hex::encode(sha256_bytes(idempotency.key.as_bytes()));
+        self.persist_surface_bundle(
+            transaction,
+            tenant_id,
+            subject_id,
+            bundle,
+            &policy_sha256,
+            &idempotency,
+            &key_digest,
+        )
+        .await
+    }
+}
+
+impl PostgresMemoryRepository {
+    /// Persists a surface bundle and its items, or replays the stored
+    /// bundle for the same idempotency key (A8). Both the ranked surface
+    /// and the wiki index share this storage path.
+    #[allow(clippy::too_many_arguments)]
+    async fn persist_surface_bundle(
+        &self,
+        mut transaction: Transaction<'_, Postgres>,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        bundle: SurfaceBundle,
+        policy_sha256: &Option<String>,
+        idempotency: &IdempotencyRequest,
+        key_digest: &str,
+    ) -> Result<CreateSurfaceOutcome, RepositoryError> {
+        let bundle_sha256 = bundle.bundle_sha256();
         let row = sqlx::query(
             r#"
             INSERT INTO memory.surface_responses (
@@ -569,9 +498,9 @@ impl SurfaceRepository for PostgresMemoryRepository {
         .bind(bundle.surface_id)
         .bind(&bundle.host_id)
         .bind(&bundle.principal_id)
-        .bind(&key_digest)
+        .bind(key_digest)
         .bind(&idempotency.fingerprint)
-        .bind(&policy_sha256)
+        .bind(policy_sha256)
         .bind(&bundle_sha256)
         .bind(i16::try_from(bundle.items.len()).map_err(unexpected)?)
         .bind(bundle.truncated)
@@ -631,9 +560,9 @@ impl SurfaceRepository for PostgresMemoryRepository {
             "#,
         )
         .bind(tenant_id.0)
-        .bind(&request.host_id)
-        .bind(&request.principal_id)
-        .bind(&key_digest)
+        .bind(&bundle.host_id)
+        .bind(&bundle.principal_id)
+        .bind(key_digest)
         .fetch_optional(&mut *transaction)
         .await
         .map_err(map_surface_sqlx)?
@@ -659,9 +588,7 @@ impl SurfaceRepository for PostgresMemoryRepository {
             replayed: true,
         })
     }
-}
 
-impl PostgresMemoryRepository {
     #[allow(clippy::too_many_arguments)]
     async fn evaluate_index_surface(
         &self,

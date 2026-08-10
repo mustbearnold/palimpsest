@@ -64,8 +64,8 @@ pub use review_queue::{
     ReviewQueueScanPage,
 };
 pub use schema_config::{
-    NewSchemaConfig, SCHEMA_CONFIG_SCOPE_ID, SchemaConfigRepository, SchemaConfigView,
-    default_schema_config_view, schema_amendment_idempotency_key,
+    NewSchemaConfig, SchemaConfigRepository, SchemaConfigView, default_schema_config_view,
+    schema_amendment_idempotency_key,
 };
 pub use surface::{
     CreateSurfaceOutcome, NewIndexSurfaceRequest, NewSurfacePolicy, NewSurfaceRequest,

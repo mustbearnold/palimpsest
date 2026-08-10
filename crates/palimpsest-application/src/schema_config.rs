@@ -10,7 +10,6 @@
 use palimpsest_domain::{TenantId, WritePolicy};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct NewSchemaConfig {
@@ -74,7 +73,3 @@ pub fn default_schema_config_view(tenant_id: TenantId) -> SchemaConfigView {
         created_at: OffsetDateTime::now_utc(),
     }
 }
-
-/// Placeholder id for the schema config view type (kept for symmetry with
-/// the other view types; the config table has no uuid key).
-pub const SCHEMA_CONFIG_SCOPE_ID: Uuid = Uuid::from_u128(0x736368656d615f636f6e6669675f7630);
