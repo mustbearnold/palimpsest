@@ -109,16 +109,26 @@ if [[ -z "$superuser_url" ]]; then
         fail "required backup tool is unavailable: initdb"
     fi
     scratch_cluster_dir="$workdir/scratch-cluster"
-    initdb --pgdata="$scratch_cluster_dir" --auth=trust --username=postgres >/dev/null
-    pg_ctl --pgdata="$scratch_cluster_dir" --log="$workdir/scratch.log" \
+    if ! initdb --pgdata="$scratch_cluster_dir" --auth=trust --username=postgres >/dev/null 2>&1; then
+        fail "scratch cluster initdb failed"
+    fi
+    if ! pg_ctl --pgdata="$scratch_cluster_dir" --log="$workdir/scratch.log" \
         --options="-p $scratch_port -c listen_addresses=127.0.0.1 -c unix_socket_directories=$workdir" \
-        -w start >/dev/null
+        -w start >/dev/null 2>&1; then
+        echo "--- scratch.log ---"
+        cat "$workdir/scratch.log" 2>/dev/null
+        fail "scratch cluster failed to start"
+    fi
     superuser_url="postgres://postgres@127.0.0.1:$scratch_port/postgres"
     psql "$superuser_url" --tuples-only --no-align --quiet --command \
         "ALTER SYSTEM SET archive_mode = 'on'" >/dev/null
-    pg_ctl --pgdata="$scratch_cluster_dir" --log="$workdir/scratch.log" \
+    if ! pg_ctl --pgdata="$scratch_cluster_dir" --log="$workdir/scratch.log" \
         --options="-p $scratch_port -c listen_addresses=127.0.0.1 -c unix_socket_directories=$workdir" \
-        -w restart >/dev/null
+        -w restart >/dev/null 2>&1; then
+        echo "--- scratch.log ---"
+        cat "$workdir/scratch.log" 2>/dev/null
+        fail "scratch cluster failed to restart"
+    fi
 fi
 
 source_db="palimpsest_backup_src_$$"
