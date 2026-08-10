@@ -544,16 +544,9 @@ struct WritePolicyRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum WikiPageTarget {
-    Fact { page_id: Uuid },
-    Episode { page_id: Uuid },
-}
-
-#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateWikiAnnotationRequest {
-    target: WikiPageTarget,
+    target: WriteBackTarget,
     body: String,
     observed_at: String,
     write_policy: WritePolicyRequest,
@@ -985,27 +978,50 @@ async fn supersede_fact(
     Ok(content_lease.attach(response))
 }
 
+/// Authenticate a write-back request and acquire its subject content lease.
+/// Returns the lease guard, principal, and parsed path identifiers.
+async fn write_back_preamble(
+    state: &AppState,
+    tenant_path: &str,
+    subject_path: &str,
+    headers: &HeaderMap,
+) -> Result<(ContentLeaseGuard, PrincipalScope, TenantId, SubjectId), Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", tenant_path)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", subject_path)?);
+    let principal = authenticate(state, headers)?;
+    let content_lease = acquire_content_lease(state, &principal, tenant_id, subject_id).await?;
+    Ok((content_lease, principal, tenant_id, subject_id))
+}
+
+/// Build the `Location` header and serialized fact response for a write-back
+/// outcome, attaching the content lease to the response.
+fn write_back_fact_response(
+    status: StatusCode,
+    tenant_id: TenantId,
+    subject_id: SubjectId,
+    view: FactView,
+    replayed: bool,
+    content_lease: ContentLeaseGuard,
+) -> Result<Response, Problem> {
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/facts/{}",
+        tenant_id.0, subject_id.0, view.fact_id.0
+    );
+    let response = fact_response(status, view, Some(location), replayed)?;
+    Ok(content_lease.attach(response))
+}
+
 async fn create_wiki_annotation(
     State(state): State<AppState>,
     Path((tenant_id, subject_id)): Path<(String, String)>,
     headers: HeaderMap,
     payload: Result<Json<CreateWikiAnnotationRequest>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
-    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
-    let principal = authenticate(&state, &headers)?;
-    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
+    let (content_lease, principal, tenant_id, subject_id) =
+        write_back_preamble(&state, &tenant_id, &subject_id, &headers).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
-    let target = match request.target {
-        WikiPageTarget::Fact { page_id } => WriteBackTarget::Fact {
-            page_id: FactId(page_id),
-        },
-        WikiPageTarget::Episode { page_id } => WriteBackTarget::Episode {
-            page_id: EpisodeId(page_id),
-        },
-    };
     let outcome = state
         .service
         .write_back_annotation(
@@ -1015,7 +1031,7 @@ async fn create_wiki_annotation(
             WriteBackAnnotation {
                 tenant_id,
                 subject_id,
-                target,
+                target: request.target,
                 body: request.body,
                 observed_at,
                 write_policy: WritePolicy {
@@ -1029,17 +1045,14 @@ async fn create_wiki_annotation(
         )
         .await
         .map_err(Problem::from_service)?;
-    let location = format!(
-        "/v1/tenants/{}/subjects/{}/facts/{}",
-        tenant_id.0, subject_id.0, outcome.view.fact_id.0
-    );
-    let response = fact_response(
+    write_back_fact_response(
         StatusCode::CREATED,
+        tenant_id,
+        subject_id,
         outcome.view,
-        Some(location),
         outcome.replayed,
-    )?;
-    Ok(content_lease.attach(response))
+        content_lease,
+    )
 }
 
 async fn create_wiki_page_edit(
@@ -1048,11 +1061,9 @@ async fn create_wiki_page_edit(
     headers: HeaderMap,
     payload: Result<Json<CreateWikiPageEditRequest>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
-    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let (content_lease, principal, tenant_id, subject_id) =
+        write_back_preamble(&state, &tenant_id, &subject_id, &headers).await?;
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
-    let principal = authenticate(&state, &headers)?;
-    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let expected_head_revision_id = require_if_match(&headers)?;
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
@@ -1092,17 +1103,14 @@ async fn create_wiki_page_edit(
         )
         .await
         .map_err(Problem::from_service)?;
-    let location = format!(
-        "/v1/tenants/{}/subjects/{}/facts/{}",
-        tenant_id.0, subject_id.0, outcome.view.fact_id.0
-    );
-    let response = fact_response(
+    write_back_fact_response(
         StatusCode::OK,
+        tenant_id,
+        subject_id,
         outcome.view,
-        Some(location),
         outcome.replayed,
-    )?;
-    Ok(content_lease.attach(response))
+        content_lease,
+    )
 }
 
 async fn file_wiki_answer(
@@ -1111,10 +1119,8 @@ async fn file_wiki_answer(
     headers: HeaderMap,
     payload: Result<Json<FileWikiAnswerRequest>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
-    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
-    let principal = authenticate(&state, &headers)?;
-    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
+    let (content_lease, principal, tenant_id, subject_id) =
+        write_back_preamble(&state, &tenant_id, &subject_id, &headers).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
     let observed_at = parse_time("observed_at", &request.observed_at)?;
@@ -1141,17 +1147,14 @@ async fn file_wiki_answer(
         )
         .await
         .map_err(Problem::from_service)?;
-    let location = format!(
-        "/v1/tenants/{}/subjects/{}/facts/{}",
-        tenant_id.0, subject_id.0, outcome.view.fact_id.0
-    );
-    let response = fact_response(
+    write_back_fact_response(
         StatusCode::CREATED,
+        tenant_id,
+        subject_id,
         outcome.view,
-        Some(location),
         outcome.replayed,
-    )?;
-    Ok(content_lease.attach(response))
+        content_lease,
+    )
 }
 
 async fn get_fact_as_of(
