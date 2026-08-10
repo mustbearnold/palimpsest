@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
 use palimpsest_domain::{
-    AgentId, AppendEpisode, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
+    AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
     CompleteEffectTransition, CreateFact, CreateRetrieval, DeletionBackupDisposition,
     DeletionLiveDisposition, DeletionOperationId, DeletionOperationState, DeletionTargetCapability,
     DeletionTargetName, DeletionTargetState, DeletionTargetVerification, EffectId,
@@ -76,8 +76,10 @@ pub const WIKI_ANNOTATION_FACT_NAMESPACE: &str = "wiki/annotations";
 pub const WIKI_ANSWER_FACT_NAMESPACE: &str = CONSOLIDATION_DERIVED_FACT_NAMESPACE;
 /// Provenance kind recorded on filed answers (011 R5).
 pub const WIKI_ANSWER_PROVENANCE_KIND: &str = CONSOLIDATION_PROVENANCE_KIND;
-/// Bounded annotation and answer body length (chars); the write-back API
-/// never accepts unbounded inbound content.
+/// Bounded inbound content for the wiki write-back API: the annotation
+/// body is capped by character count, and the page-edit value and answer
+/// value are capped by serialized byte length; the write-back API never
+/// accepts unbounded inbound content.
 pub const WIKI_WRITE_BACK_BODY_MAX_CHARS: usize = 65_536;
 
 #[derive(Debug, Error)]
@@ -2509,7 +2511,7 @@ impl MemoryService {
                 "annotation body exceeds the supported size".to_owned(),
             ));
         }
-        let (case_id, evidence_episode_ids, target_key) = match &command.target {
+        let (case_id, evidence_episode_ids, target_key, target_json) = match &command.target {
             WriteBackTarget::Fact { page_id } => {
                 let view = self
                     .facts
@@ -2521,6 +2523,7 @@ impl MemoryService {
                     view.case_id,
                     revision.evidence_episode_ids,
                     format!("fact:{}", page_id.0),
+                    json!({"kind": "fact", "page_id": page_id.0}),
                 )
             }
             WriteBackTarget::Episode { page_id } => {
@@ -2533,74 +2536,41 @@ impl MemoryService {
                     episode.case_id,
                     vec![*page_id],
                     format!("episode:{}", page_id.0),
+                    json!({"kind": "episode", "page_id": page_id.0}),
                 )
             }
         };
         let fact_id = FactId(Uuid::now_v7());
         let value = json!({
-            "target": match &command.target {
-                WriteBackTarget::Fact { page_id } => json!({"kind": "fact", "page_id": page_id.0}),
-                WriteBackTarget::Episode { page_id } => {
-                    json!({"kind": "episode", "page_id": page_id.0})
-                }
-            },
+            "target": target_json,
             "body": body,
             "annotated_at": command.observed_at.unix_timestamp_nanos().to_string(),
         });
-        validate_fact_revision(FactRevisionValidation {
-            value: &value,
-            valid_time: &ValidTime {
-                from: command.observed_at,
-                until: None,
-            },
-            evidence_episode_ids: &evidence_episode_ids,
-            write_policy_id: command.write_policy.id.as_str(),
-            write_policy_version: command.write_policy.version.as_str(),
-            confidence: command.confidence,
-            sensitivity: command.sensitivity.as_str(),
-            retention_policy_id: command.retention_policy_id.as_str(),
-        })?;
-        let value_sha256 = hex::encode(Sha256::digest(
-            serde_json::to_vec(&value).map_err(|error| ServiceError::Invalid(error.to_string()))?,
-        ));
-        let new_fact = NewFact {
-            tenant_id: command.tenant_id,
-            subject_id: command.subject_id,
-            case_id,
-            fact_id,
-            revision_id: RevisionId(Uuid::now_v7()),
-            namespace: FactNamespace::try_from(WIKI_ANNOTATION_FACT_NAMESPACE.to_owned())
-                .expect("wiki annotation namespace is valid"),
-            key: FactKey::try_from(format!("annotation:{target_key}:{}", fact_id.0))
-                .expect("wiki annotation key is valid"),
-            value: value.clone(),
-            observed_at: command.observed_at,
-            valid_time: ValidTime {
-                from: command.observed_at,
-                until: None,
-            },
-            evidence_episode_ids,
-            write_policy: command.write_policy,
-            confidence: command.confidence,
-            sensitivity: command.sensitivity,
-            retention_policy_id: command.retention_policy_id,
-            writer_principal_id: principal.principal_id.clone(),
-            schema_version: 1,
-            value_sha256: value_sha256.clone(),
-        };
-        await_content_operation(permit, async {
-            self.facts
-                .create(
-                    new_fact,
-                    IdempotencyRequest {
-                        key: idempotency_key,
-                        fingerprint: value_sha256,
-                    },
-                )
-                .await
-                .map_err(map_repository)
-        })
-        .await
+        let (outcome, _) = self
+            .create_governed_fact(
+                permit,
+                command.tenant_id,
+                command.subject_id,
+                case_id,
+                fact_id,
+                FactNamespace::try_from(WIKI_ANNOTATION_FACT_NAMESPACE.to_owned())
+                    .expect("wiki annotation namespace is valid"),
+                FactKey::try_from(format!("annotation:{target_key}:{}", fact_id.0))
+                    .expect("wiki annotation key is valid"),
+                value,
+                command.observed_at,
+                evidence_episode_ids,
+                command.write_policy,
+                command.confidence,
+                command.sensitivity,
+                command.retention_policy_id,
+                principal.principal_id.clone(),
+                "writeBackAnnotation",
+                json!({"target": target_json}),
+                idempotency_key,
+            )
+            .await?;
+        Ok(outcome)
     }
 
     /// Writes a page edit through the wiki write-back API (spec 017 R5,
@@ -2635,6 +2605,15 @@ impl MemoryService {
             sensitivity: command.sensitivity.as_str(),
             retention_policy_id: command.retention_policy_id.as_str(),
         })?;
+        if serde_json::to_vec(&command.value)
+            .map_err(|error| ServiceError::Invalid(error.to_string()))?
+            .len()
+            > WIKI_WRITE_BACK_BODY_MAX_CHARS
+        {
+            return Err(ServiceError::Invalid(
+                "page edit value exceeds the supported size".to_owned(),
+            ));
+        }
         let fingerprint_input = json!({
             "operation_id": "writeBackPageEdit",
             "content_type": "application/json",
@@ -2708,6 +2687,15 @@ impl MemoryService {
         if command.answer.is_null() {
             return Err(ServiceError::Invalid("answer must not be null".to_owned()));
         }
+        if serde_json::to_vec(&command.answer)
+            .map_err(|error| ServiceError::Invalid(error.to_string()))?
+            .len()
+            > WIKI_WRITE_BACK_BODY_MAX_CHARS
+        {
+            return Err(ServiceError::Invalid(
+                "answer exceeds the supported size".to_owned(),
+            ));
+        }
         let question = self
             .facts
             .get_current(
@@ -2718,6 +2706,15 @@ impl MemoryService {
             .await
             .map_err(map_repository)?;
         let question_revision = question.revision.ok_or(ServiceError::NotFound)?;
+        // Captured before the answer's NewFact moves fields out of the
+        // question revision (used again by the AC7 supersede below).
+        let question_evidence = question_revision.evidence_episode_ids.clone();
+        let question_policy = question_revision.write_policy.clone();
+        let question_confidence = question_revision.confidence;
+        let question_sensitivity = question_revision.sensitivity.clone();
+        let question_retention = question_revision.retention_policy_id.clone();
+        let question_head = question_revision.revision_id;
+        let supersede_idempotency_key = idempotency_key.clone();
         let fact_id = FactId(Uuid::now_v7());
         let value = json!({
             "provenance_kind": WIKI_ANSWER_PROVENANCE_KIND,
@@ -2726,63 +2723,218 @@ impl MemoryService {
             "filed_by": principal.principal_id.0,
             "filed_at": command.observed_at.unix_timestamp_nanos().to_string(),
         });
-        validate_fact_revision(FactRevisionValidation {
-            value: &value,
-            valid_time: &ValidTime {
-                from: command.observed_at,
-                until: None,
-            },
-            evidence_episode_ids: &question_revision.evidence_episode_ids,
-            write_policy_id: command.write_policy.id.as_str(),
-            write_policy_version: command.write_policy.version.as_str(),
-            confidence: command.confidence,
-            sensitivity: command.sensitivity.as_str(),
-            retention_policy_id: command.retention_policy_id.as_str(),
-        })?;
-        let value_sha256 = hex::encode(Sha256::digest(
-            serde_json::to_vec(&value).map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        // The answer's create consumes the value; the supersede below
+        // anchors its fingerprint on the same grounding digest.
+        let (created, answer_value_sha256) = self
+            .create_governed_fact(
+                permit,
+                command.tenant_id,
+                command.subject_id,
+                question.case_id,
+                fact_id,
+                FactNamespace::try_from(WIKI_ANSWER_FACT_NAMESPACE.to_owned())
+                    .expect("derived namespace is valid"),
+                FactKey::try_from(format!(
+                    "answer:{}:{}",
+                    command.question_fact_id.0, fact_id.0
+                ))
+                .expect("wiki answer key is valid"),
+                value,
+                command.observed_at,
+                question_revision.evidence_episode_ids,
+                command.write_policy,
+                command.confidence,
+                command.sensitivity,
+                command.retention_policy_id,
+                principal.principal_id.clone(),
+                "fileAnswer",
+                json!({"question_fact_id": command.question_fact_id.0}),
+                idempotency_key,
+            )
+            .await?;
+
+        // AC7 (spec 017 P3): the old question fact is superseded by an
+        // attributable revision that links the answer page. The question
+        // keeps its own policy, confidence, sensitivity, and retention; the
+        // answering agent is recorded as the writer. The expected-head guard
+        // makes two concurrent answers to the same question impossible (the
+        // loser gets a 409). Like the page-edit supersede, the validity of
+        // the superseding revision stays open — the supersession is carried
+        // by the revision chain, not by a closed interval.
+        let mut superseded_value =
+            question_revision
+                .value
+                .as_object()
+                .cloned()
+                .ok_or_else(|| {
+                    ServiceError::Invalid("question fact value must be an object".to_owned())
+                })?;
+        superseded_value.insert(
+            "answered_by".to_owned(),
+            json!({"fact_id": fact_id.0, "filed_by": principal.principal_id.0}),
+        );
+        superseded_value.insert(
+            "answered_at".to_owned(),
+            json!(command.observed_at.unix_timestamp_nanos().to_string()),
+        );
+        let superseded_value = serde_json::Value::Object(superseded_value);
+        let supersede_fingerprint_input = json!({
+            "operation_id": "fileAnswerSupersede",
+            "tenant_id": command.tenant_id.0,
+            "subject_id": command.subject_id.0,
+            "fact_id": command.question_fact_id.0,
+            "observed_at_unix_nanos": command.observed_at.unix_timestamp_nanos().to_string(),
+            "answer_value_sha256": answer_value_sha256,
+        });
+        let supersede_fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&supersede_fingerprint_input)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
         ));
-        let new_fact = NewFact {
-            tenant_id: command.tenant_id,
-            subject_id: command.subject_id,
-            case_id: question.case_id,
-            fact_id,
-            revision_id: RevisionId(Uuid::now_v7()),
-            namespace: FactNamespace::try_from(WIKI_ANSWER_FACT_NAMESPACE.to_owned())
-                .expect("derived namespace is valid"),
-            key: FactKey::try_from(format!(
-                "answer:{}:{}",
-                command.question_fact_id.0, fact_id.0
-            ))
-            .expect("wiki answer key is valid"),
-            value: value.clone(),
-            observed_at: command.observed_at,
-            valid_time: ValidTime {
-                from: command.observed_at,
-                until: None,
-            },
-            evidence_episode_ids: question_revision.evidence_episode_ids,
-            write_policy: command.write_policy,
-            confidence: command.confidence,
-            sensitivity: command.sensitivity,
-            retention_policy_id: command.retention_policy_id,
-            writer_principal_id: principal.principal_id.clone(),
-            schema_version: 1,
-            value_sha256: value_sha256.clone(),
-        };
+        let superseded_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(&superseded_value)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
         await_content_operation(permit, async {
             self.facts
-                .create(
-                    new_fact,
+                .supersede(
+                    NewFactRevision {
+                        tenant_id: command.tenant_id,
+                        subject_id: command.subject_id,
+                        fact_id: command.question_fact_id,
+                        revision_id: RevisionId(Uuid::now_v7()),
+                        supersedes_revision_id: question_head,
+                        expected_head_revision_id: question_head,
+                        value: superseded_value,
+                        observed_at: command.observed_at,
+                        valid_time: ValidTime {
+                            from: command.observed_at,
+                            until: None,
+                        },
+                        evidence_episode_ids: question_evidence,
+                        write_policy: question_policy,
+                        confidence: question_confidence,
+                        sensitivity: question_sensitivity,
+                        retention_policy_id: question_retention,
+                        writer_principal_id: principal.principal_id.clone(),
+                        schema_version: 1,
+                        value_sha256: superseded_sha256,
+                    },
                     IdempotencyRequest {
-                        key: idempotency_key,
-                        fingerprint: value_sha256,
+                        key: format!("{supersede_idempotency_key}:supersede"),
+                        fingerprint: supersede_fingerprint,
                     },
                 )
                 .await
                 .map_err(map_repository)
         })
-        .await
+        .await?;
+
+        // The answer's own mutation is the result the caller sees; the
+        // question supersede above is the AC7 side effect.
+        Ok(created)
+    }
+
+    /// Creates a governed fact through the wiki write-back API (spec 017
+    /// R5): validates the revision, anchors the grounding hash, fingerprints
+    /// the full request (operation, tenant, subject, anchor, value, policy,
+    /// confidence, sensitivity, retention), and creates the fact under the
+    /// idempotency key. Returns the mutation outcome and the value's
+    /// grounding hash; the answer supersede path reuses the same digest.
+    #[allow(clippy::too_many_arguments)]
+    async fn create_governed_fact(
+        &self,
+        permit: &ContentLeasePermit,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        case_id: CaseId,
+        fact_id: FactId,
+        namespace: FactNamespace,
+        key: FactKey,
+        value: serde_json::Value,
+        observed_at: time::OffsetDateTime,
+        evidence_episode_ids: Vec<EpisodeId>,
+        write_policy: WritePolicy,
+        confidence: f64,
+        sensitivity: Sensitivity,
+        retention_policy_id: RetentionPolicyId,
+        writer_principal_id: PrincipalId,
+        operation_id: &'static str,
+        fingerprint_anchor: serde_json::Value,
+        idempotency_key: String,
+    ) -> Result<(FactMutationOutcome, String), ServiceError> {
+        let valid_time = ValidTime {
+            from: observed_at,
+            until: None,
+        };
+        validate_fact_revision(FactRevisionValidation {
+            value: &value,
+            valid_time: &valid_time,
+            evidence_episode_ids: &evidence_episode_ids,
+            write_policy_id: write_policy.id.as_str(),
+            write_policy_version: write_policy.version.as_str(),
+            confidence,
+            sensitivity: sensitivity.as_str(),
+            retention_policy_id: retention_policy_id.as_str(),
+        })?;
+        let value_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(&value).map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        let mut fingerprint_input = json!({
+            "operation_id": operation_id,
+            "content_type": "application/json",
+            "tenant_id": tenant_id.0,
+            "subject_id": subject_id.0,
+            "value": value.clone(),
+            "observed_at_unix_nanos": observed_at.unix_timestamp_nanos().to_string(),
+            "write_policy": write_policy,
+            "confidence": confidence,
+            "sensitivity": sensitivity,
+            "retention_policy_id": retention_policy_id,
+        });
+        let anchor = fingerprint_anchor.as_object().ok_or_else(|| {
+            ServiceError::Invalid("fingerprint anchor must be an object".to_owned())
+        })?;
+        for (anchor_key, anchor_value) in anchor {
+            fingerprint_input[anchor_key.as_str()] = anchor_value.clone();
+        }
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&fingerprint_input)
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ));
+        let new_fact = NewFact {
+            tenant_id,
+            subject_id,
+            case_id,
+            fact_id,
+            revision_id: RevisionId(Uuid::now_v7()),
+            namespace,
+            key,
+            value: value.clone(),
+            observed_at,
+            valid_time,
+            evidence_episode_ids,
+            write_policy,
+            confidence,
+            sensitivity,
+            retention_policy_id,
+            writer_principal_id,
+            schema_version: 1,
+            value_sha256: value_sha256.clone(),
+        };
+        let outcome = await_content_operation(permit, async {
+            self.facts
+                .create(
+                    new_fact,
+                    IdempotencyRequest {
+                        key: idempotency_key,
+                        fingerprint,
+                    },
+                )
+                .await
+                .map_err(map_repository)
+        })
+        .await?;
+        Ok((outcome, value_sha256))
     }
 
     pub async fn create_retrieval(
