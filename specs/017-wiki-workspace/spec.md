@@ -197,6 +197,12 @@ phase carries its named conformance scenarios (AC1..AC10 above).
 - [V-2] Frontmatter vocabulary. The renderer writes last-touched dates and
   status tags. The exact frontmatter fields are an execution detail.
   Verified at P1 execution.
+- [V-3] Review-queue advisory surface. The worker records stale-page flags
+  by creating a surface with the review-queue host and principal under a
+  tenant-registered review-queue surface policy. The policy must declare a
+  sensitivity ceiling; the worker serves exactly that tier. The last-touched
+  cutoff reads `recorded_at` from the canonical revisions (append-only), never
+  the projection. Verified at P3 execution.
 
 ## Links
 
