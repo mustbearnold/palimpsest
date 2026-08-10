@@ -13,7 +13,8 @@ use palimpsest_domain::{
     RetentionPolicyId, RetrievalFilters, RetrievalId, RetrievalPolicyId, RetrievalQuery,
     RetrievalReceipt, RevisionId, SaveCheckpoint, Sensitivity, SubjectContentLease, SubjectId,
     SubjectLifecycle, SupersedeFact, TenantId, ThreadId, ValidTime, WriteBackAnnotation,
-    WriteBackPageEdit, WriteBackTarget, WritePolicy, WritePolicyId, WritePolicyVersion,
+    WriteBackCreateFact, WriteBackPageEdit, WriteBackTarget, WritePolicy, WritePolicyId,
+    WritePolicyVersion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -84,9 +85,9 @@ pub const WIKI_ANSWER_FACT_NAMESPACE: &str = CONSOLIDATION_DERIVED_FACT_NAMESPAC
 /// Provenance kind recorded on filed answers (011 R5).
 pub const WIKI_ANSWER_PROVENANCE_KIND: &str = CONSOLIDATION_PROVENANCE_KIND;
 /// Bounded inbound content for the wiki write-back API: the annotation
-/// body is capped by character count, and the page-edit value and answer
-/// value are capped by serialized byte length; the write-back API never
-/// accepts unbounded inbound content.
+/// body is capped by character count, and the page-edit, answer, and
+/// create-fact values are capped by serialized byte length; the write-back
+/// API never accepts unbounded inbound content.
 pub const WIKI_WRITE_BACK_BODY_MAX_CHARS: usize = 65_536;
 
 #[derive(Debug, Error)]
@@ -2974,6 +2975,59 @@ impl MemoryService {
         // The answer's own mutation is the result the caller sees; the
         // question supersede above is the AC7 side effect.
         Ok(created)
+    }
+
+    /// Creates a governed canonical fact through the wiki write-back API
+    /// (spec 017 R5 closure, AC11). The fact keeps the caller's key and
+    /// namespace. The write is attributable and fails closed without a
+    /// registered write policy. The request fingerprint covers the key,
+    /// the namespace, the value, and the policy fields.
+    pub async fn write_back_create_fact(
+        &self,
+        permit: &ContentLeasePermit,
+        principal: &PrincipalScope,
+        idempotency_key: String,
+        command: WriteBackCreateFact,
+    ) -> Result<FactMutationOutcome, ServiceError> {
+        authorize_content(permit, principal, command.tenant_id, command.subject_id)?;
+        // The write-back API never accepts unbounded inbound content (017 R5).
+        if serde_json::to_vec(&command.value)
+            .map_err(|error| ServiceError::Invalid(error.to_string()))?
+            .len()
+            > WIKI_WRITE_BACK_BODY_MAX_CHARS
+        {
+            return Err(ServiceError::Invalid(
+                "create-fact value exceeds the supported size".to_owned(),
+            ));
+        }
+        let fact_id = FactId(Uuid::now_v7());
+        let fingerprint_anchor = json!({
+            "key": command.key.as_str(),
+            "namespace": command.namespace.as_str(),
+        });
+        let (outcome, _value_sha256) = self
+            .create_governed_fact(
+                permit,
+                command.tenant_id,
+                command.subject_id,
+                command.case_id,
+                fact_id,
+                command.namespace,
+                command.key,
+                command.value,
+                command.observed_at,
+                command.evidence_episode_ids,
+                command.write_policy,
+                command.confidence,
+                command.sensitivity,
+                command.retention_policy_id,
+                principal.principal_id.clone(),
+                "createGovernedFact",
+                fingerprint_anchor,
+                idempotency_key,
+            )
+            .await?;
+        Ok(outcome)
     }
 
     /// Creates a governed fact through the wiki write-back API (spec 017

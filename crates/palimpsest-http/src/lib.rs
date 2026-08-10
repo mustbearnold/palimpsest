@@ -36,8 +36,8 @@ use palimpsest_domain::{
     PrincipalScope, Provenance, RetentionPolicyId, RetrievalFilters, RetrievalId,
     RetrievalPerspective, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId,
     SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId, ValidTime,
-    WriteBackAnnotation, WriteBackPageEdit, WriteBackTarget, WritePolicy, WritePolicyId,
-    WritePolicyVersion, parse_utc_microsecond_timestamp,
+    WriteBackAnnotation, WriteBackCreateFact, WriteBackPageEdit, WriteBackTarget, WritePolicy,
+    WritePolicyId, WritePolicyVersion, parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -448,6 +448,10 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
             post(create_wiki_annotation),
         )
         .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/facts",
+            post(create_wiki_fact),
+        )
+        .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/answers",
             post(file_wiki_answer),
         )
@@ -573,6 +577,21 @@ struct FileWikiAnswerRequest {
     question_fact_id: Uuid,
     answer: Value,
     observed_at: String,
+    write_policy: WritePolicyRequest,
+    confidence: f64,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateWikiFactRequest {
+    case_id: Uuid,
+    namespace: FactNamespace,
+    key: FactKey,
+    value: Value,
+    observed_at: String,
+    evidence_episode_ids: Vec<Uuid>,
     write_policy: WritePolicyRequest,
     confidence: f64,
     sensitivity: Sensitivity,
@@ -1034,6 +1053,58 @@ async fn create_wiki_annotation(
                 target: request.target,
                 body: request.body,
                 observed_at,
+                write_policy: WritePolicy {
+                    id: request.write_policy.id,
+                    version: request.write_policy.version,
+                },
+                confidence: request.confidence,
+                sensitivity: request.sensitivity,
+                retention_policy_id: request.retention_policy_id,
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    write_back_fact_response(
+        StatusCode::CREATED,
+        tenant_id,
+        subject_id,
+        outcome.view,
+        outcome.replayed,
+        content_lease,
+    )
+}
+
+async fn create_wiki_fact(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<CreateWikiFactRequest>, JsonRejection>,
+) -> Result<Response, Problem> {
+    let (content_lease, principal, tenant_id, subject_id) =
+        write_back_preamble(&state, &tenant_id, &subject_id, &headers).await?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
+    let observed_at = parse_time("observed_at", &request.observed_at)?;
+    let evidence_episode_ids = request
+        .evidence_episode_ids
+        .into_iter()
+        .map(EpisodeId)
+        .collect();
+    let outcome = state
+        .service
+        .write_back_create_fact(
+            content_lease.permit(),
+            &principal,
+            idempotency_key,
+            WriteBackCreateFact {
+                tenant_id,
+                subject_id,
+                case_id: CaseId(request.case_id),
+                namespace: request.namespace,
+                key: request.key,
+                value: request.value,
+                observed_at,
+                evidence_episode_ids,
                 write_policy: WritePolicy {
                     id: request.write_policy.id,
                     version: request.write_policy.version,

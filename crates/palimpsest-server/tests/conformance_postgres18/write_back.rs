@@ -14,8 +14,8 @@ use palimpsest_application::{MemoryService, ServiceError};
 use palimpsest_domain::{
     AppendEpisode, CaseId, CreateFact, EpisodeId, EpisodeKind, FactId, FactKey, FactNamespace,
     FileAnswer, PrincipalScope, Provenance, RetentionPolicyId, Sensitivity, SourceType, SubjectId,
-    TenantId, ValidTime, WriteBackAnnotation, WriteBackPageEdit, WriteBackTarget, WritePolicy,
-    WritePolicyId, WritePolicyVersion,
+    TenantId, ValidTime, WriteBackAnnotation, WriteBackCreateFact, WriteBackPageEdit,
+    WriteBackTarget, WritePolicy, WritePolicyId, WritePolicyVersion,
 };
 use palimpsest_postgres::PostgresMemoryRepository;
 use sqlx::PgPool;
@@ -236,6 +236,111 @@ pub(crate) async fn attributed_write_back_is_governed_and_fail_closed(
     ensure!(
         matches!(rejected, Err(ServiceError::WritePolicyRejected)),
         "an unregistered write policy must fail closed with WritePolicyRejected"
+    );
+
+    // AC11 — a governed create-fact keeps the caller's key and namespace,
+    // records the authenticated principal as writer, and replays once.
+    let created_at = observed_at()?;
+    let created_fact = harness
+        .service
+        .write_back_create_fact(
+            &lease,
+            &harness.principal,
+            "create-fact-1".to_owned(),
+            WriteBackCreateFact {
+                tenant_id: harness.tenant_id,
+                subject_id: harness.subject_id,
+                case_id: CaseId(Uuid::from_u128(0x702)),
+                namespace: FactNamespace::try_from("scratch".to_owned())?,
+                key: FactKey::try_from("governed-create-probe".to_owned())?,
+                value: serde_json::json!({"probe": "governed-create"}),
+                observed_at: created_at,
+                evidence_episode_ids: vec![episode],
+                write_policy: registered_policy()?,
+                confidence: 0.8,
+                sensitivity: Sensitivity::try_from("internal".to_owned())?,
+                retention_policy_id: RetentionPolicyId::try_from("standard".to_owned())?,
+            },
+        )
+        .await
+        .context("governed create-fact write")?;
+    ensure!(
+        created_fact.view.namespace.as_str() == "scratch",
+        "create-fact must keep the caller's namespace"
+    );
+    ensure!(
+        created_fact.view.key.as_str() == "governed-create-probe",
+        "create-fact must keep the caller's key"
+    );
+    ensure!(
+        created_fact
+            .view
+            .revision
+            .context("create-fact head revision")?
+            .writer_principal_id
+            == harness.principal.principal_id,
+        "create-fact must record the authenticated principal as writer"
+    );
+    ensure!(
+        !created_fact.replayed,
+        "a fresh create-fact must not be an idempotency replay"
+    );
+
+    // A replayed create-fact returns the same fact and marks the replay.
+    let replayed_fact = harness
+        .service
+        .write_back_create_fact(
+            &lease,
+            &harness.principal,
+            "create-fact-1".to_owned(),
+            WriteBackCreateFact {
+                tenant_id: harness.tenant_id,
+                subject_id: harness.subject_id,
+                case_id: CaseId(Uuid::from_u128(0x702)),
+                namespace: FactNamespace::try_from("scratch".to_owned())?,
+                key: FactKey::try_from("governed-create-probe".to_owned())?,
+                value: serde_json::json!({"probe": "governed-create"}),
+                observed_at: created_at,
+                evidence_episode_ids: vec![episode],
+                write_policy: registered_policy()?,
+                confidence: 0.8,
+                sensitivity: Sensitivity::try_from("internal".to_owned())?,
+                retention_policy_id: RetentionPolicyId::try_from("standard".to_owned())?,
+            },
+        )
+        .await
+        .context("replay the governed create-fact")?;
+    ensure!(
+        replayed_fact.view.fact_id == created_fact.view.fact_id && replayed_fact.replayed,
+        "a replayed create-fact must return the same fact and mark the replay"
+    );
+
+    // A create-fact without a registered policy fails closed.
+    let rejected_fact = harness
+        .service
+        .write_back_create_fact(
+            &lease,
+            &harness.principal,
+            "create-fact-unregistered".to_owned(),
+            WriteBackCreateFact {
+                tenant_id: harness.tenant_id,
+                subject_id: harness.subject_id,
+                case_id: CaseId(Uuid::from_u128(0x702)),
+                namespace: FactNamespace::try_from("scratch".to_owned())?,
+                key: FactKey::try_from("governed-create-rejected".to_owned())?,
+                value: serde_json::json!({"probe": "governed-create"}),
+                observed_at: created_at,
+                evidence_episode_ids: vec![episode],
+                write_policy: unregistered_policy()?,
+                confidence: 0.8,
+                sensitivity: Sensitivity::try_from("internal".to_owned())?,
+                retention_policy_id: RetentionPolicyId::try_from("standard".to_owned())?,
+            },
+        )
+        .await;
+    ensure!(
+        matches!(rejected_fact, Err(ServiceError::WritePolicyRejected)),
+        "an unregistered create-fact policy must fail closed with WritePolicyRejected, got {rejected_fact:?}"
     );
 
     // An annotation on an episode page targets the raw layer page directly.

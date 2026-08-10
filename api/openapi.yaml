@@ -420,6 +420,64 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/facts:
+    post:
+      tags: [Wiki]
+      operationId: createWikiFact
+      summary: Create a canonical fact as a governed write
+      description: |
+        Creates a new canonical fact with the caller's key and namespace as
+        an attributable write by the authenticated principal under the
+        registered write policy. A write without a registered policy fails
+        closed with `write-policy-rejected`. Replays under the same
+        idempotency key return the same outcome.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWikiFactRequest"
+      responses:
+        "201":
+          description: Canonical fact created
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Cache-Control:
+              $ref: "#/components/headers/PrivateNoStore"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/pages/facts/{fact_id}/edits:
     post:
       tags: [Wiki]
@@ -2193,6 +2251,57 @@ components:
           description: Annotation markdown attached to the page
         observed_at:
           $ref: "#/components/schemas/UtcDateTime"
+        write_policy:
+          $ref: "#/components/schemas/WritePolicy"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        sensitivity:
+          type: string
+          minLength: 1
+          maxLength: 255
+        retention_policy_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    CreateWikiFactRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - case_id
+        - namespace
+        - key
+        - value
+        - observed_at
+        - write_policy
+        - confidence
+        - sensitivity
+        - retention_policy_id
+      properties:
+        case_id:
+          type: string
+          format: uuid
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+        key:
+          type: string
+          minLength: 1
+          maxLength: 255
+        value:
+          description: Any non-null JSON value; becomes the fact's content. Serialized JSON bytes must not exceed 65,536.
+          not:
+            type: "null"
+        observed_at:
+          $ref: "#/components/schemas/UtcDateTime"
+        evidence_episode_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
         write_policy:
           $ref: "#/components/schemas/WritePolicy"
         confidence:

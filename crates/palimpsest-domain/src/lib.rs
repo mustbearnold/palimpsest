@@ -823,6 +823,25 @@ pub struct FileAnswer {
     pub retention_policy_id: RetentionPolicyId,
 }
 
+/// A governed canonical fact creation through the wiki write-back API
+/// (spec 017 R5 closure, AC11). The fact keeps the caller's key and
+/// namespace. The write records the authenticated principal as writer.
+#[derive(Clone, Debug)]
+pub struct WriteBackCreateFact {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub case_id: CaseId,
+    pub namespace: FactNamespace,
+    pub key: FactKey,
+    pub value: Value,
+    pub observed_at: OffsetDateTime,
+    pub evidence_episode_ids: Vec<EpisodeId>,
+    pub write_policy: WritePolicy,
+    pub confidence: f64,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+}
+
 #[derive(Clone, Debug)]
 pub struct NewFactRevision {
     pub tenant_id: TenantId,
