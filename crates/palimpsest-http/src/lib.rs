@@ -32,11 +32,12 @@ use palimpsest_application::{
 use palimpsest_domain::{
     AgentId, AppendEpisode, CaseId, CheckpointPrecondition, CheckpointRevisionId, CheckpointView,
     CreateFact, CreateRetrieval, DeletionOperationId, EffectTransition, Episode, EpisodeId,
-    EpisodeKind, ExportId, FactId, FactKey, FactNamespace, FactView, OperationGrant,
+    EpisodeKind, ExportId, FactId, FactKey, FactNamespace, FactView, FileAnswer, OperationGrant,
     PrincipalScope, Provenance, RetentionPolicyId, RetrievalFilters, RetrievalId,
     RetrievalPerspective, RetrievalPolicyId, RetrievalQuery, RetrievalReceipt, RevisionId,
     SaveCheckpoint, Sensitivity, SubjectId, SupersedeFact, TenantId, ThreadId, ValidTime,
-    WritePolicy, WritePolicyId, WritePolicyVersion, parse_utc_microsecond_timestamp,
+    WriteBackAnnotation, WriteBackPageEdit, WriteBackTarget, WritePolicy, WritePolicyId,
+    WritePolicyVersion, parse_utc_microsecond_timestamp,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -443,6 +444,18 @@ pub fn router(service: MemoryService, authenticator: Arc<dyn Authenticator>) -> 
             get(get_surface),
         )
         .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/annotations",
+            post(create_wiki_annotation),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/answers",
+            post(file_wiki_answer),
+        )
+        .route(
+            "/v1/tenants/{tenant_id}/subjects/{subject_id}/wiki/pages/facts/{fact_id}/edits",
+            post(create_wiki_page_edit),
+        )
+        .route(
             "/v1/tenants/{tenant_id}/subjects/{subject_id}/agents/{agent_id}/threads/{thread_id}/checkpoint",
             get(get_checkpoint).put(save_checkpoint),
         )
@@ -528,6 +541,49 @@ struct ValidTimeRequest {
 struct WritePolicyRequest {
     id: WritePolicyId,
     version: WritePolicyVersion,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum WikiPageTarget {
+    Fact { page_id: Uuid },
+    Episode { page_id: Uuid },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateWikiAnnotationRequest {
+    target: WikiPageTarget,
+    body: String,
+    observed_at: String,
+    write_policy: WritePolicyRequest,
+    confidence: f64,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateWikiPageEditRequest {
+    value: Value,
+    observed_at: String,
+    valid_time: ValidTimeRequest,
+    write_policy: WritePolicyRequest,
+    confidence: f64,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileWikiAnswerRequest {
+    question_fact_id: Uuid,
+    answer: Value,
+    observed_at: String,
+    write_policy: WritePolicyRequest,
+    confidence: f64,
+    sensitivity: Sensitivity,
+    retention_policy_id: RetentionPolicyId,
 }
 
 #[derive(Debug, Deserialize)]
@@ -926,6 +982,175 @@ async fn supersede_fact(
         .await
         .map_err(Problem::from_service)?;
     let response = fact_response(StatusCode::OK, outcome.view, None, outcome.replayed)?;
+    Ok(content_lease.attach(response))
+}
+
+async fn create_wiki_annotation(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<CreateWikiAnnotationRequest>, JsonRejection>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
+    let observed_at = parse_time("observed_at", &request.observed_at)?;
+    let target = match request.target {
+        WikiPageTarget::Fact { page_id } => WriteBackTarget::Fact {
+            page_id: FactId(page_id),
+        },
+        WikiPageTarget::Episode { page_id } => WriteBackTarget::Episode {
+            page_id: EpisodeId(page_id),
+        },
+    };
+    let outcome = state
+        .service
+        .write_back_annotation(
+            content_lease.permit(),
+            &principal,
+            idempotency_key,
+            WriteBackAnnotation {
+                tenant_id,
+                subject_id,
+                target,
+                body: request.body,
+                observed_at,
+                write_policy: WritePolicy {
+                    id: request.write_policy.id,
+                    version: request.write_policy.version,
+                },
+                confidence: request.confidence,
+                sensitivity: request.sensitivity,
+                retention_policy_id: request.retention_policy_id,
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/facts/{}",
+        tenant_id.0, subject_id.0, outcome.view.fact_id.0
+    );
+    let response = fact_response(
+        StatusCode::CREATED,
+        outcome.view,
+        Some(location),
+        outcome.replayed,
+    )?;
+    Ok(content_lease.attach(response))
+}
+
+async fn create_wiki_page_edit(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id, fact_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<CreateWikiPageEditRequest>, JsonRejection>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let expected_head_revision_id = require_if_match(&headers)?;
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
+    let observed_at = parse_time("observed_at", &request.observed_at)?;
+    let valid_from = parse_time("valid_time.from", &request.valid_time.from)?;
+    let valid_until = request
+        .valid_time
+        .until
+        .as_deref()
+        .map(|value| parse_time("valid_time.until", value))
+        .transpose()?;
+    let outcome = state
+        .service
+        .write_back_page_edit(
+            content_lease.permit(),
+            &principal,
+            idempotency_key,
+            expected_head_revision_id,
+            WriteBackPageEdit {
+                tenant_id,
+                subject_id,
+                fact_id,
+                value: request.value,
+                observed_at,
+                valid_time: ValidTime {
+                    from: valid_from,
+                    until: valid_until,
+                },
+                write_policy: WritePolicy {
+                    id: request.write_policy.id,
+                    version: request.write_policy.version,
+                },
+                confidence: request.confidence,
+                sensitivity: request.sensitivity,
+                retention_policy_id: request.retention_policy_id,
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/facts/{}",
+        tenant_id.0, subject_id.0, outcome.view.fact_id.0
+    );
+    let response = fact_response(
+        StatusCode::OK,
+        outcome.view,
+        Some(location),
+        outcome.replayed,
+    )?;
+    Ok(content_lease.attach(response))
+}
+
+async fn file_wiki_answer(
+    State(state): State<AppState>,
+    Path((tenant_id, subject_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<FileWikiAnswerRequest>, JsonRejection>,
+) -> Result<Response, Problem> {
+    let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
+    let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
+    let principal = authenticate(&state, &headers)?;
+    let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
+    let idempotency_key = require_idempotency_key(&headers)?.to_owned();
+    let Json(request) = payload.map_err(Problem::from_json_rejection)?;
+    let observed_at = parse_time("observed_at", &request.observed_at)?;
+    let outcome = state
+        .service
+        .file_answer(
+            content_lease.permit(),
+            &principal,
+            idempotency_key,
+            FileAnswer {
+                tenant_id,
+                subject_id,
+                question_fact_id: FactId(request.question_fact_id),
+                answer: request.answer,
+                observed_at,
+                write_policy: WritePolicy {
+                    id: request.write_policy.id,
+                    version: request.write_policy.version,
+                },
+                confidence: request.confidence,
+                sensitivity: request.sensitivity,
+                retention_policy_id: request.retention_policy_id,
+            },
+        )
+        .await
+        .map_err(Problem::from_service)?;
+    let location = format!(
+        "/v1/tenants/{}/subjects/{}/facts/{}",
+        tenant_id.0, subject_id.0, outcome.view.fact_id.0
+    );
+    let response = fact_response(
+        StatusCode::CREATED,
+        outcome.view,
+        Some(location),
+        outcome.replayed,
+    )?;
     Ok(content_lease.attach(response))
 }
 

@@ -177,6 +177,15 @@ phase carries its named conformance scenarios (AC1..AC10 above).
    R6), rendered by the server from the semantic layer.
 6. Who owns the schema? The tenant. Version changes need a governed
    amendment.
+7. Which pages are editable through write-back? Fact pages only: a page
+   edit is an attributable supersede of the canonical fact behind the
+   page, preserving the page's evidence grounding. Episode pages are
+   read-only because the raw episode layer is never rewritten (001 R8).
+   Implementation notes: annotations land in the `wiki/annotations`
+   namespace as facts grounded in the annotated page's evidence; filed
+   answers land in the `derived` namespace (provenance kind derived,
+   011 R5) with the filing agent recorded as writer (AC4, AC5 — landed
+   2026-08-10).
 
 ## Open questions
 

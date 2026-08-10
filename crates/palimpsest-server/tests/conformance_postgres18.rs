@@ -60,6 +60,8 @@ mod surface;
 mod temporal;
 #[path = "conformance_postgres18/vault.rs"]
 mod vault;
+#[path = "conformance_postgres18/write_back.rs"]
+mod write_back;
 use consolidation::{
     consolidation_crash_resume_yields_no_duplicates_or_loss,
     consolidation_fails_closed_without_registered_policy,
@@ -343,6 +345,13 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         vault_pages_rebuild_byte_for_byte(&pool, &migration_pool).await?;
         vault_export_kind_leaves_canonical_packages_unchanged(&pool, &migration_pool).await?;
         vault_sync_rejects_direct_sync_back(&pool, &migration_pool).await?;
+        write_back::attributed_write_back_is_governed_and_fail_closed(&pool, &migration_pool)
+            .await?;
+        write_back::filed_answers_record_agent_writer_and_derived_provenance(
+            &pool,
+            &migration_pool,
+        )
+        .await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
             .await?;
         let restore_listener = TcpListener::bind("127.0.0.1:0").await?;

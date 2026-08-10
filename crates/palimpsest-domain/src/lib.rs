@@ -764,6 +764,65 @@ pub struct SupersedeFact {
     pub retention_policy_id: RetentionPolicyId,
 }
 
+/// A vault page target for a wiki write-back annotation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WriteBackTarget {
+    /// A fact page (`pages/facts/{fact_id}.md`).
+    Fact { page_id: FactId },
+    /// An episode page (`pages/episodes/{episode_id}.md`).
+    Episode { page_id: EpisodeId },
+}
+
+/// An attributable annotation write through the wiki write-back API
+/// (spec 017 R5, AC4). The annotation becomes a fact in the wiki
+/// annotation namespace with a registered write policy.
+#[derive(Clone, Debug)]
+pub struct WriteBackAnnotation {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub target: WriteBackTarget,
+    pub body: String,
+    pub observed_at: OffsetDateTime,
+    pub write_policy: WritePolicy,
+    pub confidence: f64,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+}
+
+/// An attributable page edit through the wiki write-back API (spec 017 R5,
+/// AC4). The edit supersedes the target fact with the edited value. The
+/// evidence set is preserved from the current head revision.
+#[derive(Clone, Debug)]
+pub struct WriteBackPageEdit {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub fact_id: FactId,
+    pub value: Value,
+    pub observed_at: OffsetDateTime,
+    pub valid_time: ValidTime,
+    pub write_policy: WritePolicy,
+    pub confidence: f64,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+}
+
+/// A filed agent answer through the wiki write-back API (spec 017 R5, AC5).
+/// The answer becomes a fact in the derived namespace: the receipt records
+/// the filing agent as writer and the provenance kind derived (011 R5).
+#[derive(Clone, Debug)]
+pub struct FileAnswer {
+    pub tenant_id: TenantId,
+    pub subject_id: SubjectId,
+    pub question_fact_id: FactId,
+    pub answer: Value,
+    pub observed_at: OffsetDateTime,
+    pub write_policy: WritePolicy,
+    pub confidence: f64,
+    pub sensitivity: Sensitivity,
+    pub retention_policy_id: RetentionPolicyId,
+}
+
 #[derive(Clone, Debug)]
 pub struct NewFactRevision {
     pub tenant_id: TenantId,
