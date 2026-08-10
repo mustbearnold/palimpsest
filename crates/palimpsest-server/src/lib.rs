@@ -117,7 +117,9 @@ fn app_with_embedding_provider_and_workers(
             Arc::new(interpreter_registry()),
         )
         .with_surface_components(postgres_repository.clone())
-        .with_review_queue(postgres_repository);
+        .with_review_queue(postgres_repository.clone())
+        .with_wiki_lint(postgres_repository.clone())
+        .with_schema_configs(postgres_repository);
     if start_workers {
         spawn_deletion_worker(service.clone());
         spawn_export_worker(service.clone());
@@ -493,7 +495,7 @@ mod tests {
         );
 
         assert!(body.contains("# TYPE palimpsest_build_info gauge\n"));
-        assert!(body.contains("palimpsest_schema_version 27\n"));
+        assert!(body.contains("palimpsest_schema_version 29\n"));
         assert!(body.contains("palimpsest_content_lease_release_retries_total 2\n"));
         assert!(body.contains("palimpsest_content_lease_release_runtime_unavailable_total 3\n"));
         assert!(body.contains("palimpsest_content_lease_release_outstanding 4\n"));

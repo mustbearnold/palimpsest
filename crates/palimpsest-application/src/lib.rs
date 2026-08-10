@@ -27,7 +27,9 @@ pub mod consolidation;
 pub mod export;
 pub mod recovery;
 pub mod review_queue;
+pub mod schema_config;
 pub mod surface;
+pub mod wiki_lint;
 
 pub use consolidation::{
     CONSOLIDATION_CLAIM_CAP, CONSOLIDATION_DERIVED_FACT_NAMESPACE,
@@ -61,11 +63,25 @@ pub use review_queue::{
     REVIEW_QUEUE_WORKER_ID, ReviewQueueJobView, ReviewQueueRepository, ReviewQueueRunSummary,
     ReviewQueueScanPage,
 };
+pub use schema_config::{
+    NewSchemaConfig, SCHEMA_CONFIG_SCOPE_ID, SchemaConfigRepository, SchemaConfigView,
+    default_schema_config_view, schema_amendment_idempotency_key,
+};
 pub use surface::{
-    CreateSurfaceOutcome, NewSurfacePolicy, NewSurfaceRequest, SURFACE_DEFAULT_MAX_CONTEXT_TOKENS,
-    SURFACE_DEFAULT_MAX_ITEMS, SURFACE_DEFAULT_MAX_RESULT_TOKENS, SURFACE_MAX_CONTEXT_TERMS,
-    SURFACE_MAX_ITEMS, SURFACE_MAX_TERM_LENGTH, SurfaceBundle, SurfaceBundleItem,
-    SurfacePolicyView, SurfaceRepository, surface_request_fingerprint,
+    CreateSurfaceOutcome, NewIndexSurfaceRequest, NewSurfacePolicy, NewSurfaceRequest,
+    SURFACE_DEFAULT_MAX_CONTEXT_TOKENS, SURFACE_DEFAULT_MAX_ITEMS,
+    SURFACE_DEFAULT_MAX_RESULT_TOKENS, SURFACE_MAX_CONTEXT_TERMS, SURFACE_MAX_ITEMS,
+    SURFACE_MAX_TERM_LENGTH, SurfaceBundle, SurfaceBundleItem, SurfacePolicyView,
+    SurfaceRepository, WIKI_INDEX_HOST_ID, WIKI_INDEX_PRINCIPAL_ID, WIKI_INDEX_SUMMARY_CHARS,
+    index_surface_request_fingerprint, surface_request_fingerprint,
+};
+pub use wiki_lint::{
+    ClaimedWikiLintJob, CreateWikiLintJobOutcome, LintRepository, NewWikiLintJob,
+    WIKI_LINT_LEASE_SECONDS, WIKI_LINT_NAMESPACE, WIKI_LINT_PRINCIPAL_ID,
+    WIKI_LINT_STALE_AFTER_DAYS, WIKI_LINT_WORKER_ID, WIKI_LINT_WRITE_POLICY_ID,
+    WIKI_LINT_WRITE_POLICY_VERSION, WIKI_OPEN_QUESTIONS_NAMESPACE, WikiLintFindings,
+    WikiLintJobView, WikiLintRunSummary, WikiLintScanFact, wiki_lint_fact_idempotency_key,
+    wiki_lint_grounding, wiki_lint_question_idempotency_key,
 };
 
 const MAX_CHECKPOINT_STATE_BYTES: usize = 1_048_576;
@@ -685,6 +701,8 @@ pub struct MemoryService {
     consolidations: Option<Arc<dyn ConsolidationRepository>>,
     consolidation_interpreters: Option<Arc<InterpreterRegistry>>,
     review_queue: Option<Arc<dyn ReviewQueueRepository>>,
+    lint: Option<Arc<dyn LintRepository>>,
+    schema_configs: Option<Arc<dyn SchemaConfigRepository>>,
     surfaces: Option<Arc<dyn SurfaceRepository>>,
     cache: Arc<dyn HotCache>,
 }
@@ -710,6 +728,8 @@ impl MemoryService {
             consolidations: None,
             consolidation_interpreters: None,
             review_queue: None,
+            lint: None,
+            schema_configs: None,
             surfaces: None,
             cache: Arc::new(NoopHotCache),
         }
@@ -744,6 +764,16 @@ impl MemoryService {
     /// Attaches the review-queue repository to the service.
     pub fn with_review_queue(mut self, review_queue: Arc<dyn ReviewQueueRepository>) -> Self {
         self.review_queue = Some(review_queue);
+        self
+    }
+
+    pub fn with_wiki_lint(mut self, lint: Arc<dyn LintRepository>) -> Self {
+        self.lint = Some(lint);
+        self
+    }
+
+    pub fn with_schema_configs(mut self, schema_configs: Arc<dyn SchemaConfigRepository>) -> Self {
+        self.schema_configs = Some(schema_configs);
         self
     }
 
@@ -1139,6 +1169,421 @@ impl MemoryService {
             stale_pages: stale.len() as i32,
             surface_id,
         })
+    }
+
+    /// Creates a durable wiki lint job for a subject (spec 017 P4, AC8).
+    pub async fn create_wiki_lint_job(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: NewWikiLintJob,
+        idempotency_key: String,
+    ) -> Result<CreateWikiLintJobOutcome, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        let Some(lint) = self.lint.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&serde_json::json!({
+                "principal_id": request.principal_id.0,
+            }))
+            .expect("lint job fingerprint is serializable"),
+        ));
+        lint.create_job(
+            tenant_id,
+            subject_id,
+            request,
+            IdempotencyRequest {
+                key: idempotency_key,
+                fingerprint,
+            },
+        )
+        .await
+        .map_err(map_repository)
+    }
+
+    /// Reads one wiki lint job for a subject.
+    pub async fn poll_wiki_lint_job(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        job_id: Uuid,
+    ) -> Result<WikiLintJobView, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        let Some(lint) = self.lint.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        lint.poll_job(tenant_id, subject_id, job_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Runs one wiki lint worker pass (spec 017 P4, AC8): claims a pending
+    /// job, scans the canonical fact metadata for contradictions, orphans,
+    /// stale claims, and provenance gaps (R9), writes the lint state to the
+    /// governed `wiki/lint` namespace, generates a new open question in the
+    /// `open-questions` namespace when a contradiction exists, and completes
+    /// the job. The facts are attributable writes with the registered
+    /// `direct-evidence` policy (001 R9).
+    pub async fn run_wiki_lint_worker_once(&self) -> Result<WikiLintRunSummary, ServiceError> {
+        let Some(lint) = self.lint.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let Some(job) = lint
+            .claim_next_job(WIKI_LINT_WORKER_ID, WIKI_LINT_LEASE_SECONDS)
+            .await
+            .map_err(map_repository)?
+        else {
+            return Ok(WikiLintRunSummary::idle());
+        };
+        let worker_id = WIKI_LINT_WORKER_ID;
+        let cutoff =
+            time::OffsetDateTime::now_utc() - time::Duration::days(WIKI_LINT_STALE_AFTER_DAYS);
+        let findings = match lint
+            .list_findings(job.tenant_id, job.subject_id, cutoff)
+            .await
+        {
+            Ok(findings) => findings,
+            Err(error) => {
+                let reason = sanitize_failure_reason(&error.to_string());
+                let _ = lint.fail_job(&job, worker_id, &reason).await;
+                return Ok(WikiLintRunSummary::failed(job.job_id));
+            }
+        };
+        if findings.is_empty() {
+            lint.complete_job(&job, worker_id, &findings, None, None)
+                .await
+                .map_err(map_repository)?;
+            return Ok(WikiLintRunSummary {
+                job_id: job.job_id,
+                lifecycle_state: "complete".to_owned(),
+                contradictions: 0,
+                orphans: 0,
+                stale_claims: 0,
+                provenance_gaps: 0,
+                lint_fact_id: None,
+                question_fact_id: None,
+            });
+        }
+        let lint_fact_id = match self.materialize_wiki_lint_fact(&job, &findings).await {
+            Ok(fact_id) => Some(fact_id.0),
+            Err(_) => {
+                let _ = lint
+                    .fail_job(&job, worker_id, "lint fact write failed")
+                    .await;
+                return Ok(WikiLintRunSummary::failed(job.job_id));
+            }
+        };
+        let question_fact_id = if findings.contradictions.is_empty() {
+            None
+        } else {
+            match self
+                .materialize_wiki_lint_open_question(&job, &findings)
+                .await
+            {
+                Ok(fact_id) => Some(fact_id.0),
+                Err(_) => {
+                    let _ = lint
+                        .fail_job(&job, worker_id, "open question write failed")
+                        .await;
+                    return Ok(WikiLintRunSummary::failed(job.job_id));
+                }
+            }
+        };
+        lint.complete_job(&job, worker_id, &findings, lint_fact_id, question_fact_id)
+            .await
+            .map_err(map_repository)?;
+        Ok(WikiLintRunSummary {
+            job_id: job.job_id,
+            lifecycle_state: "complete".to_owned(),
+            contradictions: findings.contradictions.len() as i32,
+            orphans: findings.orphans.len() as i32,
+            stale_claims: findings.stale_claims.len() as i32,
+            provenance_gaps: findings.provenance_gaps.len() as i32,
+            lint_fact_id,
+            question_fact_id,
+        })
+    }
+
+    /// Writes the governed lint state fact for one job (R9). The fact
+    /// carries the finding counts and the flagged fact ids, grounded in the
+    /// evidence episodes of the flagged facts, written by the lint worker
+    /// principal under the registered direct-evidence policy.
+    async fn materialize_wiki_lint_fact(
+        &self,
+        job: &ClaimedWikiLintJob,
+        findings: &WikiLintFindings,
+    ) -> Result<FactId, ServiceError> {
+        let value = serde_json::json!({
+            "kind": "wiki-lint",
+            "contradictions": findings.contradictions.iter().map(|finding| {
+                serde_json::json!({
+                    "fact_id": finding.fact_id.0.to_string(),
+                    "namespace": finding.namespace,
+                    "key": finding.key,
+                })
+            }).collect::<Vec<_>>(),
+            "orphans": findings.orphans.iter().map(|finding| {
+                serde_json::json!({
+                    "fact_id": finding.fact_id.0.to_string(),
+                    "namespace": finding.namespace,
+                    "key": finding.key,
+                })
+            }).collect::<Vec<_>>(),
+            "stale_claims": findings.stale_claims.iter().map(|finding| {
+                serde_json::json!({
+                    "fact_id": finding.fact_id.0.to_string(),
+                    "namespace": finding.namespace,
+                    "key": finding.key,
+                })
+            }).collect::<Vec<_>>(),
+            "provenance_gaps": findings.provenance_gaps.iter().map(|finding| {
+                serde_json::json!({
+                    "fact_id": finding.fact_id.0.to_string(),
+                    "namespace": finding.namespace,
+                    "key": finding.key,
+                })
+            }).collect::<Vec<_>>(),
+        });
+        let fact_id = FactId(Uuid::now_v7());
+        let revision_id = RevisionId(Uuid::now_v7());
+        let value_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(&value).expect("lint fact value is serializable"),
+        ));
+        // The lint fact is a derived, governed write (001 R9). Every fact
+        // revision requires attributable evidence, so the lint fact is
+        // grounded in the first finding's case and evidence episodes; the
+        // value records the full trace of flagged fact ids.
+        let (case_id, evidence_episode_ids) = wiki_lint_grounding(findings);
+        let new_fact = NewFact {
+            tenant_id: job.tenant_id,
+            subject_id: job.subject_id,
+            case_id,
+            fact_id,
+            revision_id,
+            namespace: FactNamespace::try_from(WIKI_LINT_NAMESPACE.to_owned())
+                .expect("lint namespace is valid"),
+            key: FactKey::try_from(format!("lint/{}-{}", job.tenant_id.0, job.job_id))
+                .expect("lint fact key is valid"),
+            value,
+            observed_at: time::OffsetDateTime::now_utc(),
+            valid_time: ValidTime {
+                from: time::OffsetDateTime::now_utc(),
+                until: None,
+            },
+            evidence_episode_ids,
+            write_policy: WritePolicy {
+                id: WritePolicyId::try_from(WIKI_LINT_WRITE_POLICY_ID.to_owned())
+                    .expect("registered lint policy id is valid"),
+                version: WritePolicyVersion::try_from(WIKI_LINT_WRITE_POLICY_VERSION.to_owned())
+                    .expect("registered lint policy version is valid"),
+            },
+            confidence: 1.0,
+            sensitivity: Sensitivity::try_from("internal".to_owned())
+                .expect("lint sensitivity is valid"),
+            retention_policy_id: RetentionPolicyId::try_from("standard".to_owned())
+                .expect("registered retention policy is valid"),
+            writer_principal_id: PrincipalId(WIKI_LINT_PRINCIPAL_ID.to_owned()),
+            schema_version: 1,
+            value_sha256: value_sha256.clone(),
+        };
+        let idempotency = IdempotencyRequest {
+            key: wiki_lint_fact_idempotency_key(job.tenant_id, job.job_id),
+            fingerprint: value_sha256,
+        };
+        let outcome = self
+            .facts
+            .create(new_fact, idempotency)
+            .await
+            .map_err(map_repository)?;
+        Ok(outcome.view.fact_id)
+    }
+
+    /// Writes the new open question fact for one job (R8, R9). The question
+    /// references the first contradiction's fact ids, grounded in their
+    /// evidence, written by the lint worker principal.
+    async fn materialize_wiki_lint_open_question(
+        &self,
+        job: &ClaimedWikiLintJob,
+        findings: &WikiLintFindings,
+    ) -> Result<FactId, ServiceError> {
+        let contradiction = &findings.contradictions[0];
+        let value = serde_json::json!({
+            "kind": "open-question",
+            "question": format!(
+                "The lint pass found a contradiction for page `{}` in namespace `{}` (fact {}).",
+                contradiction.key, contradiction.namespace, contradiction.fact_id.0
+            ),
+            "related_fact_ids": contradiction
+                .related_fact_ids
+                .iter()
+                .map(|fact_id| fact_id.0.to_string())
+                .collect::<Vec<_>>(),
+            "job_id": job.job_id.to_string(),
+        });
+        let fact_id = FactId(Uuid::now_v7());
+        let revision_id = RevisionId(Uuid::now_v7());
+        let value_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(&value).expect("open question value is serializable"),
+        ));
+        // The question is grounded in the contradiction's case and
+        // evidence (every revision requires attributable evidence).
+        let (case_id, evidence_episode_ids) = (
+            contradiction.case_id,
+            contradiction.evidence_episode_ids.clone(),
+        );
+        let new_fact = NewFact {
+            tenant_id: job.tenant_id,
+            subject_id: job.subject_id,
+            case_id,
+            fact_id,
+            revision_id,
+            namespace: FactNamespace::try_from(WIKI_OPEN_QUESTIONS_NAMESPACE.to_owned())
+                .expect("open questions namespace is valid"),
+            key: FactKey::try_from(format!("question/{}", job.job_id))
+                .expect("open question key is valid"),
+            value,
+            observed_at: time::OffsetDateTime::now_utc(),
+            valid_time: ValidTime {
+                from: time::OffsetDateTime::now_utc(),
+                until: None,
+            },
+            evidence_episode_ids,
+            write_policy: WritePolicy {
+                id: WritePolicyId::try_from(WIKI_LINT_WRITE_POLICY_ID.to_owned())
+                    .expect("registered lint policy id is valid"),
+                version: WritePolicyVersion::try_from(WIKI_LINT_WRITE_POLICY_VERSION.to_owned())
+                    .expect("registered lint policy version is valid"),
+            },
+            confidence: 1.0,
+            sensitivity: Sensitivity::try_from("internal".to_owned())
+                .expect("open question sensitivity is valid"),
+            retention_policy_id: RetentionPolicyId::try_from("standard".to_owned())
+                .expect("registered retention policy is valid"),
+            writer_principal_id: PrincipalId(WIKI_LINT_PRINCIPAL_ID.to_owned()),
+            schema_version: 1,
+            value_sha256: value_sha256.clone(),
+        };
+        let idempotency = IdempotencyRequest {
+            key: wiki_lint_question_idempotency_key(job.tenant_id, job.job_id),
+            fingerprint: value_sha256,
+        };
+        let outcome = self
+            .facts
+            .create(new_fact, idempotency)
+            .await
+            .map_err(map_repository)?;
+        Ok(outcome.view.fact_id)
+    }
+
+    /// Amends the tenant schema configuration (spec 017 P4, AC10). The
+    /// amendment is a governed write: an unregistered write policy fails
+    /// closed. Old versions stay retrievable.
+    pub async fn amend_schema_config(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        request: NewSchemaConfig,
+        idempotency_key: String,
+    ) -> Result<SchemaConfigView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        let Some(schema_configs) = self.schema_configs.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&serde_json::json!({
+                "config": request.config,
+                "write_policy": {
+                    "id": request.write_policy.id.as_str(),
+                    "version": request.write_policy.version.as_str(),
+                },
+            }))
+            .expect("schema amendment fingerprint is serializable"),
+        ));
+        schema_configs
+            .amend(
+                tenant_id,
+                request,
+                IdempotencyRequest {
+                    key: schema_amendment_idempotency_key(tenant_id, &idempotency_key),
+                    fingerprint,
+                },
+                principal.principal_id.0.clone(),
+            )
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Reads one stored schema version for the tenant.
+    pub async fn get_schema_config(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        schema_version: i32,
+    ) -> Result<SchemaConfigView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        let Some(schema_configs) = self.schema_configs.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        schema_configs
+            .get(tenant_id, schema_version)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Reads the latest schema version for the tenant.
+    pub async fn get_current_schema_config(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+    ) -> Result<SchemaConfigView, ServiceError> {
+        authorize_tenant(principal, tenant_id)?;
+        let Some(schema_configs) = self.schema_configs.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        schema_configs
+            .get_current(tenant_id)
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Renders the hierarchical wiki index surface (spec 017 P4, AC9):
+    /// every page with a link and a summary, bounded by the surface policy
+    /// caps, idempotent per request (012 R4, R6), content-free in logs.
+    pub async fn create_index_surface(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: NewIndexSurfaceRequest,
+        idempotency_key: String,
+    ) -> Result<CreateSurfaceOutcome, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        validate_surface_identifier("host_id", &request.host_id)?;
+        validate_surface_identifier("principal_id", &request.principal_id)?;
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let fingerprint = index_surface_request_fingerprint(&request);
+        let outcome = surfaces
+            .create_index_surface(
+                tenant_id,
+                subject_id,
+                &request,
+                &principal.allowed_sensitivities,
+                IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+            )
+            .await
+            .map_err(map_repository)?;
+        Ok(outcome)
     }
 
     /// Reads one consolidation job for a subject.

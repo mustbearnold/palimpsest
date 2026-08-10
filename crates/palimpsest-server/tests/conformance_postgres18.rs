@@ -62,6 +62,8 @@ mod surface;
 mod temporal;
 #[path = "conformance_postgres18/vault.rs"]
 mod vault;
+#[path = "conformance_postgres18/wiki_lint.rs"]
+mod wiki_lint;
 #[path = "conformance_postgres18/write_back.rs"]
 mod write_back;
 use consolidation::{
@@ -356,6 +358,15 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
         .await?;
         write_back::legacy_mutation_endpoints_signal_deprecation(&pool, &migration_pool).await?;
         review_queue::review_queue_flags_stale_pages_in_an_advisory_surface(&pool, &migration_pool)
+            .await?;
+        wiki_lint::wiki_lint_writes_governed_state_and_generates_open_questions(
+            &pool,
+            &migration_pool,
+        )
+        .await?;
+        wiki_lint::wiki_index_renders_every_page_with_link_and_summary(&pool, &migration_pool)
+            .await?;
+        wiki_lint::wiki_schema_amendments_are_governed_and_versioned(&pool, &migration_pool)
             .await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
             .await?;

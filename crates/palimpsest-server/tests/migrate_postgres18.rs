@@ -43,7 +43,7 @@ fn migrate_status_and_plan_are_machine_readable_without_memory_content() -> Resu
             "unexpected migration status: {report}"
         );
         ensure!(
-            report["expected_version"] == 27
+            report["expected_version"] == 29
                 && report["applied_versions"].is_array()
                 && report["pending"].is_array()
                 && report["failed_versions"].is_array()

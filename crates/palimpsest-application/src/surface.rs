@@ -19,6 +19,13 @@ pub const SURFACE_MAX_CONTEXT_TERMS: usize = 32;
 pub const SURFACE_MAX_TERM_LENGTH: usize = 512;
 pub const SURFACE_MAX_ITEMS: i16 = 50;
 
+/// Identity of the wiki index surface host (spec 017 P4, AC9).
+pub const WIKI_INDEX_HOST_ID: &str = "palimpsest-wiki-index";
+/// Principal recorded as the reader of the wiki index surface.
+pub const WIKI_INDEX_PRINCIPAL_ID: &str = "palimpsest-wiki-index";
+/// Hard cap on the summary characters per index entry.
+pub const WIKI_INDEX_SUMMARY_CHARS: usize = 512;
+
 /// The digest of a surface request body. The repository stores it beside
 /// the idempotency key. A reused key with a different digest is a 409
 /// IdempotencyKeyReused (A8).
@@ -67,6 +74,29 @@ pub struct NewSurfaceRequest {
     pub host_id: String,
     pub principal_id: String,
     pub context_terms: Vec<String>,
+}
+
+/// A wiki index surface request (spec 017 P4, AC9). The index is a
+/// generated, read-only, advisory surface: the server renders the catalog
+/// from the semantic layer (012 R4, R6). No context terms — the index is
+/// the whole catalog, bounded by the surface policy caps.
+#[derive(Debug, Clone)]
+pub struct NewIndexSurfaceRequest {
+    pub host_id: String,
+    pub principal_id: String,
+}
+
+/// The digest of a wiki index request body. The repository stores it
+/// beside the idempotency key. A reused key with a different digest is a
+/// 409 IdempotencyKeyReused (A8).
+pub fn index_surface_request_fingerprint(request: &NewIndexSurfaceRequest) -> String {
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(&json!({
+            "host_id": request.host_id,
+            "principal_id": request.principal_id,
+        }))
+        .expect("index surface request fingerprint is serializable"),
+    ))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -155,4 +185,16 @@ pub trait SurfaceRepository: Send + Sync {
         subject_id: SubjectId,
         surface_id: Uuid,
     ) -> Result<SurfaceBundle, crate::RepositoryError>;
+
+    /// Renders the hierarchical wiki index surface (spec 017 P4, AC9):
+    /// every page with a link and a summary from the semantic layer,
+    /// bounded by the surface policy caps, stored for idempotent replay.
+    async fn create_index_surface(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: &NewIndexSurfaceRequest,
+        allowed_sensitivities: &[Sensitivity],
+        idempotency: crate::IdempotencyRequest,
+    ) -> Result<CreateSurfaceOutcome, crate::RepositoryError>;
 }

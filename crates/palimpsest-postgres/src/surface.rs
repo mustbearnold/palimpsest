@@ -64,6 +64,33 @@ fn estimated_tokens(value: &str) -> usize {
     value.chars().count().div_ceil(4)
 }
 
+/// A bounded, deterministic summary of a fact value for the wiki index
+/// (spec 017 P4, AC9). The summary is a plain-text projection of the
+/// value, capped at WIKI_INDEX_SUMMARY_CHARS; it never embeds raw JSON.
+fn summarize_value(value: &serde_json::Value) -> String {
+    use palimpsest_application::WIKI_INDEX_SUMMARY_CHARS;
+    let text = match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Object(fields) => fields
+            .get("summary")
+            .or_else(|| fields.get("title"))
+            .or_else(|| fields.get("body"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned(),
+        _ => String::new(),
+    };
+    let mut summary = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if summary.chars().count() > WIKI_INDEX_SUMMARY_CHARS {
+        summary = summary
+            .chars()
+            .take(WIKI_INDEX_SUMMARY_CHARS)
+            .collect::<String>();
+        summary.push('…');
+    }
+    summary
+}
+
 fn surface_policy_view_from_row(row: &PgRow) -> Result<SurfacePolicyView, RepositoryError> {
     Ok(SurfacePolicyView {
         tenant_id: TenantId(row.try_get("tenant_id").map_err(unexpected)?),
@@ -424,9 +451,308 @@ impl SurfaceRepository for PostgresMemoryRepository {
         transaction.commit().await.map_err(unexpected)?;
         Ok(bundle)
     }
+
+    async fn create_index_surface(
+        &self,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: &palimpsest_application::NewIndexSurfaceRequest,
+        allowed_sensitivities: &[palimpsest_domain::Sensitivity],
+        idempotency: IdempotencyRequest,
+    ) -> Result<CreateSurfaceOutcome, RepositoryError> {
+        let mut transaction = match self.pool.begin().await {
+            Ok(transaction) => transaction,
+            Err(error) => return Err(unexpected(error)),
+        };
+        set_scope(&mut transaction, tenant_id, subject_id).await?;
+        let allowed: Vec<String> = allowed_sensitivities
+            .iter()
+            .map(|sensitivity| sensitivity.as_str().to_owned())
+            .collect();
+
+        let policy = sqlx::query(
+            r#"
+            SELECT host_id, principal_id, enabled,
+                max_items, max_context_tokens, max_result_tokens,
+                sensitivity_ceiling, window_from, window_until
+            FROM memory.surface_policies
+            WHERE tenant_id = $1 AND host_id = $2 AND principal_id = $3
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(&request.host_id)
+        .bind(&request.principal_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(map_surface_sqlx)?;
+
+        let (bundle, policy_sha256) = match policy {
+            Some(policy)
+                if {
+                    let enabled: bool = policy.try_get("enabled").map_err(unexpected)?;
+                    enabled
+                } =>
+            {
+                let max_items: i16 = policy.try_get("max_items").map_err(unexpected)?;
+                let max_context_tokens: i32 =
+                    policy.try_get("max_context_tokens").map_err(unexpected)?;
+                let max_result_tokens: i32 =
+                    policy.try_get("max_result_tokens").map_err(unexpected)?;
+                let sensitivity_ceiling: Option<String> =
+                    policy.try_get("sensitivity_ceiling").map_err(unexpected)?;
+                let window_from: Option<time::OffsetDateTime> =
+                    policy.try_get("window_from").map_err(unexpected)?;
+                let window_until: Option<time::OffsetDateTime> =
+                    policy.try_get("window_until").map_err(unexpected)?;
+                let policy_sha256 = surface_policy_sha256(
+                    &request.host_id,
+                    &request.principal_id,
+                    max_items,
+                    max_context_tokens,
+                    max_result_tokens,
+                    &sensitivity_ceiling,
+                    window_from.as_ref(),
+                    window_until.as_ref(),
+                );
+                let bundle = self
+                    .evaluate_index_surface(
+                        &mut transaction,
+                        tenant_id,
+                        subject_id,
+                        &request.host_id,
+                        &request.principal_id,
+                        &allowed,
+                        &sensitivity_ceiling,
+                        window_from,
+                        window_until,
+                        max_items,
+                        max_result_tokens,
+                    )
+                    .await?;
+                (bundle, Some(policy_sha256))
+            }
+            _ => (
+                SurfaceBundle {
+                    surface_id: Uuid::now_v7(),
+                    subject_id,
+                    host_id: request.host_id.clone(),
+                    principal_id: request.principal_id.clone(),
+                    evaluated_at: time::OffsetDateTime::now_utc(),
+                    policy_sha256: None,
+                    item_count: 0,
+                    truncated: false,
+                    context_terms_used: Vec::new(),
+                    items: Vec::new(),
+                },
+                None,
+            ),
+        };
+
+        let bundle_sha256 = bundle.bundle_sha256();
+        let key_digest = hex::encode(sha256_bytes(idempotency.key.as_bytes()));
+        let row = sqlx::query(
+            r#"
+            INSERT INTO memory.surface_responses (
+                tenant_id, subject_id, surface_id, host_id, principal_id,
+                idempotency_key_digest, request_fingerprint, policy_sha256,
+                bundle_sha256, item_count, truncated, context_terms,
+                evaluated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (tenant_id, host_id, principal_id, idempotency_key_digest)
+                DO NOTHING
+            RETURNING surface_id
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .bind(bundle.surface_id)
+        .bind(&bundle.host_id)
+        .bind(&bundle.principal_id)
+        .bind(&key_digest)
+        .bind(&idempotency.fingerprint)
+        .bind(&policy_sha256)
+        .bind(&bundle_sha256)
+        .bind(i16::try_from(bundle.items.len()).map_err(unexpected)?)
+        .bind(bundle.truncated)
+        .bind(&bundle.context_terms_used)
+        .bind(bundle.evaluated_at)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(map_surface_sqlx)?;
+
+        if row.is_some() {
+            for item in &bundle.items {
+                sqlx::query(
+                    r#"
+                    INSERT INTO memory.surface_response_items (
+                        tenant_id, subject_id, surface_id, ordinal,
+                        case_id, fact_id, revision_id, namespace, fact_key,
+                        value, confidence, sensitivity, lexical_score,
+                        content_sha256, item_sha256
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                    "#,
+                )
+                .bind(tenant_id.0)
+                .bind(subject_id.0)
+                .bind(bundle.surface_id)
+                .bind(item.ordinal)
+                .bind(item.case_id)
+                .bind(item.fact_id.0)
+                .bind(item.revision_id.0)
+                .bind(&item.namespace)
+                .bind(&item.fact_key)
+                .bind(&item.value)
+                .bind(item.confidence)
+                .bind(&item.sensitivity)
+                .bind(item.lexical_score)
+                .bind(&item.content_sha256)
+                .bind(&item.item_sha256)
+                .execute(&mut *transaction)
+                .await
+                .map_err(map_surface_sqlx)?;
+            }
+            transaction.commit().await.map_err(unexpected)?;
+            return Ok(CreateSurfaceOutcome {
+                bundle,
+                replayed: false,
+            });
+        }
+
+        let existing = sqlx::query(
+            r#"
+            SELECT request_fingerprint, surface_id
+            FROM memory.surface_responses
+            WHERE tenant_id = $1
+              AND host_id = $2
+              AND principal_id = $3
+              AND idempotency_key_digest = $4
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(&request.host_id)
+        .bind(&request.principal_id)
+        .bind(&key_digest)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(map_surface_sqlx)?
+        .ok_or(RepositoryError::Unexpected(
+            "surface idempotency replay lost its reservation".to_owned(),
+        ))?;
+        let stored_fingerprint: String = existing
+            .try_get("request_fingerprint")
+            .map_err(unexpected)?;
+        if stored_fingerprint != idempotency.fingerprint {
+            return Err(RepositoryError::IdempotencyKeyReused);
+        }
+        let stored_surface_id: Uuid = existing.try_get("surface_id").map_err(unexpected)?;
+        let replayed = self
+            .read_stored_surface(&mut transaction, tenant_id, subject_id, stored_surface_id)
+            .await?
+            .ok_or(RepositoryError::Unexpected(
+                "surface idempotency replay lost its stored bundle".to_owned(),
+            ))?;
+        transaction.commit().await.map_err(unexpected)?;
+        Ok(CreateSurfaceOutcome {
+            bundle: replayed,
+            replayed: true,
+        })
+    }
 }
 
 impl PostgresMemoryRepository {
+    #[allow(clippy::too_many_arguments)]
+    async fn evaluate_index_surface(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        host_id: &str,
+        principal_id: &str,
+        allowed_sensitivities: &[String],
+        sensitivity_ceiling: &Option<String>,
+        window_from: Option<time::OffsetDateTime>,
+        window_until: Option<time::OffsetDateTime>,
+        max_items: i16,
+        max_result_tokens: i32,
+    ) -> Result<SurfaceBundle, RepositoryError> {
+        let surface_id = Uuid::now_v7();
+        let evaluated_at = time::OffsetDateTime::now_utc();
+        // The catalog lists every current page, ordered by namespace and
+        // key (hierarchical index, R10). It is bounded by the policy caps:
+        // item cap and result-token cap (012 R6).
+        let rows = sqlx::query(
+            r#"
+            SELECT p.case_id, p.fact_id, p.revision_id, p.namespace,
+                p.fact_key, p.value,
+                p.confidence::text AS confidence,
+                p.sensitivity,
+                p.content_sha256,
+                '0'::text AS lexical_score
+            FROM memory.authorized_current_projection p
+            WHERE p.tenant_id = $1
+              AND p.subject_id = $2
+              AND p.sensitivity = ANY($3::text[])
+              AND ($4::text IS NULL OR p.sensitivity = $4)
+              AND p.valid_during && tstzrange(
+                  COALESCE($5::timestamptz, '-infinity'::timestamptz),
+                  COALESCE($6::timestamptz, 'infinity'::timestamptz),
+                  '[)'
+              )
+            ORDER BY p.namespace ASC, p.fact_key ASC, p.fact_id ASC
+            LIMIT $7
+            "#,
+        )
+        .bind(tenant_id.0)
+        .bind(subject_id.0)
+        .bind(allowed_sensitivities)
+        .bind(sensitivity_ceiling)
+        .bind(window_from)
+        .bind(window_until)
+        .bind(i64::from(max_items) + 1)
+        .fetch_all(&mut **transaction)
+        .await
+        .map_err(map_surface_sqlx)?;
+
+        let mut items = Vec::new();
+        let mut truncated = rows.len() > max_items as usize;
+        let mut result_tokens: usize = 0;
+        for (ordinal, row) in (0_i16..).zip(rows.iter().take(max_items as usize)) {
+            let namespace: String = row.try_get("namespace").map_err(unexpected)?;
+            let fact_key: String = row.try_get("fact_key").map_err(unexpected)?;
+            let value: serde_json::Value = row.try_get("value").map_err(unexpected)?;
+            let mut item = surface_item_from_row(row, ordinal)?;
+            // The index entry is a link and a summary, not the raw fact.
+            item.value = serde_json::json!({
+                "link": format!("pages/facts/{}.md", item.fact_id.0),
+                "namespace": namespace,
+                "key": fact_key,
+                "summary": summarize_value(&value),
+            });
+            item.item_sha256 = item.item_sha256();
+            let item_tokens = estimated_tokens(&item.value.to_string());
+            if result_tokens + item_tokens > max_result_tokens as usize {
+                truncated = true;
+                break;
+            }
+            result_tokens += item_tokens;
+            items.push(item);
+        }
+        Ok(SurfaceBundle {
+            surface_id,
+            subject_id,
+            host_id: host_id.to_owned(),
+            principal_id: principal_id.to_owned(),
+            evaluated_at,
+            policy_sha256: None,
+            item_count: i16::try_from(items.len()).map_err(unexpected)?,
+            truncated,
+            context_terms_used: Vec::new(),
+            items,
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn evaluate_surface(
         &self,
