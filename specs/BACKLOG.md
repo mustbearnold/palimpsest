@@ -16,8 +16,6 @@ Known-but-unspecced capabilities and gaps. One line each. Promote to a
   and credential rotation; public procedure/artifact APIs.
 - [deferred: until a live provider contract exists] Provider-specific
   artifact/object deletion revocation, outage, and recovery evidence.
-- [deferred: until the P0 contract migrates] Direct mutation endpoints
-  (POST /facts, /facts/{id}/supersede) stay open. Spec 017 R5 declares
-  the write-back API the only inbound edit path. The memory-service
-  integration uses the direct endpoints as the live P0 mutation contract.
-  Retirement needs a contract migration.
+- [scheduled → #53] The write-back API becomes the only inbound edit path
+  (spec 017 R5 closure: deprecate, migrate the live contract, remove the
+  direct mutation endpoints).
