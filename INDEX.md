@@ -101,7 +101,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - [docs/architecture.md](docs/architecture.md) — the shape of the system.
   Read it before any architecture, governance, security, storage, or public
   contract change.
-- `docs/decisions/` — 33 architecture decision records (`0001`–`0033`).
+- `docs/decisions/` — 34 architecture decision records (`0001`–`0034`).
 - `docs/runbooks/` — 8 runbooks: quickstart, local verification,
   contributing, issue tracker, triage labels, release gate, security, skills
   provenance.

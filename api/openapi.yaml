@@ -336,6 +336,10 @@ paths:
               $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
               $ref: "#/components/headers/IdempotencyReplayed"
+            Deprecation:
+              $ref: "#/components/headers/Deprecation"
+            Warning:
+              $ref: "#/components/headers/Warning"
           content:
             application/json:
               schema:
@@ -674,6 +678,10 @@ paths:
               $ref: "#/components/headers/PrivateNoStore"
             Idempotency-Replayed:
               $ref: "#/components/headers/IdempotencyReplayed"
+            Deprecation:
+              $ref: "#/components/headers/Deprecation"
+            Warning:
+              $ref: "#/components/headers/Warning"
           content:
             application/json:
               schema:
@@ -1301,6 +1309,21 @@ components:
       description: True only when the original completed response is replayed
       schema:
         type: boolean
+    Deprecation:
+      required: false
+      description: Marks a legacy mutation endpoint (017 AC12). The endpoint keeps
+        its function during the deprecation window; the wiki write-back API is the
+        only inbound edit path (017 R5).
+      schema:
+        type: boolean
+        const: true
+    Warning:
+      required: false
+      description: Human-readable deprecation notice on legacy mutation responses
+        (017 AC12)
+      schema:
+        type: string
+        pattern: '^299 palimpsest "deprecated; use the wiki write-back API"$'
     RetryAfter:
       required: false
       description: Seconds before the client should retry
