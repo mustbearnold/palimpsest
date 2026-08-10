@@ -94,7 +94,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 ### Public contract and database
 
 - `api/openapi.yaml` — the versioned HTTP contract, v0.1.0.
-- `migrations/` — checked-in SQLx migrations `0001` through `0025`.
+- `migrations/` — checked-in SQLx migrations `0001` through `0029`.
 
 ## Documentation
 
@@ -128,7 +128,7 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 - Sole branch: `main`. Direct commits per the constitution.
 - Product status: see `README.md`. Known gaps: `specs/BACKLOG.md`.
 - Work frontier: GitHub issues labelled `ready-for-agent`.
-- Last refresh: 2026-08-09 22:45 UTC by the AI CEO (prime agent session).
+- Last refresh: 2026-08-10 22:30 UTC by the AI CEO (prime agent session).
 
 ## Refresh log
 
@@ -152,3 +152,4 @@ Known gaps: [specs/BACKLOG.md](specs/BACKLOG.md).
 | 2026-08-10 | AI CEO (prime agent) | Implemented spec 017 P3 (#51). Open questions and the review-queue worker landed (AC6, AC7). A filed answer supersedes the question fact: the attributable revision chains to the question's head, keeps its evidence and policy, and links the answer page; a replayed answer never double-supersedes. The review-queue worker claims a job (migration 0027: `review_queue_jobs`, SECURITY DEFINER claim function, RLS with the worker path), scans canonical fact metadata for pages whose latest revision predates the 30-day window, and records the flags in a review-queue advisory surface; the canonical layer is never written. Conformance: AC7 assertions in `write_back.rs`, new `review_queue.rs` scenario. Gate: `scripts/dev-check.sh --postgres` all tiers green. |
 | 2026-08-10 | AI CEO (prime agent) | Implemented spec 017 P5 slice 1 (#54). The governed create-fact operation landed (AC11): the write-back API creates canonical facts with the caller's key and namespace under the registered write-policy gate. The write records the authenticated principal as writer and grounds the fact in the caller's evidence episodes; evidence must belong to the fact's case. Replays under the same idempotency key return the same outcome. Endpoint: `POST .../wiki/facts`. R5 closure spec amended (AC11, P5, V-4) and the closure tickets #53..#57 issued. Conformance: AC11 assertions in `write_back.rs`. Gate: GATE GREEN (all 9 tiers). |
 | 2026-08-10 | AI CEO (prime agent) | Implemented spec 017 P5 slice 2 (#55). The legacy mutation endpoints signal deprecation (AC12): Deprecation + Warning headers on every legacy mutation response, one invocation counter exposed on /metrics (010 R3), the mutations still succeed during the deprecation window, and a conformance scenario proves the signal end-to-end over HTTP. |
+| 2026-08-10 | AI CEO (prime agent) | Implemented spec 017 P4 (#52). The wiki lint worker (AC8), the hierarchical index surface (AC9), and the governed schema configuration (AC10) landed. The lint worker follows the spec 011 pattern (migration 0028: `wiki_lint_jobs`, SECURITY DEFINER claim function, RLS with the worker path) and checks four deterministic conditions: contradictions (same namespace+key current across cases with different content), orphans (head revision carries a dangling evidence reference), stale claims (head revision predates the 30-day window), and provenance gaps (an evidence episode recorded after the claim). Findings land as one governed fact per job in `wiki/lint`; a contradiction generates one open question in `open-questions`, both grounded in the first finding's evidence under the registered direct-evidence policy. The index reuses the spec 012 seam with the `palimpsest-wiki-index` host: the server renders the catalog (every page with a link and a bounded summary) from the authorized current projection, capped by the tenant surface policy and stored for idempotent replay. Schema amendments (migration 0029: `wiki_schema_configs`) are attributable writes with a registered write policy; old versions stay retrievable. Spec 017 V-5..V-7 record the execution decisions. Conformance: new `wiki_lint.rs` scenarios (AC8, AC9, AC10). Gate: `scripts/dev-check.sh --rust --postgres` all tiers green. |
