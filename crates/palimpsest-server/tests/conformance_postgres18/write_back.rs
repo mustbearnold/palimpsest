@@ -351,10 +351,7 @@ pub(crate) async fn attributed_write_back_is_governed_and_fail_closed(
         )
         .await;
     ensure!(
-        matches!(
-            rejected_edit,
-            Err(ServiceError::WritePolicyRejected)
-        ),
+        matches!(rejected_edit, Err(ServiceError::WritePolicyRejected)),
         "a page edit with an unregistered write policy must fail closed with WritePolicyRejected"
     );
     Ok(())
@@ -481,8 +478,7 @@ pub(crate) async fn filed_answers_record_agent_writer_and_derived_provenance(
         "the superseding revision stays open — supersession is carried by the revision chain"
     );
     ensure!(
-        question_after.value["answered_by"]["fact_id"]
-            == serde_json::json!(filed.view.fact_id.0),
+        question_after.value["answered_by"]["fact_id"] == serde_json::json!(filed.view.fact_id.0),
         "the superseded question must link the answer page"
     );
     ensure!(
