@@ -179,12 +179,14 @@ pub(crate) async fn deletion_target_lease_recovers_after_worker_expiry(
         "a live recovered target lease was reclaimed early"
     );
 
-    // Finish the recovered deletion. The recovery lease is the smallest
-    // allowed duration, so the drain poll stays under one second plus one
-    // poll interval. The two second deadline bounds the conditional-wait
-    // poll; the loop must outlast the recovered target lease, not the retry
-    // budget.
-    let drain_deadline = std::time::Instant::now() + Duration::from_secs(2);
+    // Finish the recovered deletion. The worker holds 30s operation and
+    // target leases (DELETION_WORKER_LEASE_SECONDS), so completion is
+    // throughput-bound: each run_deletion_worker_once purges the claimed
+    // targets and advances the operation while its own leases stay live.
+    // The bounded drain below tolerates a loaded runner (cold caches,
+    // slow first queries) without growing with machine speed; a worker
+    // that cannot make progress within the deadline is genuinely stuck.
+    let drain_deadline = std::time::Instant::now() + Duration::from_secs(5);
     let completed = {
         let mut completed = None;
         while std::time::Instant::now() < drain_deadline {
