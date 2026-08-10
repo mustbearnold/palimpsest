@@ -141,6 +141,13 @@ when the tenant amends the schema
 then the amendment is governed
 and the old version stays retrievable.
 
+AC11 — governed fact creation.
+Given a registered write policy
+when a principal creates a canonical fact through the write-back API
+then the write is attributable (001 R9)
+and the fact keeps the caller's key and namespace
+and a write without a policy fails closed.
+
 ## Out of scope
 
 - The working set (client concern via the MCP adapter, spec 008).
@@ -159,6 +166,9 @@ phase carries its named conformance scenarios (AC1..AC10 above).
 - P2: annotation write-back with a registered policy. AC4, AC5.
 - P3: open questions and review-queue worker jobs. AC6, AC7.
 - P4: lint job and index generation. AC8, AC9, AC10.
+- P5: R5 closure. The governed create-fact operation (AC11). Deprecation,
+  contract migration, and endpoint removal. The write-back API becomes the
+  only inbound edit path (R5). Issues #53..#57.
 
 ## Resolved questions
 
@@ -203,6 +213,9 @@ phase carries its named conformance scenarios (AC1..AC10 above).
   sensitivity ceiling; the worker serves exactly that tier. The last-touched
   cutoff reads `recorded_at` from the canonical revisions (append-only), never
   the projection. Verified at P3 execution.
+- [V-4] Valid time on the governed create-fact operation. The first
+  implementation accepts observed_at only. The legacy endpoint accepted a
+  full valid interval. Verified at R5 closure execution.
 
 ## Links
 
