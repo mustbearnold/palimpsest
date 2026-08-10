@@ -25,6 +25,7 @@ pub mod backup;
 pub mod consolidation;
 pub mod export;
 pub mod recovery;
+pub mod review_queue;
 pub mod surface;
 
 pub use consolidation::{
@@ -52,6 +53,12 @@ pub use export::{
 pub use recovery::{
     RESTORE_FENCE_LEDGER_PROFILE, RESTORE_FENCE_LEDGER_SCHEMA_VERSION, RestoreFenceEntry,
     RestoreFenceLedger, RestoreFenceLedgerError, verify_restore_fence_ledger,
+};
+pub use review_queue::{
+    ClaimedReviewQueueJob, CreateReviewQueueJobOutcome, NewReviewQueueJob, REVIEW_QUEUE_HOST_ID,
+    REVIEW_QUEUE_LEASE_SECONDS, REVIEW_QUEUE_PRINCIPAL_ID, REVIEW_QUEUE_STALE_AFTER_DAYS,
+    REVIEW_QUEUE_WORKER_ID, ReviewQueueJobView, ReviewQueueRepository, ReviewQueueRunSummary,
+    ReviewQueueScanPage,
 };
 pub use surface::{
     CreateSurfaceOutcome, NewSurfacePolicy, NewSurfaceRequest, SURFACE_DEFAULT_MAX_CONTEXT_TOKENS,
@@ -676,6 +683,7 @@ pub struct MemoryService {
     embeddings: Arc<dyn EmbeddingProvider>,
     consolidations: Option<Arc<dyn ConsolidationRepository>>,
     consolidation_interpreters: Option<Arc<InterpreterRegistry>>,
+    review_queue: Option<Arc<dyn ReviewQueueRepository>>,
     surfaces: Option<Arc<dyn SurfaceRepository>>,
     cache: Arc<dyn HotCache>,
 }
@@ -700,6 +708,7 @@ impl MemoryService {
             embeddings: Arc::new(UnavailableEmbeddingProvider),
             consolidations: None,
             consolidation_interpreters: None,
+            review_queue: None,
             surfaces: None,
             cache: Arc::new(NoopHotCache),
         }
@@ -728,6 +737,12 @@ impl MemoryService {
     ) -> Self {
         self.consolidations = Some(consolidations);
         self.consolidation_interpreters = Some(interpreters);
+        self
+    }
+
+    /// Attaches the review-queue repository to the service.
+    pub fn with_review_queue(mut self, review_queue: Arc<dyn ReviewQueueRepository>) -> Self {
+        self.review_queue = Some(review_queue);
         self
     }
 
@@ -996,6 +1011,133 @@ impl MemoryService {
             )
             .await
             .map_err(map_repository)
+    }
+
+    /// Creates a review-queue job for a subject (spec 017 P3, AC6).
+    pub async fn create_review_queue_job(
+        &self,
+        principal: &PrincipalScope,
+        tenant_id: TenantId,
+        subject_id: SubjectId,
+        request: NewReviewQueueJob,
+        idempotency_key: String,
+    ) -> Result<CreateReviewQueueJobOutcome, ServiceError> {
+        authorize(principal, tenant_id, subject_id)?;
+        validate_idempotency_key(&idempotency_key)?;
+        let Some(review_queue) = self.review_queue.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&serde_json::json!({
+                "principal_id": request.principal_id.0,
+            }))
+            .expect("job fingerprint is serializable"),
+        ));
+        review_queue
+            .create_job(
+                tenant_id,
+                subject_id,
+                request,
+                IdempotencyRequest {
+                    key: idempotency_key,
+                    fingerprint,
+                },
+            )
+            .await
+            .map_err(map_repository)
+    }
+
+    /// Runs one review-queue worker pass (spec 017 P3, AC6): claims a
+    /// pending job, scans the canonical fact metadata for pages whose
+    /// latest revision predates the staleness window, records the flag
+    /// in an advisory surface, and completes the job. The canonical
+    /// layer is never written by the worker.
+    pub async fn run_review_queue_worker_once(
+        &self,
+    ) -> Result<ReviewQueueRunSummary, ServiceError> {
+        let Some(review_queue) = self.review_queue.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Err(ServiceError::Unavailable);
+        };
+        let Some(job) = review_queue
+            .claim_next_job(REVIEW_QUEUE_WORKER_ID, REVIEW_QUEUE_LEASE_SECONDS)
+            .await
+            .map_err(map_repository)?
+        else {
+            return Ok(ReviewQueueRunSummary::idle());
+        };
+        let worker_id = REVIEW_QUEUE_WORKER_ID;
+        let policy = surfaces
+            .get_policy(
+                job.tenant_id,
+                REVIEW_QUEUE_HOST_ID,
+                REVIEW_QUEUE_PRINCIPAL_ID,
+            )
+            .await
+            .map_err(map_repository)?;
+        if !policy.enabled {
+            review_queue
+                .fail_job(&job, worker_id, "review queue surface policy disabled")
+                .await
+                .map_err(map_repository)?;
+            return Ok(ReviewQueueRunSummary::failed(job.job_id));
+        }
+        let Some(ceiling) = policy.sensitivity_ceiling.as_ref() else {
+            review_queue
+                .fail_job(
+                    &job,
+                    worker_id,
+                    "review queue surface policy requires a sensitivity ceiling",
+                )
+                .await
+                .map_err(map_repository)?;
+            return Ok(ReviewQueueRunSummary::failed(job.job_id));
+        };
+        let allowed = vec![
+            Sensitivity::try_from(ceiling.as_str().to_owned())
+                .map_err(|error| ServiceError::Invalid(error.to_string()))?,
+        ];
+        let cutoff =
+            time::OffsetDateTime::now_utc() - time::Duration::days(REVIEW_QUEUE_STALE_AFTER_DAYS);
+        let stale = review_queue
+            .list_stale_pages(job.tenant_id, job.subject_id, cutoff)
+            .await
+            .map_err(map_repository)?;
+        let surface_id = if stale.is_empty() {
+            None
+        } else {
+            let terms: Vec<String> = stale.iter().map(|page| page.key.clone()).collect();
+            let outcome = surfaces
+                .create_surface(
+                    job.tenant_id,
+                    job.subject_id,
+                    &NewSurfaceRequest {
+                        host_id: REVIEW_QUEUE_HOST_ID.to_owned(),
+                        principal_id: REVIEW_QUEUE_PRINCIPAL_ID.to_owned(),
+                        context_terms: terms,
+                    },
+                    &allowed,
+                    IdempotencyRequest {
+                        key: format!("review-queue:{}:{}", job.tenant_id.0, job.job_id),
+                        fingerprint: review_surface_fingerprint(job.job_id),
+                    },
+                )
+                .await
+                .map_err(map_repository)?;
+            Some(outcome.bundle.surface_id)
+        };
+        review_queue
+            .complete_job(&job, worker_id, stale.len() as i32, surface_id)
+            .await
+            .map_err(map_repository)?;
+        Ok(ReviewQueueRunSummary {
+            job_id: job.job_id,
+            lifecycle_state: "complete".to_owned(),
+            stale_pages: stale.len() as i32,
+            surface_id,
+        })
     }
 
     /// Reads one consolidation job for a subject.
@@ -3299,6 +3441,19 @@ fn authorize_content(
     } else {
         Err(ServiceError::NotFound)
     }
+}
+
+/// Deterministic fingerprint for a review-queue advisory surface. The
+/// fingerprint depends only on the job id, so a retried worker pass for
+/// the same job dedupes to the same surface.
+fn review_surface_fingerprint(job_id: Uuid) -> String {
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(&serde_json::json!({
+            "operation_id": "reviewQueueSurface",
+            "job_id": job_id.to_string(),
+        }))
+        .expect("surface fingerprint is serializable"),
+    ))
 }
 
 async fn await_content_operation<T>(

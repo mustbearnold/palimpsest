@@ -51,6 +51,8 @@ mod projections;
 mod property_idempotency;
 #[path = "conformance_postgres18/restore.rs"]
 mod restore;
+#[path = "conformance_postgres18/review_queue.rs"]
+mod review_queue;
 
 #[path = "conformance_postgres18/sleep_budget.rs"]
 mod sleep_budget;
@@ -352,6 +354,8 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             &migration_pool,
         )
         .await?;
+        review_queue::review_queue_flags_stale_pages_in_an_advisory_surface(&pool, &migration_pool)
+            .await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)
             .await?;
         let restore_listener = TcpListener::bind("127.0.0.1:0").await?;
