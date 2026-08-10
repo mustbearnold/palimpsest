@@ -2221,7 +2221,7 @@ components:
         - retention_policy_id
       properties:
         value:
-          description: Any non-null JSON value; becomes the page's new content
+          description: Any non-null JSON value; becomes the page's new content. Serialized JSON bytes must not exceed 65,536.
           not:
             type: "null"
         observed_at:
@@ -2260,7 +2260,7 @@ components:
           format: uuid
           description: The open-question fact this answer files
         answer:
-          description: Any non-null JSON answer payload
+          description: Any non-null JSON answer payload. Serialized JSON bytes must not exceed 65,536.
           not:
             type: "null"
         observed_at:
