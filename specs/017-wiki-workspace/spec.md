@@ -148,6 +148,13 @@ then the write is attributable (001 R9)
 and the fact keeps the caller's key and namespace
 and a write without a policy fails closed.
 
+AC12 — legacy mutation deprecation signal.
+Given the legacy mutation endpoints (create-fact, supersede-fact)
+when a caller invokes one
+then the response carries the deprecation signal
+and the mutation still succeeds
+and the invocation increments the legacy mutation counter (010 R3).
+
 ## Out of scope
 
 - The working set (client concern via the MCP adapter, spec 008).
