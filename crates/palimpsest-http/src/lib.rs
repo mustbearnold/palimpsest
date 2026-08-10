@@ -48,6 +48,7 @@ static CONTENT_LEASE_RELEASE_RETRY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static CONTENT_LEASE_RELEASE_RUNTIME_UNAVAILABLE_TOTAL: AtomicU64 = AtomicU64::new(0);
 static CONTENT_LEASE_RELEASE_OUTSTANDING: AtomicU64 = AtomicU64::new(0);
 static CONTENT_LEASE_RELEASE_DEFERRED_TO_EXPIRY_TOTAL: AtomicU64 = AtomicU64::new(0);
+static LEGACY_MUTATION_CALLS_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 /// Fixed cumulative latency buckets (milliseconds), Prometheus `le`-style.
 /// `record_request_latency` increments every bucket whose upper bound the
@@ -83,6 +84,7 @@ pub struct ServerMetricsSnapshot {
     pub latency_sum_micros: u64,
     pub projection_lease_seconds: u64,
     pub projection_renewal_interval_seconds: u64,
+    pub legacy_mutation_calls_total: u64,
 }
 
 pub fn content_lease_cleanup_counters() -> ContentLeaseCleanupCounters {
@@ -126,7 +128,27 @@ pub fn server_metrics_snapshot() -> ServerMetricsSnapshot {
         projection_lease_seconds: PROJECTION_LEASE_SECONDS.load(Ordering::Relaxed),
         projection_renewal_interval_seconds: PROJECTION_RENEWAL_INTERVAL_SECONDS
             .load(Ordering::Relaxed),
+        legacy_mutation_calls_total: legacy_mutation_calls_total(),
     }
+}
+
+/// Returns the number of legacy mutation endpoint invocations (017 AC12).
+/// The counter feeds the `/metrics` surface (spec 010 R3).
+pub fn legacy_mutation_calls_total() -> u64 {
+    LEGACY_MUTATION_CALLS_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Attaches the deprecation signal to a legacy mutation response (017 AC12).
+/// The endpoint keeps its function during the deprecation window.
+fn with_deprecation_signal(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .insert("Deprecation", HeaderValue::from_static("true"));
+    response.headers_mut().insert(
+        "Warning",
+        HeaderValue::from_static("299 palimpsest \"deprecated; use the wiki write-back API\""),
+    );
+    response
 }
 
 pub trait Authenticator: Send + Sync {
@@ -853,6 +875,7 @@ async fn create_fact(
     let tenant_id = TenantId(parse_uuid("tenant_id", &tenant_id)?);
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let principal = authenticate(&state, &headers)?;
+    LEGACY_MUTATION_CALLS_TOTAL.fetch_add(1, Ordering::Relaxed);
     let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let Json(request) = payload.map_err(Problem::from_json_rejection)?;
@@ -909,7 +932,7 @@ async fn create_fact(
         Some(location),
         outcome.replayed,
     )?;
-    Ok(content_lease.attach(response))
+    Ok(content_lease.attach(with_deprecation_signal(response)))
 }
 
 async fn get_current_fact(
@@ -947,6 +970,7 @@ async fn supersede_fact(
     let subject_id = SubjectId(parse_uuid("subject_id", &subject_id)?);
     let fact_id = FactId(parse_uuid("fact_id", &fact_id)?);
     let principal = authenticate(&state, &headers)?;
+    LEGACY_MUTATION_CALLS_TOTAL.fetch_add(1, Ordering::Relaxed);
     let content_lease = acquire_content_lease(&state, &principal, tenant_id, subject_id).await?;
     let idempotency_key = require_idempotency_key(&headers)?.to_owned();
     let expected_head_revision_id = require_if_match(&headers)?;
@@ -994,7 +1018,7 @@ async fn supersede_fact(
         .await
         .map_err(Problem::from_service)?;
     let response = fact_response(StatusCode::OK, outcome.view, None, outcome.replayed)?;
-    Ok(content_lease.attach(response))
+    Ok(content_lease.attach(with_deprecation_signal(response)))
 }
 
 /// Authenticate a write-back request and acquire its subject content lease.

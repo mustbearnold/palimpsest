@@ -17,6 +17,7 @@ use palimpsest_domain::{
     TenantId, ValidTime, WriteBackAnnotation, WriteBackCreateFact, WriteBackPageEdit,
     WriteBackTarget, WritePolicy, WritePolicyId, WritePolicyVersion,
 };
+use palimpsest_http::StaticAuthenticator;
 use palimpsest_postgres::PostgresMemoryRepository;
 use sqlx::PgPool;
 use time::OffsetDateTime;
@@ -672,6 +673,80 @@ pub(crate) async fn filed_answers_record_agent_writer_and_derived_provenance(
     ensure!(
         matches!(rejected, Err(ServiceError::WritePolicyRejected)),
         "an unregistered write policy on a filed answer must fail closed"
+    );
+    Ok(())
+}
+
+/// AC12 — the legacy mutation endpoints signal deprecation (017 AC12).
+/// The mutation still succeeds; the response carries the deprecation signal;
+/// the legacy mutation counter increments (010 R3).
+pub(crate) async fn legacy_mutation_endpoints_signal_deprecation(
+    pool: &PgPool,
+    migration_pool: &PgPool,
+) -> Result<()> {
+    let tenant_id = TenantId(Uuid::now_v7());
+    let subject_id = SubjectId(Uuid::now_v7());
+    let harness = harness(pool, migration_pool, tenant_id, subject_id, "legacy-caller").await?;
+    let token = "legacy-caller-token";
+    let authenticator = Arc::new(StaticAuthenticator::new([(
+        token.to_owned(),
+        harness.principal.clone(),
+    )]));
+    let service = harness.service.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let server = tokio::spawn(async move {
+        axum::serve(listener, palimpsest_http::router(service, authenticator)).await
+    });
+    let observed_at = observed_at()?;
+    let observed_at_string = observed_at.format(&time::format_description::well_known::Rfc3339)?;
+    let (episode, _) = seed_episode_and_fact(&harness).await?;
+    let counters_before = palimpsest_http::legacy_mutation_calls_total();
+    let response = reqwest::Client::new()
+        .post(format!(
+            "http://{address}/v1/tenants/{}/subjects/{}/facts",
+            tenant_id.0, subject_id.0
+        ))
+        .bearer_auth(token)
+        .header("Idempotency-Key", "legacy-deprecation-probe")
+        .json(&serde_json::json!({
+            "case_id": format!("{}", Uuid::from_u128(0x702)),
+            "namespace": "scratch",
+            "key": "legacy-deprecation-probe",
+            "value": {"probe": "deprecation"},
+            "observed_at": observed_at_string,
+            "valid_time": {"from": observed_at_string},
+            "evidence_episode_ids": [episode.0.to_string()],
+            "write_policy": {"id": "direct-evidence", "version": "1"},
+            "confidence": 0.9,
+            "sensitivity": "internal",
+            "retention_policy_id": "standard",
+        }))
+        .send()
+        .await?;
+    server.abort();
+    let status = response.status();
+    let deprecation_value = response
+        .headers()
+        .get("Deprecation")
+        .map(|value| value.as_bytes().to_vec());
+    let warning_present = response.headers().get("Warning").is_some();
+    let response_body = response.text().await?;
+    ensure!(
+        status == reqwest::StatusCode::CREATED,
+        "the legacy create-fact mutation must still succeed during the deprecation window, got {status:?} with body {response_body}"
+    );
+    ensure!(
+        deprecation_value.as_deref() == Some(b"true".as_slice()),
+        "the legacy create-fact response must carry the Deprecation signal"
+    );
+    ensure!(
+        warning_present,
+        "the legacy create-fact response must carry the Warning header"
+    );
+    ensure!(
+        palimpsest_http::legacy_mutation_calls_total() == counters_before + 1,
+        "the legacy mutation counter must increment once per legacy invocation"
     );
     Ok(())
 }

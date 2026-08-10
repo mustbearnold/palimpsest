@@ -354,6 +354,7 @@ async fn serves_the_bitemporal_lifecycle_over_http_and_postgres() -> Result<()> 
             &migration_pool,
         )
         .await?;
+        write_back::legacy_mutation_endpoints_signal_deprecation(&pool, &migration_pool).await?;
         review_queue::review_queue_flags_stale_pages_in_an_advisory_surface(&pool, &migration_pool)
             .await?;
         deletion_worker_fails_closed_when_export_store_is_unavailable(&pool, &migration_pool)

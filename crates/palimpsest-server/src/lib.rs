@@ -211,6 +211,9 @@ palimpsest_content_lease_release_outstanding {}\n\
 # HELP palimpsest_content_lease_release_deferred_to_expiry_total Content lease releases deferred to lease expiry.\n\
 # TYPE palimpsest_content_lease_release_deferred_to_expiry_total counter\n\
 palimpsest_content_lease_release_deferred_to_expiry_total {}\n\
+# HELP palimpsest_legacy_mutation_calls_total Legacy mutation endpoint invocations (017 AC12; the write-back API is the only inbound edit path).\n\
+# TYPE palimpsest_legacy_mutation_calls_total counter\n\
+palimpsest_legacy_mutation_calls_total {}\n\
 # HELP palimpsest_http_request_duration_milliseconds_bucket Request latency histogram (cumulative le buckets).\n\
 # TYPE palimpsest_http_request_duration_milliseconds_bucket counter\n\
 {latency}\
@@ -248,6 +251,7 @@ palimpsest_consolidation_claims_skipped_total {}\n",
         counters.runtime_unavailable,
         counters.outstanding,
         counters.deferred_to_expiry,
+        snapshot.legacy_mutation_calls_total,
         snapshot.latency_sum_micros,
         snapshot.projection_lease_seconds,
         snapshot.projection_renewal_interval_seconds,
@@ -482,6 +486,7 @@ mod tests {
                 latency_sum_micros: 55_000,
                 projection_lease_seconds: 60,
                 projection_renewal_interval_seconds: 20,
+                legacy_mutation_calls_total: 7,
             },
             consolidation_counters(),
             None,
