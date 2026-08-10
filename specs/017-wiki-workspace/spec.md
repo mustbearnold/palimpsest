@@ -223,18 +223,19 @@ phase carries its named conformance scenarios (AC1..AC10 above).
 - [V-4] Valid time on the governed create-fact operation. The first
   implementation accepts observed_at only. The legacy endpoint accepted a
   full valid interval. Verified at R5 closure execution.
-- [V-5] Lint findings. The lint pass checks four deterministic conditions:
-  a contradiction is the same (namespace, fact_key) current across two
-  cases with different content; an orphan is a current fact whose head
+- [V-5] Lint findings. The lint pass checks four deterministic conditions.
+  A contradiction is the same (namespace, fact_key) current across two
+  cases with different content. An orphan is a current fact whose head
   revision carries an evidence reference to an episode missing from the
-  subject's episodes; a stale claim is a current fact whose head revision
-  predates the staleness window; a provenance gap is a current fact whose
+  subject's episodes. A stale claim is a current fact whose head revision
+  predates the staleness window. A provenance gap is a current fact whose
   evidence episode was recorded after the claim itself. The worker writes
-  one governed lint fact per job in the `wiki/lint` namespace and, when a
-  contradiction exists, one open question in the `open-questions` namespace.
-  Both facts are written through the governed fact path under the registered
-  direct-evidence policy (001 R9, 011 R2) by the `palimpsest-wiki-lint-worker`
-  principal. Verified at P4 execution.
+  one governed lint fact per job in the `wiki/lint` namespace. When a
+  contradiction exists, the worker writes one open question in the
+  `open-questions` namespace. Both facts are written through the governed
+  fact path under the registered direct-evidence policy (001 R9, 011 R2).
+  The `palimpsest-wiki-lint-worker` principal is the writer. Verified at
+  P4 execution.
 - [V-6] Index surface. The wiki index reuses the spec 012 surface seam with
   the `palimpsest-wiki-index` host and principal. The server renders the
   catalog from the authorized current projection (namespace-ordered, item and
